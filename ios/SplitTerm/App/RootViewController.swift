@@ -810,8 +810,8 @@ extension RootViewController: PointerOutput {
         let p = PointerArea.clamp(pointerHome, toUnionOf: pointerRects)
         pointerOverlay.show(at: p)
         // 上の 2 行の上: その下のボタン（タブ・＋・倍率・⚠）を押す。右クリックは何もしない
-        if statusRow.frame.union(tabRow.frame).contains(p), let control = control(at: p) {
-            if !right { control.sendActions(for: .touchUpInside) }
+        if statusRow.frame.union(tabRow.frame).contains(p), let button = buttonUnderPointer(at: p) {
+            if !right { button.sendActions(for: .touchUpInside) }
             return
         }
         // キーボード選択のボタンの上: 吹き出しでキーボードを選ぶ。📎 の上は何もしない
@@ -835,7 +835,7 @@ extension RootViewController: PointerOutput {
     }
 
     /// 点の下のビューから上へたどって見つけたボタン（UIControl）
-    private func control(at p: CGPoint) -> UIControl? {
+    private func buttonUnderPointer(at p: CGPoint) -> UIControl? {
         var v = view.hitTest(p, with: nil)
         while let x = v, x !== view {
             if let c = x as? UIControl, c.isEnabled { return c }
