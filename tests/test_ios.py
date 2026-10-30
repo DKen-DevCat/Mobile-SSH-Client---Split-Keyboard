@@ -605,7 +605,7 @@ def test_app_is_landscape_only_on_iphone_and_ipad():
     assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = {land}$", base, re.M)
     assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = {land}$", base, re.M)
     assert re.search(r"^TARGETED_DEVICE_FAMILY = 1,2$", base, re.M)
-    assert re.search(r"^IPHONEOS_DEPLOYMENT_TARGET = 16\.0$", base, re.M)
+    assert re.search(r"^IPHONEOS_DEPLOYMENT_TARGET = 17\.0$", base, re.M)
 
 
 def test_config_file_is_reachable_from_files_app():
@@ -619,5 +619,5 @@ def test_config_file_is_reachable_from_files_app():
 
 def test_package_minimum_matches_the_app():
     pkg = (ROOT / "ios/TermKit/Package.swift").read_text()
-    assert ".iOS(.v16)" in pkg
+    assert ".iOS(.v17)" in pkg
 

@@ -108,14 +108,28 @@ public enum KeyEncoder {
         }
     }
 
-    /// 貼り付け。括弧付きペーストが有効なら印で挟む（中に終わりの印があれば取り除く）。改行は CR にそろえる
+    /// 貼り付け。改行は CR にそろえ、タブと改行以外の制御文字（ESC など）は取り除く（貼った文字が、接続先で
+    /// キー操作やエスケープシーケンスとして働かないように）。括弧付きペーストが有効なら印で挟む
     public static func paste(_ text: String, _ ctx: EncodingContext) -> [UInt8] {
-        var t = text.replacingOccurrences(of: "\r\n", with: "\r").replacingOccurrences(of: "\n", with: "\r")
-        if ctx.bracketedPaste {
-            t = t.replacingOccurrences(of: "\u{1b}[201~", with: "")
-            return pasteStart + Array(t.utf8) + pasteEnd
+        let t = sanitizePaste(text)
+        return ctx.bracketedPaste ? pasteStart + Array(t.utf8) + pasteEnd : Array(t.utf8)
+    }
+
+    public static func sanitizePaste(_ text: String) -> String {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\r").replacingOccurrences(of: "\n", with: "\r")
+        let kept = normalized.unicodeScalars.filter { u in
+            u == "\t" || u == "\r" || !(u.value < 0x20 || (0x7F...0x9F).contains(u.value))
         }
-        return Array(t.utf8)
+        return String(String.UnicodeScalarView(kept))
+    }
+
+    /// 貼り付けると、改行のたびにコマンドが実行されるか（括弧付きペーストが無効で、改行を含む）。確かめてから送る
+    public static func pasteRunsCommands(_ text: String, _ ctx: EncodingContext) -> Bool {
+        guard !ctx.bracketedPaste else { return false }
+        var t = sanitizePaste(text)
+        // 最後の改行 1 つ（行のコピーに付きがち）は数えない
+        while t.hasSuffix("\r") { t.removeLast() }
+        return t.contains("\r")
     }
 
     static func encodeText(_ s: String, _ mods: KeyModifiers, meta: Bool) -> [UInt8] {

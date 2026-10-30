@@ -6,8 +6,8 @@ SDKROOT = iphoneos
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator
 // iPhone と iPad（1 つのレイアウト算出で両方を扱う）
 TARGETED_DEVICE_FAMILY = 1,2
-// iPad 第 5 世代（A9）が使える最後の版
-IPHONEOS_DEPLOYMENT_TARGET = 16.0
+// iOS / iPadOS 17 以上（iPhone XS・XR・SE 第 2 世代以降、iPad 第 6 世代以降）。docs/design.md「この版で決めたこと」
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 PRODUCT_NAME = SplitTerm
 // 無料の Team は 7 日に作れる App ID が 10 個まで。キーチェーンの鍵（Secure Enclave の鍵・ホスト鍵）も Bundle ID に付くので変えない

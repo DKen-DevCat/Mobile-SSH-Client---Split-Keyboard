@@ -9,7 +9,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | 場所 | 中身 |
 |---|---|
 | `ios/SplitTerm/` | アプリ（UIKit）。Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） |
-| `ios/TermKit/` | Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など、Mac で `swift test`）と `TermSession`（SSH・エミュレータ・キーチェーン） |
+| `ios/TermKit/` | Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など、Mac で `swift test`）、`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
 | `ios/SplitTerm/Resources/config.example` | config の見本（全項目の説明付き。値はすべて既定値） |
 | `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`） |
 | `launchd/com.dken.splitterm-ios.plist` | 1 時間ごとに期限を見て入れ直す |
@@ -17,7 +17,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 
 ## 準備（1 回だけ）
 
-前提: Mac に Xcode（Apple ID でサインイン済み）と jq。接続先の Mac に tmux（`brew install tmux`）。Tailscale などで iPhone から Mac の SSH（リモートログイン）に届くこと。
+前提: iPhone・iPad は iOS / iPadOS 17 以上。Mac に Xcode（Apple ID でサインイン済み）と jq。接続先の Mac に tmux（`brew install tmux`）。Tailscale などで iPhone から Mac の SSH（リモートログイン）に届くこと。
 
 1. iPhone・iPad を USB でつないで「信頼」し、「設定 > プライバシーとセキュリティ > デベロッパモード」をオンにする
 2. 入れる（初回は証明書・端末の登録・App ID・プロファイルが自動で作られる）
@@ -86,7 +86,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 ## 使い方の要点
 
-- **キーボード**: US（Mac 配列の分割。caps lock の位置が control、esc は左下）とかなフリック（12 キー × 左右）。環境バーの「US / かな」で切り替え
+- **キーボード**: US（Mac 配列の分割。caps lock の位置が control、esc は左下）とかなフリック（12 キー × 左右、AzooKey でかな漢字変換）。環境バーの「US / かな」で切り替え
 - **修飾キー**: 押しながらでも、タップしてワンショットでも効く。command はアプリ内（⌘C コピー、⌘V ペースト、⌘− / ⌘= 倍率）
 - **シェル**: 縦ドラッグでスクロールバック、長押し→ドラッグで選択、ダブルタップで単語、2 本指タップでメニュー、ピンチで倍率（85% / 100%）。vim・tmux・htop がマウスを求めたらマウスとして送る
 - **切れたら**: 前面に戻った・回線が変わった・通信が切れたときに自動で繋ぎ直し、tmux のセッションに戻る。シェルを exit したタブは、タップで繋ぎ直す

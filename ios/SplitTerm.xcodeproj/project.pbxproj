@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		B20000000000000000000015 /* TermCore in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000014 /* TermCore */; };
 		B20000000000000000000017 /* TermSession in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000016 /* TermSession */; };
+		B20000000000000000000019 /* TermKana in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000018 /* TermKana */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 			files = (
 				B20000000000000000000015 /* TermCore in Frameworks */,
 				B20000000000000000000017 /* TermSession in Frameworks */,
+				B20000000000000000000019 /* TermKana in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,6 +88,7 @@
 			packageProductDependencies = (
 				B20000000000000000000014 /* TermCore */,
 				B20000000000000000000016 /* TermSession */,
+				B20000000000000000000018 /* TermKana */,
 			);
 			productName = SplitTerm;
 			productReference = B20000000000000000000001 /* SplitTerm.app */;
@@ -221,6 +224,10 @@
 		B20000000000000000000016 /* TermSession */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TermSession;
+		};
+		B20000000000000000000018 /* TermKana */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TermKana;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

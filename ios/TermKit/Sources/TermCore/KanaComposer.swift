@@ -1,19 +1,44 @@
 import Foundation
 
-/// かな入力の変換中の文字（docs/design.md「横持ち：かなフリック」）。
+/// かな入力の変換中の文字（docs/design.md「かなフリック」）。
 /// フリックとトグル入力（同じキーの連打）で読みを作り、候補バーに候補を出す。
-/// 漢字の変換エンジンは `KanaConverter` で差し替える（AzooKey を入れるまでは、ひらがな・カタカナだけ）
-public protocol KanaConverter: Sendable {
-    func candidates(for reading: String) -> [String]
+/// 漢字の変換エンジンは `KanaConverter` で差し替える（アプリは AzooKey、テストと辞書の読み込み中はひらがな・カタカナだけ）
+
+/// 変換の候補。`consumed` は候補が読みの先頭の何文字ぶんか（文節ごとの候補は読みの一部だけを使う）
+public struct KanaCandidate: Equatable, Sendable {
+    public var text: String
+    public var consumed: Int
+
+    public init(text: String, consumed: Int) {
+        self.text = text
+        self.consumed = consumed
+    }
+}
+
+public protocol KanaConverter {
+    /// 読みの候補。重い処理なので、呼ぶ側がメインスレッドの外で呼ぶ
+    func candidates(for reading: String) -> [KanaCandidate]
+    /// 変換を区切った（確定・取り消し）。変換器の中の途中結果を捨てる
+    func reset()
 }
 
 /// 漢字の辞書を持たない変換（ひらがなとカタカナ）
-public struct PassthroughConverter: KanaConverter {
+public struct PassthroughConverter: KanaConverter, Sendable {
     public init() {}
-    public func candidates(for reading: String) -> [String] {
+
+    public func candidates(for reading: String) -> [KanaCandidate] {
+        Self.kanaCandidates(for: reading)
+    }
+
+    public func reset() {}
+
+    /// 読みそのままと、カタカナ。どの変換器でも最後に足す（辞書に無い語でも打てるように）
+    public static func kanaCandidates(for reading: String) -> [KanaCandidate] {
         guard !reading.isEmpty else { return [] }
+        let n = reading.count
         let kata = KanaComposer.katakana(reading)
-        return kata == reading ? [reading] : [reading, kata]
+        return kata == reading ? [.init(text: reading, consumed: n)]
+            : [.init(text: reading, consumed: n), .init(text: kata, consumed: n)]
     }
 }
 
@@ -67,6 +92,15 @@ public struct KanaComposer: Sendable {
         reading = ""
         toggle = nil
         return out
+    }
+
+    /// 候補を選んだ。候補が読みの一部だけ（文節）なら、その分を確定して残りは変換中のままにする
+    public mutating func commit(_ candidate: KanaCandidate) -> String {
+        let n = min(max(candidate.consumed, 0), reading.count)
+        if n >= reading.count { return commit(candidate.text) }
+        reading.removeFirst(n)
+        toggle = nil
+        return candidate.text
     }
 
     /// 文字を直接足す（空白など、変換中の読みに入れるもの）

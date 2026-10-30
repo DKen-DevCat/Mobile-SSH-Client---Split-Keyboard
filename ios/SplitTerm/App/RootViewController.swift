@@ -2,6 +2,7 @@ import GameController
 import LocalAuthentication
 import Network
 import TermCore
+import TermKana
 import TermSession
 import UIKit
 import UniformTypeIdentifiers
@@ -29,7 +30,8 @@ final class RootViewController: UIViewController {
     private var keyboardKind: KeyboardKind = .us
     private var zoom = ZoomSteps(steps: [85, 100])
     private var composer = KanaComposer()
-    private let converter: KanaConverter = PassthroughConverter()
+    /// かな漢字変換（AzooKey）。裏のキューで変換し、最新の結果だけを候補バーに出す
+    private let kana = KanaConversionQueue()
     private var hardwareKeyboard = GCKeyboard.coalesced != nil
     private var layout: LayoutResult?
     private var grid = (cols: 80, rows: 24)
@@ -71,7 +73,7 @@ final class RootViewController: UIViewController {
         envBar.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
         envBar.onKeyboard = { [weak self] in self?.switchKeyboard() }
         envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
-        candidateBar.onPick = { [weak self] text in self?.commitComposition(text) }
+        candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
 
         store.onChange = { [weak self] c, d in self?.apply(config: c, diagnostics: d) }
         apply(config: store.config, diagnostics: store.diagnostics, initial: true)
@@ -347,13 +349,28 @@ final class RootViewController: UIViewController {
 
     private func commitComposition(_ text: String?) {
         let out = composer.commit(text)
+        kana.reset()
         updateCandidates()
-        guard !out.isEmpty else { return }
-        active?.send(KeyEncoder.encode(.text(out), [], encodingContext))
+        sendCommitted(out)
+    }
+
+    /// 候補を選んだ。文節の候補なら、残りの読みは変換中のまま候補を出し直す
+    private func pickCandidate(_ candidate: KanaCandidate) {
+        let out = composer.commit(candidate)
+        if !composer.isComposing { kana.reset() }
+        updateCandidates()
+        sendCommitted(out)
+    }
+
+    private func sendCommitted(_ text: String) {
+        guard !text.isEmpty else { return }
+        active?.send(KeyEncoder.encode(.text(text), [], encodingContext))
     }
 
     private func updateCandidates() {
-        candidateBar.update(candidates: converter.candidates(for: composer.reading))
+        kana.request(composer.reading) { [weak self] candidates in
+            self?.candidateBar.update(candidates: candidates)
+        }
     }
 
     // MARK: 選択・コピー・ペースト
@@ -372,10 +389,27 @@ final class RootViewController: UIViewController {
     }
 
     private func pasteClipboard() {
-        guard let s = active, let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        guard active != nil, let text = UIPasteboard.general.string, !text.isEmpty else { return }
         if composer.isComposing { commitComposition(nil) }
+        let ctx = encodingContext
+        guard KeyEncoder.pasteRunsCommands(text, ctx) else {
+            sendPaste(text, ctx)
+            return
+        }
+        // 括弧付きペーストが無効な所（素の sh など）に複数行を貼ると、行ごとに実行される。確かめてから送る
+        let lines = text.split(whereSeparator: \.isNewline).count
+        let a = UIAlertController(title: "\(lines) 行を貼り付けます",
+                                  message: "この画面では、改行のたびにコマンドとして実行されます。",
+                                  preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "やめる", style: .cancel))
+        a.addAction(UIAlertAction(title: "貼り付ける", style: .destructive) { [weak self] _ in self?.sendPaste(text, ctx) })
+        present(a, animated: true)
+    }
+
+    private func sendPaste(_ text: String, _ ctx: EncodingContext) {
+        guard let s = active else { return }
         s.scrollTop = nil
-        s.send(KeyEncoder.paste(text, encodingContext))
+        s.send(KeyEncoder.paste(text, ctx))
     }
 
     private func copyPublicKey() {

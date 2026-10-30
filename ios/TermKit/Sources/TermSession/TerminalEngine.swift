@@ -155,6 +155,9 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
         options.rows = max(1, rows)
         options.scrollback = scrollback
         options.termName = termName
+        // 画像（kitty・sixel）は描かないので受け取らない。接続先が 1 画面あたり最大 10MB を置けてしまうのを防ぐ
+        options.kittyGraphics.storageLimitBytesPerScreen = 0
+        options.enableSixelReported = false
         terminal = Terminal(delegate: self, options: options)
     }
 
@@ -309,8 +312,25 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
         onResponse?(Array(data))
     }
 
+    /// 接続先を「信頼しない」。SwiftTerm の既定（信頼する）のままだと、画面の中身のチェックサムを接続先へ返す
+    /// （DECRQCRA。画面の内容を少しずつ読み出す道になる）。作業ディレクトリの通知（OSC 6・7）も使わない
+    public func isProcessTrusted(source: Terminal) -> Bool { false }
+
+    // クリップボードの読み書き（OSC 52）と窓の操作（題名の送り返しなど）は、SwiftTerm の既定（何もしない）のまま
+
     public func setTerminalTitle(source: Terminal, title: String) {
-        DispatchQueue.main.async { [weak self] in self?.onTitle?(title) }
+        let clean = Self.sanitizeTitle(title)
+        DispatchQueue.main.async { [weak self] in self?.onTitle?(clean) }
+    }
+
+    /// 題名は接続先が自由に決める。制御文字と双方向の書式文字を除き、タブに収まる長さに切る
+    public static func sanitizeTitle(_ title: String) -> String {
+        let scalars = title.unicodeScalars.filter { u in
+            !(u.value < 0x20 || (0x7F...0x9F).contains(u.value) || (0x200E...0x200F).contains(u.value)
+              || (0x202A...0x202E).contains(u.value) || (0x2066...0x2069).contains(u.value))
+        }
+        let s = String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespaces)
+        return s.count > 40 ? String(s.prefix(39)) + "…" : s
     }
 
     public func bell(source: Terminal) {
