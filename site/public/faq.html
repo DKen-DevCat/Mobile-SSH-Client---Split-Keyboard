@@ -96,7 +96,7 @@
    "name": "設定（config）はどこにありますか？",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "Mac では ~/.config/splitterm/config（scripts/ios_push_config.sh か splitterm push で端末へ送る）。端末では「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config で、アプリの ＋ →「設定を編集」でも直せる。全項目は config。"
+    "text": "Mac では ~/.config/splitterm/config（scripts/ios_push_config.sh か splitterm push で端末へ送る）。端末では「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config で、アプリの ＋ を長押し →「設定を編集」でも直せる。全項目は config。"
    }
   },
   {
@@ -180,7 +180,7 @@
 <h2 id="install">どうやって入れますか？</h2>
 <p>Mac のエージェントに「https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md を読んで、この Mac と iPhone に Mobile-SSH-Client---Split-Keyboard を入れて設定して」と渡す。手で進めるなら <a href="/get-started">はじめる</a> の手順のとおり。流れは、Xcode に Apple ID でサインイン → 端末を USB でつないで信頼し、デベロッパモードをオン → <code>scripts/ios_reinstall.sh</code> で入れる → 端末で開発元を信頼 → config に接続先を書いて送る → 公開鍵を登録（指紋を見比べる）→ launchd に自動の入れ直しを登録。</p>
 <h2 id="config">設定（config）はどこにありますか？</h2>
-<p>Mac では <code>~/.config/splitterm/config</code>（<code>scripts/ios_push_config.sh</code> か <code>splitterm push</code> で端末へ送る）。端末では「ファイル」アプリ &gt; この iPhone 内 &gt; Mobile-SSH-Client---Split-Keyboard &gt; config で、アプリの ＋ →「設定を編集」でも直せる。全項目は <a href="/config">config</a>。</p>
+<p>Mac では <code>~/.config/splitterm/config</code>（<code>scripts/ios_push_config.sh</code> か <code>splitterm push</code> で端末へ送る）。端末では「ファイル」アプリ &gt; この iPhone 内 &gt; Mobile-SSH-Client---Split-Keyboard &gt; config で、アプリの ＋ を長押し →「設定を編集」でも直せる。全項目は <a href="/config">config</a>。</p>
 <h2 id="privacy">データはどこかへ送られますか？（プライバシー）</h2>
 <p>送られない。テレメトリ・クラウド同期・AI 機能を持たず、ターミナルの内容をディスクに書かず、外へ送らない。SSH の鍵は Secure Enclave で作り、端末の外に出ない。パスワードは保存しない。初めての接続でホスト鍵の指紋を確かめ、変わっていたら接続を止める。起動時と復帰時に Face ID（かパスコード）を求め、アプリスイッチャーでは内容をぼかす。メディアを送るときも、送り先は自分の接続先だけで、位置情報は既定で外す。</p>
 <h2 id="agents">どのエージェントで使えますか？</h2>

@@ -7,7 +7,7 @@
 | どこ | 場所 | 使い方 |
 | --- | --- | --- |
 | Mac | `~/.config/splitterm/config`（環境変数 `SPLITTERM_CONFIG` で変えられる） | 直してから `scripts/ios_push_config.sh`（または `splitterm push`）で端末へ送る。開いているアプリにもすぐ効く |
-| iPhone・iPad | 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config | アプリの ＋ →「設定を編集」でも直せる。保存した瞬間に読み直して効く |
+| iPhone・iPad | 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config | アプリの ＋ を長押し →「設定を編集」でも直せる。保存した瞬間に読み直して効く |
 
 Mac で初めて作るときは、見本から作る: `splitterm config init`（または `scripts/ios_push_config.sh --init`）。
 

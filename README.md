@@ -41,7 +41,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
    scripts/ios_push_config.sh
    ```
 
-5. Mobile-SSH-Client---Split-Keyboard の公開鍵（Secure Enclave の鍵。秘密鍵は端末から出ない）を、この Mac の `~/.ssh/authorized_keys` に足す。指紋が出るので、アプリの ＋ →「公開鍵をコピー」に出た指紋と同じなら `y`（足す行には `restrict,pty` が付く）
+5. Mobile-SSH-Client---Split-Keyboard の公開鍵（Secure Enclave の鍵。秘密鍵は端末から出ない）を、この Mac の `~/.ssh/authorized_keys` に足す。指紋が出るので、アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋と同じなら `y`（足す行には `restrict,pty` が付く）
 
    ```bash
    scripts/ios_pubkey.sh
@@ -69,7 +69,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 |---|---|
 | コードを変えたので入れ直す | `scripts/ios_reinstall.sh` |
 | 設定を変える（Mac で） | `~/.config/splitterm/config` を直して `scripts/ios_push_config.sh`。開いているアプリにもすぐ効く |
-| 設定を変える（端末で） | ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
+| 設定を変える（端末で） | ＋ を長押し →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
 | 画面に頼らない部分のテスト（Mac） | `(cd ios/TermCore && swift test)` |
 | `splitterm` を作る（Mac） | `swift build -c release --package-path ios/TermCore`（できるのは `ios/TermCore/.build/release/splitterm`） |
 | エージェントに MCP を足す | `claude mcp add splitterm -- "$PWD/ios/TermCore/.build/release/splitterm" mcp` |
@@ -94,9 +94,10 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 ## 使い方の要点
 
-- **キーボード**: 5 つ（分割ローマ字・分割英語・日本語フリック・英語フリックのローマ字・英語）。分割は Mac の JIS 配列（日本語の刻印なし、6・Y・H・N は左右の両方）。🌐 のタップで前のキーボード、長押しで選ぶ（環境バーのボタンからも）
+- **画面**: シェルは画面の上端から下端まで。その上に 2 行が重なる。1 行目は時計・通信・電池・表示倍率、2 行目はタブと ＋（タップで新しいタブ、長押しで接続先の一覧と道具）。キーボード選択はシェルの右下
+- **キーボード**: 5 つ（分割ローマ字・分割英語・日本語フリック・英語フリックのローマ字・英語）。分割は Mac の JIS 配列（日本語の刻印なし、6・Y・H・N は左右の両方）。🌐 のタップで前のキーボード、長押しで選ぶ（シェルの右下のボタンからも）
 - **修飾キー**: Mac と同じく押している間だけ効く。command はアプリ内（⌘C コピー、⌘V ペースト、⌘− / ⌘= 倍率、⌘T・⌘W・⌘1〜9 タブ）
-- **ポインタ**: スペースの横の赤い丸。動かした分だけ動き、大きくずらすと進み続ける。片方のタップでクリック、両方で右クリック
+- **ポインタ**: スペースの横の赤い丸。トラックパッドのように、指の動いた分だけ動き、速いほど遠くへ届く。シェルと上の 2 行（タブ・＋・倍率）をクリックできる。片方のタップでクリック、両方で右クリック。空白を 0.5 秒長押しすると、キーボード全体がトラックパッドになる
 - **シェル**: 縦ドラッグでスクロールバック、長押し→ドラッグで選択、ダブルタップで単語、2 本指タップでメニュー、ピンチで倍率（85% / 100%）。vim・tmux・htop がマウスを求めたらマウスとして送る
 - **切れたら**: 前面に戻った・回線が変わった・通信が切れたときに自動で繋ぎ直し、tmux のセッションに戻る。シェルを exit したタブは、タップで繋ぎ直す
 - **iPad**: ハードウェアキーボードをつなぐと画面のキーボードが消え、シェルが全面になる

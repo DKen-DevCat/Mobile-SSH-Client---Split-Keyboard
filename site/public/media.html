@@ -52,10 +52,10 @@
 <h1 id="h1">メディアを送る（写真・動画・音声）</h1>
 <p>Mobile-SSH-Client---Split-Keyboard で選んだり撮ったりした写真・動画・音声を、同じ SSH の接続で Mac の受け取り箱（<code>~/.splitterm/inbox</code>）へ原本のまま送り、ファイルのパスを入力行に入れる（Enter は押さない）。エージェントが読めない形式のときだけ変換する。動画は、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声は端末の中で文字にして添える。</p>
 <blockquote>
-<p>状態: 実装済み（環境バーの 📎）。Mac の CI でビルドを通しているが、実機での確認はまだ（2026-10-30 時点）。</p>
+<p>状態: 実装済み（シェルの左下の 📎）。Mac の CI でビルドを通しているが、実機での確認はまだ（2026-10-30 時点）。</p>
 </blockquote>
 <h2 id="flow">流れ</h2>
-<ol><li>環境バーの 📎 で、写真・動画を選ぶ／撮る／録音する／ファイルを選ぶ</li><li>送り先のエージェント（config の <code>agent</code>）が読める形式かを見て、そのまま送るか変換するかを決める</li><li>同じ SSH の接続で、接続先の受け取り箱へ送る</li><li>届いたら、ファイルの絶対パスを入力行に入れる（Enter は押さない）</li><li>続けて頼みごとを打ち、エージェント（Claude Code など）がパスからファイルを読む</li></ol>
+<ol><li>シェルの左下の 📎 で、写真・動画を選ぶ／撮る／録音する／ファイルを選ぶ</li><li>送り先のエージェント（config の <code>agent</code>）が読める形式かを見て、そのまま送るか変換するかを決める</li><li>同じ SSH の接続で、接続先の受け取り箱へ送る</li><li>届いたら、ファイルの絶対パスを入力行に入れる（Enter は押さない）</li><li>続けて頼みごとを打ち、エージェント（Claude Code など）がパスからファイルを読む</li></ol>
 <h2 id="sources">入口</h2>
 <p>iOS が勝手に縮めたり変換したりする道を避ける。</p>
 <div class="scroll" role="region" tabindex="0" aria-label="表: 入口・使うもの・落とさないための設定"><table><thead><tr><th scope="col">入口</th><th scope="col">使うもの</th><th scope="col">落とさないための設定</th></tr></thead><tbody><tr><td>写真・動画を選ぶ</td><td>写真の選択画面（<code>PHPickerViewController</code>。写真への許可は要らない）</td><td>元の形式のまま受け取る（HEIC・HEVC・ProRAW を変換しない）。複数選べる</td></tr><tr><td>撮る</td><td>カメラ（<code>UIImagePickerController</code>）</td><td>高画質（<code>.typeHigh</code>）。長さの上限を外す（既定は 10 分）</td></tr><tr><td>録音</td><td><code>AVAudioRecorder</code></td><td>AAC 48kHz。時間の上限なし</td></tr><tr><td>ファイル</td><td>「ファイル」の選択画面</td><td>どの形式でも</td></tr></tbody></table></div>

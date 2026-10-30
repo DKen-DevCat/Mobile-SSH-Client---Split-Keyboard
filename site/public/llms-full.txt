@@ -279,7 +279,7 @@ scripts/ios_push_config.sh
 
 アプリの公開鍵を、この Mac の `~/.ssh/authorized_keys` に足す。端末の公開鍵のファイルは「ファイル」アプリから書き換えられるので、足す前に指紋をアプリの画面と見比べる。
 
-> **人の手が要る（HUMAN-ONLY）**: アプリの ＋ →「公開鍵をコピー」を押し、画面に出た指紋（`SHA256:` で始まる）をエージェントに伝える。エージェントは指紋を推測しない。段 8 の `--print` で出た指紋を代わりに使わない（それでは確かめにならない）。
+> **人の手が要る（HUMAN-ONLY）**: アプリの ＋ を長押し →「公開鍵をコピー」を押し、画面に出た指紋（`SHA256:` で始まる）をエージェントに伝える。エージェントは指紋を推測しない。段 8 の `--print` で出た指紋を代わりに使わない（それでは確かめにならない）。
 
 実行する（人から聞いた指紋を入れる）:
 
@@ -315,7 +315,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dken.splitterm-ios.p
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-> **人の手が要る（HUMAN-ONLY）**: アプリを開く（起動時に最初の `host` へつなぐ。＋ の一覧から選んでもよい）。ホスト鍵の指紋の確認が出たら、上のコマンドの `SHA256:…` と同じときだけ受け入れる。違うときは受け入れずに止める。
+> **人の手が要る（HUMAN-ONLY）**: アプリを開く（起動時に最初の `host` へつなぐ。＋ を長押しして出る一覧から選んでもよい）。ホスト鍵の指紋の確認が出たら、上のコマンドの `SHA256:…` と同じときだけ受け入れる。違うときは受け入れずに止める。
 
 成功の確かめ方: アプリに tmux の画面（セッション `main`）が出る。これで準備は終わり。
 
@@ -324,7 +324,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | すること | コマンド・操作 |
 | --- | --- |
 | 設定を変える（Mac で） | `~/.config/splitterm/config` を直して `scripts/ios_push_config.sh`。または `splitterm config set <項目> <値>` と `splitterm push` |
-| 設定を変える（端末で） | アプリの ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
+| 設定を変える（端末で） | アプリの ＋ を長押し →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
 | 接続先を足す | `splitterm host add <名前> <ユーザー>@<アドレス>` と `splitterm push` |
 | 期限を見る | `splitterm status`（MCP なら `app_status`） |
 | すぐに入れ直す | `scripts/ios_reinstall.sh` |
@@ -340,7 +340,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | アプリが開かない（「信頼されていない開発元」） | 段 8 をやり直す |
 | 7 日たってアプリが開かない | `scripts/ios_reinstall.sh` で入れ直す。launchd の登録（段 12）とログ（`logs/ios_reinstall.log`）を見る |
 | 「公開鍵を取れませんでした」「送れませんでした」 | アプリを一度開いてから、もう一度試す |
-| 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ →「このタブのホスト鍵を忘れる」 |
+| 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ を長押し →「このタブのホスト鍵を忘れる」 |
 | config の ⚠ | `splitterm config check` で行番号と理由を見て直す |
 | アプリで「認証に失敗しました」 | 公開鍵を登録したか確かめる: `grep -c splitterm ~/.ssh/authorized_keys` が 0 なら段 11。登録済みなら、システム設定 > 一般 > 共有 > リモートログイン の「アクセスを許可」に自分が入っているか、`~/.ssh` の権限（`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`）を見る。理由は `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` に出る |
 | ビルドが「Validate plug-in “SwiftTermBuildInfoPlugin”」で止まる | 初回だけ人の手: `open ios/*.xcodeproj` で Xcode を開き、実行先を「Any iOS Simulator Device」にして ⌘B、出てきた「Trust & Enable」を押す（Xcode でビルドするには先に `ios/Config/Local.xcconfig` に `DEVELOPMENT_TEAM` を書く）。そのあと段 7 をやり直す |
@@ -358,7 +358,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | どこ | 場所 | 使い方 |
 | --- | --- | --- |
 | Mac | `~/.config/splitterm/config`（環境変数 `SPLITTERM_CONFIG` で変えられる） | 直してから `scripts/ios_push_config.sh`（または `splitterm push`）で端末へ送る。開いているアプリにもすぐ効く |
-| iPhone・iPad | 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config | アプリの ＋ →「設定を編集」でも直せる。保存した瞬間に読み直して効く |
+| iPhone・iPad | 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config | アプリの ＋ を長押し →「設定を編集」でも直せる。保存した瞬間に読み直して効く |
 
 Mac で初めて作るときは、見本から作る: `splitterm config init`（または `scripts/ios_push_config.sh --init`）。
 
@@ -538,7 +538,7 @@ Claude Code 以外の MCP クライアントも、同じ stdio のサーバー�
 - Xcode に Apple ID でサインインする
 - 端末を USB でつないで「信頼」し、デベロッパモードをオンにする
 - 端末の「設定 > 一般 > VPN とデバイス管理」で開発元を信頼する
-- アプリの ＋ →「公開鍵をコピー」に出た指紋を読み、`pubkey_install` に渡す
+- アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋を読み、`pubkey_install` に渡す
 
 ## pubkey_install と指紋
 
@@ -583,11 +583,11 @@ MCP と同じことを、コマンドでも実行できる。
 
 Mobile-SSH-Client---Split-Keyboard で選んだり撮ったりした写真・動画・音声を、同じ SSH の接続で Mac の受け取り箱（`~/.splitterm/inbox`）へ原本のまま送り、ファイルのパスを入力行に入れる（Enter は押さない）。エージェントが読めない形式のときだけ変換する。動画は、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声は端末の中で文字にして添える。
 
-> 状態: 実装済み（環境バーの 📎）。Mac の CI でビルドを通しているが、実機での確認はまだ（2026-10-30 時点）。
+> 状態: 実装済み（シェルの左下の 📎）。Mac の CI でビルドを通しているが、実機での確認はまだ（2026-10-30 時点）。
 
 ## 流れ
 
-1. 環境バーの 📎 で、写真・動画を選ぶ／撮る／録音する／ファイルを選ぶ
+1. シェルの左下の 📎 で、写真・動画を選ぶ／撮る／録音する／ファイルを選ぶ
 2. 送り先のエージェント（config の `agent`）が読める形式かを見て、そのまま送るか変換するかを決める
 3. 同じ SSH の接続で、接続先の受け取り箱へ送る
 4. 届いたら、ファイルの絶対パスを入力行に入れる（Enter は押さない）
@@ -711,7 +711,7 @@ Mac のエージェントに「https://mobile-ssh-client---split-keyboard.pages.
 
 ## 設定（config）はどこにありますか？
 
-Mac では `~/.config/splitterm/config`（`scripts/ios_push_config.sh` か `splitterm push` で端末へ送る）。端末では「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config で、アプリの ＋ →「設定を編集」でも直せる。全項目は [config](https://mobile-ssh-client---split-keyboard.pages.dev/config.md)。
+Mac では `~/.config/splitterm/config`（`scripts/ios_push_config.sh` か `splitterm push` で端末へ送る）。端末では「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config で、アプリの ＋ を長押し →「設定を編集」でも直せる。全項目は [config](https://mobile-ssh-client---split-keyboard.pages.dev/config.md)。
 
 ## データはどこかへ送られますか？（プライバシー）
 
