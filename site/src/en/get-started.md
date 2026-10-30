@@ -188,7 +188,7 @@ Verify: it prints `送りました: … → <UDID>` ("sent"). A running app pick
 
 This adds the app's public key to `~/.ssh/authorized_keys` on this Mac. The key file on the device can be changed from the Files app, so the fingerprint is compared with the app's screen before adding.
 
-> **HUMAN-ONLY**: in the app, tap ＋ → 「公開鍵をコピー」 ("Copy public key") and tell the agent the fingerprint shown (it starts with `SHA256:`). The agent never guesses it, and never uses the fingerprint printed by `--print` in step 8 instead (that would verify nothing).
+> **HUMAN-ONLY**: in the app, long-press ＋ → 「公開鍵をコピー」 ("Copy public key") and tell the agent the fingerprint shown (it starts with `SHA256:`). The agent never guesses it, and never uses the fingerprint printed by `--print` in step 8 instead (that would verify nothing).
 
 Run (with the fingerprint from the human):
 
@@ -224,7 +224,7 @@ First, print the host key fingerprint of the Mac you connect to (the agent runs 
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-> **HUMAN-ONLY**: open the app (it connects to the first `host` on launch; you can also pick one from the ＋ menu). When it asks you to confirm the host key fingerprint, accept only if it matches the `SHA256:…` printed above. If it differs, do not accept.
+> **HUMAN-ONLY**: open the app (it connects to the first `host` on launch; you can also long-press ＋ and pick one from its menu). When it asks you to confirm the host key fingerprint, accept only if it matches the `SHA256:…` printed above. If it differs, do not accept.
 
 Verify: the app shows the tmux screen (session `main`). Setup is complete.
 
@@ -238,7 +238,7 @@ Verify: the app shows the tmux screen (session `main`). Setup is complete.
 | The app does not open ("Untrusted Developer") | Redo step 8 |
 | The app does not open after 7 days | Re-install with `scripts/ios_reinstall.sh`. Check the launchd job (step 12) and `logs/ios_reinstall.log` |
 | 「公開鍵を取れませんでした」「送れませんでした」 (could not fetch / send) | Open the app once, then retry |
-| The host key does not match | There is no way to accept it. Only if you really changed the key, use ＋ → 「このタブのホスト鍵を忘れる」 ("forget this tab's host key") in the app |
+| The host key does not match | There is no way to accept it. Only if you really changed the key, long-press ＋ → 「このタブのホスト鍵を忘れる」 ("forget this tab's host key") in the app |
 | ⚠ on the config | Run `splitterm config check` to see the line numbers and reasons |
 | 「認証に失敗しました」 (authentication failed) in the app | Check the public key is registered: if `grep -c splitterm ~/.ssh/authorized_keys` prints 0, do step 11. If it is there, check that you are allowed in System Settings > General > Sharing > Remote Login, and the permissions (`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`). The reason appears in `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` |
 | The build stops at "Validate plug-in “SwiftTermBuildInfoPlugin”" | Human, first time only: open Xcode with `open ios/*.xcodeproj`, choose "Any iOS Simulator Device", press ⌘B and click "Trust & Enable" (to build in Xcode, first write `DEVELOPMENT_TEAM` into `ios/Config/Local.xcconfig`). Then redo step 7 |

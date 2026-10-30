@@ -180,7 +180,7 @@ scripts/ios_push_config.sh
 
 アプリの公開鍵を、この Mac の `~/.ssh/authorized_keys` に足す。端末の公開鍵のファイルは「ファイル」アプリから書き換えられるので、足す前に指紋をアプリの画面と見比べる。
 
-> **人の手が要る（HUMAN-ONLY）**: アプリの ＋ →「公開鍵をコピー」を押し、画面に出た指紋（`SHA256:` で始まる）をエージェントに伝える。エージェントは指紋を推測しない。段 8 の `--print` で出た指紋を代わりに使わない（それでは確かめにならない）。
+> **人の手が要る（HUMAN-ONLY）**: アプリの ＋ を長押し →「公開鍵をコピー」を押し、画面に出た指紋（`SHA256:` で始まる）をエージェントに伝える。エージェントは指紋を推測しない。段 8 の `--print` で出た指紋を代わりに使わない（それでは確かめにならない）。
 
 実行する（人から聞いた指紋を入れる）:
 
@@ -216,7 +216,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dken.splitterm-ios.p
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-> **人の手が要る（HUMAN-ONLY）**: アプリを開く（起動時に最初の `host` へつなぐ。＋ の一覧から選んでもよい）。ホスト鍵の指紋の確認が出たら、上のコマンドの `SHA256:…` と同じときだけ受け入れる。違うときは受け入れずに止める。
+> **人の手が要る（HUMAN-ONLY）**: アプリを開く（起動時に最初の `host` へつなぐ。＋ を長押しして出る一覧から選んでもよい）。ホスト鍵の指紋の確認が出たら、上のコマンドの `SHA256:…` と同じときだけ受け入れる。違うときは受け入れずに止める。
 
 成功の確かめ方: アプリに tmux の画面（セッション `main`）が出る。これで準備は終わり。
 
@@ -225,7 +225,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | すること | コマンド・操作 |
 | --- | --- |
 | 設定を変える（Mac で） | `~/.config/splitterm/config` を直して `scripts/ios_push_config.sh`。または `splitterm config set <項目> <値>` と `splitterm push` |
-| 設定を変える（端末で） | アプリの ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
+| 設定を変える（端末で） | アプリの ＋ を長押し →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
 | 接続先を足す | `splitterm host add <名前> <ユーザー>@<アドレス>` と `splitterm push` |
 | 期限を見る | `splitterm status`（MCP なら `app_status`） |
 | すぐに入れ直す | `scripts/ios_reinstall.sh` |
@@ -241,7 +241,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | アプリが開かない（「信頼されていない開発元」） | 段 8 をやり直す |
 | 7 日たってアプリが開かない | `scripts/ios_reinstall.sh` で入れ直す。launchd の登録（段 12）とログ（`logs/ios_reinstall.log`）を見る |
 | 「公開鍵を取れませんでした」「送れませんでした」 | アプリを一度開いてから、もう一度試す |
-| 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ →「このタブのホスト鍵を忘れる」 |
+| 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ を長押し →「このタブのホスト鍵を忘れる」 |
 | config の ⚠ | `splitterm config check` で行番号と理由を見て直す |
 | アプリで「認証に失敗しました」 | 公開鍵を登録したか確かめる: `grep -c splitterm ~/.ssh/authorized_keys` が 0 なら段 11。登録済みなら、システム設定 > 一般 > 共有 > リモートログイン の「アクセスを許可」に自分が入っているか、`~/.ssh` の権限（`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`）を見る。理由は `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` に出る |
 | ビルドが「Validate plug-in “SwiftTermBuildInfoPlugin”」で止まる | 初回だけ人の手: `open ios/*.xcodeproj` で Xcode を開き、実行先を「Any iOS Simulator Device」にして ⌘B、出てきた「Trust & Enable」を押す（Xcode でビルドするには先に `ios/Config/Local.xcconfig` に `DEVELOPMENT_TEAM` を書く）。そのあと段 7 をやり直す |

@@ -15,12 +15,17 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(r.shell.width, 344)
         XCTAssertEqual(r.leftKeyboard?.minX, 44)
         XCTAssertEqual(r.rightKeyboard?.maxX, 812 - 44)
-        // 高さは幅 × 1.35 まで（やや縦長）。英語・ローマ字の分割は下寄せで、ホームインジケータの上まで
+        // 高さは幅 × 1.35 まで（やや縦長）。分割は下寄せで、ホームインジケータの上まで
         XCTAssertEqual(r.leftKeyboard?.height, (182 * LayoutEngine.keyboardAspect).rounded())
         XCTAssertEqual(r.leftKeyboard?.maxY, 375 - 21)
-        XCTAssertEqual(r.environmentBar.height, 44)
-        XCTAssertEqual(r.environmentBar.maxY, 375 - 21)
-        XCTAssertEqual(r.shell.maxY, r.environmentBar.minY)
+        // シェルは上端から下端まで（下のバーは無い）
+        XCTAssertEqual(r.shell.minY, 0)
+        XCTAssertEqual(r.shell.maxY, 375 - 21)
+        XCTAssertEqual(r.shell.height, 354)
+        // 上の 2 行は、セーフエリアの左右いっぱい・上端から
+        XCTAssertEqual(r.statusRow, CGRect(x: 44, y: 0, width: 812 - 88, height: 20))
+        XCTAssertEqual(r.tabRow, CGRect(x: 44, y: 20, width: 812 - 88, height: 32))
+        XCTAssertEqual(LayoutEngine.keyboardTopGap, 52)
         XCTAssertNil(r.candidateBar)
     }
 
@@ -29,13 +34,96 @@ final class LayoutTests: XCTestCase {
         input.keyboard = .kana
         let r = LayoutEngine.compute(input)
         XCTAssertEqual(r.candidateBar?.height, 34)
-        XCTAssertEqual(r.candidateBar?.maxY, r.environmentBar.minY)
+        // 候補バーはシェルの下端に置き、シェルはその上まで
+        XCTAssertEqual(r.candidateBar?.maxY, 375 - 21)
         XCTAssertEqual(r.shell.maxY, r.candidateBar?.minY)
+        XCTAssertEqual(r.shell.minY, 0)
         // キーボードの幅は英語と同じ（切り替えてもシェルの桁数が変わらない）
         XCTAssertEqual(r.shell.width, LayoutEngine.compute(mini).shell.width)
-        // フリックは上に寄せる（上 40pt を空けて）
-        XCTAssertEqual(r.leftKeyboard?.minY ?? 0, 40, accuracy: 0.01)
         XCTAssertEqual(r.leftKeyboard?.height, LayoutEngine.compute(mini).leftKeyboard?.height)
+    }
+
+    /// フリックも、分割と同じく下に寄せる
+    func testFlickKeyboardsAreBottomAligned() {
+        let bottom: CGFloat = 375 - 21
+        for kind in KeyboardKind.allCases {
+            var input = mini
+            input.keyboard = kind
+            let r = LayoutEngine.compute(input)
+            XCTAssertEqual(r.leftKeyboard?.maxY, bottom, kind.rawValue)
+            XCTAssertEqual(r.rightKeyboard?.maxY, bottom, kind.rawValue)
+            XCTAssertEqual(r.leftKeyboard?.height, LayoutEngine.compute(mini).leftKeyboard?.height, kind.rawValue)
+        }
+    }
+
+    /// キーボードは上の 2 行に重ならない（高さの足りない窓でも。画面の上端が 0 でも 24 でも）
+    func testKeyboardNeverOverlapsTheTopRows() {
+        let cases: [LayoutInput] = [
+            mini,
+            LayoutInput(size: CGSize(width: 667, height: 375), safeArea: Insets()),
+            LayoutInput(size: CGSize(width: 1180, height: 820), safeArea: Insets(top: 24, bottom: 20)),
+            // 高さが足りない窓（キーボードの高さが空きに合わせて縮む）
+            LayoutInput(size: CGSize(width: 1000, height: 200), safeArea: Insets(top: 24, bottom: 20)),
+        ]
+        for base in cases {
+            for kind in KeyboardKind.allCases {
+                var input = base
+                input.keyboard = kind
+                let r = LayoutEngine.compute(input)
+                for kb in [r.leftKeyboard, r.rightKeyboard] {
+                    guard let kb else { return XCTFail("split のはず \(input.size)") }
+                    XCTAssertGreaterThanOrEqual(kb.minY, r.tabRow.maxY - 0.001, "\(input.size) \(kind.rawValue)")
+                }
+            }
+        }
+    }
+
+    /// シェルは上端から（上の 2 行がシェルに重なる）。シェルの表示範囲は縮めない
+    func testShellStartsAtTheTopAndTheRowsOverlapIt() {
+        let r = LayoutEngine.compute(LayoutInput(size: CGSize(width: 1180, height: 820),
+                                                 safeArea: Insets(top: 24, bottom: 20)))
+        XCTAssertEqual(r.shell.minY, 24)
+        XCTAssertEqual(r.shell.maxY, 820 - 20)
+        XCTAssertEqual(r.statusRow.minY, 24)
+        XCTAssertEqual(r.tabRow.minY, r.statusRow.maxY)
+        XCTAssertEqual(r.tabRow.height, LayoutEngine.tabRowHeight)
+        XCTAssertTrue(r.shell.intersects(r.statusRow))
+        XCTAssertTrue(r.shell.intersects(r.tabRow))
+        // 2 行は左右のセーフエリアの内側いっぱい（シェルより広い）
+        XCTAssertEqual(r.statusRow.width, 1180)
+        XCTAssertGreaterThan(r.tabRow.width, r.shell.width)
+    }
+
+    /// キーボード選択のボタンは、シェルの右下の角（候補バーがあればその上）。split のときだけ
+    func testKeyboardButtonSitsInTheShellCorner() {
+        for kind in KeyboardKind.allCases {
+            var input = mini
+            input.keyboard = kind
+            let r = LayoutEngine.compute(input)
+            guard let b = r.keyboardButton else { return XCTFail(kind.rawValue) }
+            XCTAssertEqual(b.size, CGSize(width: 36, height: 36))
+            XCTAssertEqual(b.maxX, r.shell.maxX - 6, kind.rawValue)
+            XCTAssertEqual(b.maxY, r.shell.maxY - 6, kind.rawValue)
+            XCTAssertTrue(r.shell.contains(b), kind.rawValue)
+            if let c = r.candidateBar { XCTAssertLessThanOrEqual(b.maxY, c.minY, kind.rawValue) }
+        }
+    }
+
+    /// ハードウェアキーボード・狭すぎる窓: シェルは左右いっぱい・上端から下端まで。上の 2 行はある。キーボード選択は出さない
+    func testFullShellKeepsTheTopRowsAndHasNoKeyboardButton() {
+        var hw = LayoutInput(size: CGSize(width: 1180, height: 820), safeArea: Insets(top: 24, bottom: 20))
+        hw.hardwareKeyboard = true
+        let slim = LayoutInput(size: CGSize(width: 320, height: 820), safeArea: Insets(top: 24, bottom: 20))
+        for input in [hw, slim] {
+            let r = LayoutEngine.compute(input)
+            XCTAssertNil(r.keyboardButton)
+            XCTAssertNil(r.candidateBar)
+            XCTAssertEqual(r.shell.minY, 24)
+            XCTAssertEqual(r.shell.maxY, 820 - 20)
+            XCTAssertEqual(r.shell.width, input.size.width)
+            XCTAssertEqual(r.statusRow, CGRect(x: 0, y: 24, width: input.size.width, height: 20))
+            XCTAssertEqual(r.tabRow, CGRect(x: 0, y: 44, width: input.size.width, height: 32))
+        }
     }
 
     /// かな漢字変換を使うキーボード（ローマ字・かな・英字フリックのローマ字）だけ候補バーを出す

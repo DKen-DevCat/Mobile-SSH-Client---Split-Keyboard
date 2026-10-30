@@ -68,7 +68,7 @@ Claude Code 以外の MCP クライアントも、同じ stdio のサーバー�
 - Xcode に Apple ID でサインインする
 - 端末を USB でつないで「信頼」し、デベロッパモードをオンにする
 - 端末の「設定 > 一般 > VPN とデバイス管理」で開発元を信頼する
-- アプリの ＋ →「公開鍵をコピー」に出た指紋を読み、`pubkey_install` に渡す
+- アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋を読み、`pubkey_install` に渡す
 
 ## pubkey_install と指紋 {#pubkey}
 

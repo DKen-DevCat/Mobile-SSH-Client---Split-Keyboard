@@ -2,32 +2,31 @@ import Network
 import TermCore
 import UIKit
 
-/// 環境バー（docs/design.md「横持ち」）: 接続タブ、＋（新規接続とメニュー）、表示倍率、キーボード選択、
-/// 時計・通信・電池（Face ID の iPhone の横持ちでは iOS が状態バーを出さないので、その代わり）
-final class EnvironmentBar: UIView {
-    struct Tab {
-        var title: String
-        var state: ConnectionState
-        var selected: Bool
+/// 上の 2 行の土台（docs/design.md「画面構成」の「上の 2 行」）。背景は透明でシェルの上に前面で重なる。
+/// タッチを受けるのはボタン（UIControl）の上だけで、空いている所はシェルへ通す（シェルの表示範囲は縮めない）
+class TopRow: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let hit = super.hitTest(point, with: event) else { return nil }
+        var v: UIView? = hit
+        while let x = v, x !== self {
+            if x is UIControl { return hit }
+            v = x.superview
+        }
+        return nil
     }
+}
 
-    var onSelectTab: ((Int) -> Void)?
-    var onCloseTab: ((Int) -> Void)?
+/// 上の 1 行目: 左に時計、右から 電池（％）・通信・⚠・倍率。⚠ は設定に読めない行があるときだけ（タップで今の診断）、
+/// 倍率のタップで段を巡る。iOS が状態バーを出しているとき（iPad など）は、時計・通信・電池を隠す（二重に出さない）。
+/// Face ID の iPhone の横持ちでは iOS が状態バーを出さないので、その代わりに時計・通信・電池を出す
+final class StatusRow: TopRow {
     var onZoom: (() -> Void)?
-    var onKeyboard: (() -> Void)?
     var onShowDiagnostics: (() -> Void)?
-    /// 📎（写真・動画・音声・ファイルを送る）。メニューは画面の側で作る
-    let attach = UIButton(type: .system)
+
+    private let zoom = UIButton(type: .system)
+    private let warning = UIButton(type: .system)
     /// メディアを送っている途中の進み具合
     private let progress = UILabel()
-
-    private let tabs = UIStackView()
-    private let scroll = UIScrollView()
-    let plus = UIButton(type: .system)
-    private let zoom = UIButton(type: .system)
-    private let keyboard = UIButton(type: .system)
-    private let warning = UIButton(type: .system)
-    private var accent = UIColor.systemBlue
     private var text = UIColor.white
     // 時計・通信・電池
     private let clock = UILabel()
@@ -35,44 +34,36 @@ final class EnvironmentBar: UIView {
     private let battery = UIImageView()
     private let batteryText = UILabel()
     private var clockTimer: Timer?
+    private var networkUp = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        tabs.axis = .horizontal
-        tabs.spacing = 4
-        scroll.showsHorizontalScrollIndicator = false
-        scroll.addSubview(tabs)
-        addSubview(scroll)
-        plus.setImage(UIImage(systemName: "plus"), for: .normal)
-        plus.showsMenuAsPrimaryAction = true
+        backgroundColor = .clear
         warning.setImage(UIImage(systemName: "exclamationmark.triangle.fill"), for: .normal)
+        warning.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold),
+                                                forImageIn: .normal)
         warning.tintColor = .systemYellow
         warning.isHidden = true
+        warning.accessibilityLabel = "設定に読めない行があります"
         warning.addAction(UIAction { [weak self] _ in self?.onShowDiagnostics?() }, for: .touchUpInside)
+        zoom.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        zoom.accessibilityLabel = "表示倍率"
         zoom.addAction(UIAction { [weak self] _ in self?.onZoom?() }, for: .touchUpInside)
-        keyboard.showsMenuAsPrimaryAction = true
-        for b in [zoom, keyboard] {
-            b.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-        }
-        attach.setImage(UIImage(systemName: "paperclip"), for: .normal)
-        attach.showsMenuAsPrimaryAction = true
         progress.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         progress.isHidden = true
-        for v in [plus, attach, progress, warning, zoom, keyboard] { addSubview(v) }
+        for v in [progress, warning, zoom] { addSubview(v) }
         setUpStatus()
     }
 
-    /// キーボードを選ぶメニュー（タップで出す）
-    func setKeyboardMenu(_ menu: UIMenu) {
-        keyboard.menu = menu
-    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     // MARK: 時計・通信・電池
 
     private func setUpStatus() {
+        clock.textAlignment = .left
+        batteryText.textAlignment = .right
         for l in [clock, batteryText] {
             l.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
-            l.textAlignment = .right
             addSubview(l)
         }
         for v in [network, battery] {
@@ -129,20 +120,17 @@ final class EnvironmentBar: UIView {
         case nil: symbol = "wifi.slash"
         default: symbol = "network"
         }
+        networkUp = type != nil
         network.image = UIImage(systemName: symbol)
-        network.tintColor = type == nil ? .systemRed : text
+        network.tintColor = networkUp ? text : .systemRed
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
     func apply(colors: KeyboardColors) {
-        backgroundColor = colors.background
-        accent = colors.accent
         text = colors.text
-        for b in [plus, attach, zoom, keyboard] { b.tintColor = colors.text }
+        zoom.tintColor = colors.text
         clock.textColor = colors.text
         batteryText.textColor = colors.text
-        network.tintColor = colors.text
+        network.tintColor = networkUp ? colors.text : .systemRed
         updateBattery()
         progress.textColor = colors.subText
     }
@@ -154,39 +142,157 @@ final class EnvironmentBar: UIView {
         setNeedsLayout()
     }
 
-    func update(tabs items: [Tab], zoomPercent: Int, keyboard kind: KeyboardKind, showKeyboardButton: Bool,
-                diagnostics: Int) {
-        tabs.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (i, item) in items.enumerated() {
-            let b = UIButton(type: .system)
-            var cfg = UIButton.Configuration.filled()
-            cfg.title = item.title
-            cfg.image = UIImage(systemName: Self.symbol(item.state))
-            cfg.imagePadding = 4
-            cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 9)
-            cfg.baseBackgroundColor = item.selected ? accent : text.withAlphaComponent(0.1)
-            cfg.baseForegroundColor = text
-            cfg.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
-            cfg.cornerStyle = .medium
-            cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
-                var a = a
-                a.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-                return a
-            }
-            b.configuration = cfg
-            b.addAction(UIAction { [weak self] _ in self?.onSelectTab?(i) }, for: .touchUpInside)
-            b.menu = UIMenu(children: [
-                UIAction(title: "閉じる", image: UIImage(systemName: "xmark"), attributes: .destructive) { [weak self] _ in
-                    self?.onCloseTab?(i)
-                },
-            ])
-            tabs.addArrangedSubview(b)
-        }
+    func update(zoomPercent: Int, diagnostics: Int) {
         zoom.setTitle("\(zoomPercent)%", for: .normal)
-        keyboard.setTitle(kind.shortTitle, for: .normal)
-        keyboard.isHidden = !showKeyboardButton
         warning.isHidden = diagnostics == 0
         setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let h = bounds.height
+        // iOS の状態バーが出ているなら、時計・通信・電池は隠す
+        let systemBar = window?.windowScene?.statusBarManager?.isStatusBarHidden == false
+        for v in [clock, network, battery, batteryText] as [UIView] { v.isHidden = systemBar }
+        var right = bounds.width - 6
+        if !systemBar {
+            // 左に時計、右端に 通信・電池（iOS の状態バーと同じ並び）
+            let pct = batteryText.sizeThatFits(CGSize(width: 60, height: h)).width
+            right -= pct
+            batteryText.frame = CGRect(x: right, y: 0, width: pct, height: h)
+            right -= 24
+            battery.frame = CGRect(x: right, y: 0, width: 22, height: h)
+            right -= 18
+            network.frame = CGRect(x: right, y: 0, width: 16, height: h)
+            right -= 6
+            let clockW = clock.sizeThatFits(CGSize(width: 60, height: h)).width
+            clock.frame = CGRect(x: 6, y: 0, width: clockW, height: h)
+        }
+        if !warning.isHidden {
+            right -= 28
+            warning.frame = CGRect(x: right, y: 0, width: 28, height: h)
+        }
+        let zoomW = max(40, (zoom.titleLabel?.intrinsicContentSize.width ?? 30) + 16)
+        right -= zoomW
+        zoom.frame = CGRect(x: right, y: 0, width: zoomW, height: h)
+        if !progress.isHidden {
+            let w = min(110, progress.sizeThatFits(CGSize(width: 200, height: h)).width + 8)
+            right -= w
+            progress.frame = CGRect(x: right, y: 0, width: w, height: h)
+        }
+    }
+}
+
+/// 上の 2 行目: タブと＋。横のスクロールで、中身は左端からタブ、最後のタブの右隣に＋（＋もスクロールの中身）。
+/// 選んだとき・足したときに、今のタブと＋が見えるようスクロールする。はみ出さないときはスクロールしない。
+/// タブと＋は不透明（シェルの文字の上に重なる）。タブはタップで切り替え・長押しで「閉じる」、
+/// ＋はタップで新しいタブ・長押しでメニュー（`plus.menu`）
+final class TabRow: TopRow {
+    struct Tab: Equatable {
+        var title: String
+        var state: ConnectionState
+        var selected: Bool
+    }
+
+    var onSelectTab: ((Int) -> Void)?
+    var onCloseTab: ((Int) -> Void)?
+    var onNewTab: (() -> Void)?
+    /// ＋。タップは `onNewTab`、長押しは `menu`（接続先の一覧と道具。画面の側で入れる）
+    let plus = UIButton(type: .system)
+
+    private let scroll = UIScrollView()
+    private let stack = UIStackView()
+    private var accent = UIColor.systemBlue
+    private var text = UIColor.white
+    /// タブと＋の地の色（不透明）
+    private var fill = UIColor.darkGray
+    /// 今並べているタブ（同じなら作り直さない。長押しのメニューを出している途中に壊さない）
+    private var shown: [Tab]?
+    private var selectedIndex: Int?
+    private var tabCount = 0
+    private var needsReveal = false
+    private static let margin: CGFloat = 6
+    private static let plusSize: CGFloat = 26
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.alwaysBounceHorizontal = false
+        scroll.contentInsetAdjustmentBehavior = .never
+        stack.axis = .horizontal
+        stack.spacing = 4
+        scroll.addSubview(stack)
+        addSubview(scroll)
+        plus.setImage(UIImage(systemName: "plus"), for: .normal)
+        plus.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 12, weight: .bold),
+                                             forImageIn: .normal)
+        plus.showsMenuAsPrimaryAction = false
+        plus.accessibilityLabel = "新しいタブ"
+        plus.addAction(UIAction { [weak self] _ in self?.onNewTab?() }, for: .touchUpInside)
+        plus.translatesAutoresizingMaskIntoConstraints = false
+        plus.widthAnchor.constraint(equalToConstant: Self.plusSize).isActive = true
+        stack.addArrangedSubview(plus)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func apply(colors: KeyboardColors) {
+        accent = colors.accent
+        text = colors.text
+        fill = colors.key
+        plus.tintColor = colors.text
+        plus.backgroundColor = colors.key
+        shown = nil  // 色を変えたので、次の update で作り直す
+    }
+
+    func update(tabs items: [Tab]) {
+        guard items != shown else { return }
+        let selected = items.firstIndex { $0.selected }
+        if selected != selectedIndex || items.count != tabCount { needsReveal = true }
+        selectedIndex = selected
+        tabCount = items.count
+        shown = items
+        for v in stack.arrangedSubviews where v !== plus {
+            stack.removeArrangedSubview(v)
+            v.removeFromSuperview()
+        }
+        for (i, item) in items.enumerated() {
+            stack.insertArrangedSubview(makeTab(item, index: i), at: i)
+        }
+        setNeedsLayout()
+    }
+
+    private func makeTab(_ item: Tab, index i: Int) -> UIButton {
+        let b = UIButton(type: .system)
+        var cfg = UIButton.Configuration.filled()
+        cfg.title = item.title
+        cfg.image = UIImage(systemName: Self.symbol(item.state))
+        cfg.imagePadding = 4
+        cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 9)
+        // 不透明（シェルの文字の上に重なる）。選んだタブはアクセント色
+        cfg.baseBackgroundColor = item.selected ? accent : fill
+        cfg.baseForegroundColor = text
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8)
+        cfg.cornerStyle = .medium
+        cfg.titleLineBreakMode = .byTruncatingTail
+        cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
+            var a = a
+            a.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+            return a
+        }
+        b.configuration = cfg
+        // 長い題名は末尾を省く
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.widthAnchor.constraint(lessThanOrEqualToConstant: 180).isActive = true
+        b.addAction(UIAction { [weak self] _ in self?.onSelectTab?(i) }, for: .touchUpInside)
+        b.menu = UIMenu(children: [
+            UIAction(title: "閉じる", image: UIImage(systemName: "xmark"), attributes: .destructive) { [weak self] _ in
+                self?.onCloseTab?(i)
+            },
+        ])
+        return b
     }
 
     static func symbol(_ s: ConnectionState) -> String {
@@ -201,39 +307,30 @@ final class EnvironmentBar: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        var right = bounds.width - 4
-        // 右端に 時計・通信・電池（iOS の状態バーと同じ並び: 時計は左、通信と電池は右）
-        let pct = batteryText.sizeThatFits(CGSize(width: 60, height: h)).width
-        right -= pct
-        batteryText.frame = CGRect(x: right, y: 0, width: pct, height: h)
-        right -= 24
-        battery.frame = CGRect(x: right, y: 0, width: 22, height: h)
-        right -= 18
-        network.frame = CGRect(x: right, y: 0, width: 16, height: h)
-        let clockW = clock.sizeThatFits(CGSize(width: 60, height: h)).width
-        right -= clockW + 4
-        clock.frame = CGRect(x: right, y: 0, width: clockW, height: h)
-        right -= 4
-        for b in [keyboard, zoom, warning] where !b.isHidden {
-            let w: CGFloat = b === warning ? 32 : (b === keyboard ? max(48, (b.titleLabel?.intrinsicContentSize.width ?? 40) + 12) : 48)
-            right -= w
-            b.frame = CGRect(x: right, y: 0, width: w, height: h)
+        let m = Self.margin
+        scroll.frame = bounds
+        let size = stack.systemLayoutSizeFitting(CGSize(width: UIView.layoutFittingCompressedSize.width, height: h))
+        stack.frame = CGRect(x: m, y: 3, width: size.width, height: max(0, h - 6))
+        stack.layoutIfNeeded()
+        plus.layer.cornerRadius = plus.bounds.height / 2
+        scroll.contentSize = CGSize(width: m + size.width + m, height: h)
+        // はみ出さないときはスクロールしない。幅が変わって行き過ぎたら戻す
+        let maxOffset = max(0, scroll.contentSize.width - scroll.bounds.width)
+        if scroll.contentOffset.x > maxOffset { scroll.contentOffset = CGPoint(x: maxOffset, y: 0) }
+        if needsReveal {
+            needsReveal = false
+            revealSelected()
         }
-        if !progress.isHidden {
-            let w = min(110, progress.sizeThatFits(CGSize(width: 200, height: h)).width + 8)
-            right -= w
-            progress.frame = CGRect(x: right, y: 0, width: w, height: h)
-        }
-        if !attach.isHidden {
-            right -= 36
-            attach.frame = CGRect(x: right, y: 0, width: 36, height: h)
-        }
-        right -= 36
-        plus.frame = CGRect(x: right, y: 0, width: 36, height: h)
-        scroll.frame = CGRect(x: 4, y: 0, width: max(0, right - 4), height: h)
-        let size = tabs.systemLayoutSizeFitting(CGSize(width: UIView.layoutFittingCompressedSize.width, height: h - 12))
-        tabs.frame = CGRect(x: 0, y: 6, width: size.width, height: h - 12)
-        scroll.contentSize = CGSize(width: size.width, height: h)
+    }
+
+    /// 選んだタブ（いちばん右のタブなら、右隣の＋も）が見えるようにスクロールする
+    private func revealSelected() {
+        guard scroll.contentSize.width > scroll.bounds.width, let i = selectedIndex else { return }
+        let tabs = stack.arrangedSubviews.filter { $0 !== plus }
+        guard tabs.indices.contains(i) else { return }
+        var target = scroll.convert(tabs[i].frame, from: stack)
+        if i == tabs.count - 1 { target = target.union(scroll.convert(plus.frame, from: stack)) }
+        scroll.scrollRectToVisible(target.insetBy(dx: -Self.margin, dy: 0), animated: true)
     }
 }
 

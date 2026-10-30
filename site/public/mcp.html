@@ -68,7 +68,7 @@
 <p>道具が触る config は決まった 1 つ（<code>SPLITTERM_CONFIG</code>、無ければ <code>~/.config/splitterm/config</code>）だけで、ファイルの場所は受け取らない。守りを弱める変更（<code>app-lock</code>・<code>privacy-blur</code>・<code>media-strip-location</code> を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。</p>
 <h2 id="needs-human">人の手が要る所</h2>
 <p>人の手が要る段に来ると、道具は <code>needs_human</code> と手順を返す。エージェントはそれを人に頼み、終わったと言われてから続ける。</p>
-<ul><li>Xcode に Apple ID でサインインする</li><li>端末を USB でつないで「信頼」し、デベロッパモードをオンにする</li><li>端末の「設定 &gt; 一般 &gt; VPN とデバイス管理」で開発元を信頼する</li><li>アプリの ＋ →「公開鍵をコピー」に出た指紋を読み、<code>pubkey_install</code> に渡す</li></ul>
+<ul><li>Xcode に Apple ID でサインインする</li><li>端末を USB でつないで「信頼」し、デベロッパモードをオンにする</li><li>端末の「設定 &gt; 一般 &gt; VPN とデバイス管理」で開発元を信頼する</li><li>アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋を読み、<code>pubkey_install</code> に渡す</li></ul>
 <h2 id="pubkey">pubkey_install と指紋</h2>
 <ul><li>端末の公開鍵のファイル（<code>splitterm.pub</code>）は「ファイル」アプリから書き換えられる。だから、アプリの画面に出た指紋と一致したときだけ足す</li><li>エージェントは指紋を推測しない。ファイルから計算した指紋を渡さない（それでは確かめにならない）</li><li>指紋が違えば、足さずに止まる</li><li>足す行には <code>restrict,pty</code> が付く。端末だけを許し、ポート転送・エージェント転送などを止める</li></ul>
 <h2 id="safety">安全</h2>

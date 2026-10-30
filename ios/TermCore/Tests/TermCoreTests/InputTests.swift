@@ -235,18 +235,6 @@ final class KeyboardTests: XCTestCase {
         XCTAssertEqual(KeyboardLayouts.kanaLeft.rows.joined().first { $0.id == "newline" }?.label, "↩︎")
     }
 
-    /// ポインタ: 大きくずらしたときだけ進み続け、ずれが大きいほど速く、上限で止まる
-    func testPointerSpeedGrowsWithOffset() {
-        XCTAssertEqual(PointerCurve.speed(for: 0), 0)
-        XCTAssertEqual(PointerCurve.speed(for: PointerCurve.rateStart), 0)
-        let speeds = stride(from: 16.0, through: 80, by: 4).map { PointerCurve.speed(for: CGFloat($0)) }
-        XCTAssertEqual(speeds, speeds.sorted())
-        XCTAssertGreaterThan(PointerCurve.speed(for: 40), PointerCurve.speed(for: 24) * 2)
-        XCTAssertEqual(PointerCurve.speed(for: 500), PointerCurve.maxSpeed)
-        // 細かい動きは、そのまま（倍率を掛けて）付いてくる
-        XCTAssertGreaterThan(PointerCurve.directGain, 1)
-    }
-
     func testKanaTallKeysSpanTwoRows() {
         let rect = CGRect(x: 0, y: 0, width: 200, height: 300)
         for face in [KeyboardLayouts.kanaLeft, KeyboardLayouts.kanaRight] {

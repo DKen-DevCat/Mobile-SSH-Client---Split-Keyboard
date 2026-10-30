@@ -237,7 +237,7 @@ final class SplitKeyboardView: UIView {
             guard let s = active[ObjectIdentifier(t)] else { continue }
             switch s.key.action {
             case .pointer:
-                model.pointer.moved(ObjectIdentifier(t), to: t.location(in: nil))
+                model.pointer.moved(ObjectIdentifier(t), to: t.location(in: nil), time: t.timestamp)
             case .flick(let set):
                 let p = t.location(in: self)
                 let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: flickThreshold)

@@ -45,9 +45,15 @@ public struct LayoutResult: Equatable, Sendable {
     }
 
     public var mode: Mode
+    /// シェル。画面の上端から下端まで（上の 2 行はこの上に前面で重なる）
     public var shell: CGRect
-    public var environmentBar: CGRect
+    /// 上の 1 行目（時計・状態・倍率）。セーフエリアの左右いっぱい
+    public var statusRow: CGRect
+    /// 上の 2 行目（タブと＋）。statusRow のすぐ下
+    public var tabRow: CGRect
     public var candidateBar: CGRect?
+    /// キーボード選択のボタン。シェルの右下の角（候補バーがあればその上）。split のときだけ
+    public var keyboardButton: CGRect?
     public var leftKeyboard: CGRect?
     public var rightKeyboard: CGRect?
     /// キーの基準の大きさ（pt）
@@ -57,10 +63,16 @@ public struct LayoutResult: Equatable, Sendable {
 }
 
 public enum LayoutEngine {
-    public static let environmentBarHeight: CGFloat = 44
+    /// 上の 1 行目（状態）の高さ
+    public static let statusRowHeight: CGFloat = 20
+    /// 上の 2 行目（タブ）の高さ
+    public static let tabRowHeight: CGFloat = 32
     public static let candidateBarHeight: CGFloat = 34
-    /// キーボードの上に空ける高さ（親指が画面の上端まで伸びないように）
-    public static let keyboardTopGap: CGFloat = 40
+    /// キーボードの上に空ける高さ = 上の 2 行の高さ（キーボードが 2 行に重ならない）
+    public static let keyboardTopGap: CGFloat = statusRowHeight + tabRowHeight
+    /// シェルの角に重ねる丸いボタン（📎 とキーボード選択）の大きさと、シェルの端からの余白
+    public static let cornerButtonSize: CGFloat = 36
+    public static let cornerButtonMargin: CGFloat = 6
     /// キーボードの片側の幅 = pitch × この値（13 mini: 30 × 6.07 ≒ 182pt）
     public static let keyboardWidthUnits: CGFloat = 6.07
     /// 片側の段の数の目安（1 段の高さ = キーボードの高さ ÷ これ。面ごとの段の高さは面の比で決まる）
@@ -96,15 +108,18 @@ public enum LayoutEngine {
             if pitch > fit { pitch = fit }
         }
 
+        // 上の 2 行は、セーフエリアの左右いっぱい・上端から（シェルに重なる）
+        let statusRow = CGRect(x: contentLeft, y: s.top, width: contentWidth, height: statusRowHeight)
+        let tabRow = CGRect(x: contentLeft, y: s.top + statusRowHeight, width: contentWidth, height: tabRowHeight)
+
         if !useSoft || pitch < minimumPitch {
             // シェルを全面に（ハードウェアキーボード、または狭すぎる窓）
-            let barY = bottom - environmentBarHeight
-            let shell = CGRect(x: contentLeft, y: s.top, width: contentWidth, height: max(0, barY - s.top))
+            let shell = CGRect(x: contentLeft, y: s.top, width: contentWidth, height: max(0, bottom - s.top))
             return LayoutResult(
                 mode: useSoft ? .tooNarrow : .hardware,
                 shell: shell.integral,
-                environmentBar: CGRect(x: contentLeft, y: barY, width: contentWidth, height: environmentBarHeight),
-                candidateBar: nil, leftKeyboard: nil, rightKeyboard: nil,
+                statusRow: statusRow, tabRow: tabRow,
+                candidateBar: nil, keyboardButton: nil, leftKeyboard: nil, rightKeyboard: nil,
                 pitch: pitch, rowHeight: 0)
         }
 
@@ -112,25 +127,30 @@ public enum LayoutEngine {
         let available = max(0, bottom - s.top - keyboardTopGap)
         let kbHeight = min(available, (kbWidth * keyboardAspect).rounded(), maximumRowHeight * CGFloat(keyboardRows))
         let rowHeight = kbHeight / CGFloat(keyboardRows)
-        // 英語・ローマ字の分割は下に、フリックは上に寄せる（日本語の入力で、親指の届きやすい高さに上げる）
-        let kbY = input.keyboard.isFlick ? s.top + keyboardTopGap : bottom - kbHeight
+        // 分割もフリックも下に寄せる（親指の届きやすい高さ。上の 2 行には重ならない）
+        let kbY = bottom - kbHeight
         let left = CGRect(x: contentLeft, y: kbY, width: kbWidth, height: kbHeight)
         let right = CGRect(x: contentRight - kbWidth, y: kbY, width: kbWidth, height: kbHeight)
 
         let centerX = left.maxX + keyboardGap
         let centerWidth = right.minX - keyboardGap - centerX
-        let barY = bottom - environmentBarHeight
-        var shellBottom = barY
+        // シェルは上端から下端まで。かな漢字変換を使うキーボードのときだけ、下端に候補バーを置いてその上まで
+        var shellBottom = bottom
         var candidate: CGRect? = nil
         if input.keyboard.isJapanese {
             shellBottom -= candidateBarHeight
             candidate = CGRect(x: centerX, y: shellBottom, width: centerWidth, height: candidateBarHeight)
         }
+        let shell = CGRect(x: centerX, y: s.top, width: centerWidth, height: max(0, shellBottom - s.top))
+        // キーボード選択のボタンはシェルの右下の角（📎 は左下の角）
+        let button = CGRect(x: shell.maxX - cornerButtonMargin - cornerButtonSize,
+                            y: shell.maxY - cornerButtonMargin - cornerButtonSize,
+                            width: cornerButtonSize, height: cornerButtonSize)
         return LayoutResult(
             mode: .split,
-            shell: CGRect(x: centerX, y: s.top, width: centerWidth, height: max(0, shellBottom - s.top)),
-            environmentBar: CGRect(x: centerX, y: barY, width: centerWidth, height: environmentBarHeight),
-            candidateBar: candidate, leftKeyboard: left, rightKeyboard: right,
+            shell: shell,
+            statusRow: statusRow, tabRow: tabRow,
+            candidateBar: candidate, keyboardButton: button, leftKeyboard: left, rightKeyboard: right,
             pitch: pitch, rowHeight: rowHeight)
     }
 }
