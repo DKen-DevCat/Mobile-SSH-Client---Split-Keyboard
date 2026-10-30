@@ -120,6 +120,35 @@ public enum ConfigParser {
         case "privacy-blur": c.privacyBlur = reset ? d.privacyBlur : try bool(value)
         case "clipboard-clear": c.clipboardClear = reset ? d.clipboardClear : try duration(value, defaultUnit: .s)
         case "mouse-reporting": c.mouseReporting = reset ? d.mouseReporting : try bool(value)
+
+        case "agent": c.agent = reset ? d.agent : try choice(value, key: key)
+        case "agent-media":
+            if reset { c.agentMedia = nil; return }
+            let kinds = try value.split(separator: ",").map { part -> MediaKind in
+                let t = part.trimmingCharacters(in: .whitespaces).lowercased()
+                guard let k = MediaKind(rawValue: t) else {
+                    throw ConfigError("agent-media は image・video・audio をカンマで並べます（`\(t)`）")
+                }
+                return k
+            }
+            c.agentMedia = Set(kinds)
+        case "media-dir":
+            if reset { c.mediaDir = d.mediaDir; return }
+            guard isRemotePath(value) else {
+                throw ConfigError("media-dir は ~/ か / で始まり、英数と . _ - / だけで書きます（.. は使えません）")
+            }
+            c.mediaDir = value
+        case "media-retention": c.mediaRetentionDays = reset ? d.mediaRetentionDays : try days(value)
+        case "media-strip-location": c.mediaStripLocation = reset ? d.mediaStripLocation : try bool(value)
+        case "media-insert":
+            if reset { c.mediaInsert = d.mediaInsert; return }
+            guard value.contains("{paths}") else { throw ConfigError("media-insert には {paths} を入れます") }
+            c.mediaInsert = value
+        case "video-mode": c.videoMode = reset ? d.videoMode : try choice(value, key: key)
+        case "video-frames": c.videoFrames = reset ? d.videoFrames : Int(try number(value, in: 1...24))
+        case "video-sheet-size": c.videoSheetSize = reset ? d.videoSheetSize : Int(try number(value, in: 512...4096))
+        case "video-transcribe": c.videoTranscribe = reset ? d.videoTranscribe : try bool(value)
+        case "audio-mode": c.audioMode = reset ? d.audioMode : try choice(value, key: key)
         default:
             throw ConfigError("知らない項目 `\(key)` です")
         }
@@ -173,6 +202,26 @@ public enum ConfigParser {
         // 1 日を上限にする（大きすぎる値で整数への変換が落ちないように）
         guard seconds <= 86_400 else { throw ConfigError("`\(s)` は長すぎます（1 日まで）") }
         return seconds
+    }
+
+    /// 接続先のシェルに渡せる場所（`~/` か `/` で始まり、英数と . _ - / だけ、`..` を含まない）
+    static func isRemotePath(_ s: String) -> Bool {
+        guard s.hasPrefix("~/") || s.hasPrefix("/"), !s.contains(".."), s.count <= 200 else { return false }
+        return s.unicodeScalars.allSatisfy { u in
+            ("a"..."z").contains(u) || ("A"..."Z").contains(u) || ("0"..."9").contains(u)
+                || u == "." || u == "_" || u == "-" || u == "/" || u == "~"
+        } && !s.dropFirst().contains("~")
+    }
+
+    /// `7d`・`12h`・`7`（単位を省くと日）。日に直して返す（端数は切り上げ）。0 は「消さない」
+    static func days(_ s: String) throws -> Int {
+        let t = s.lowercased()
+        let (num, perDay): (Substring, Double) =
+            t.hasSuffix("d") ? (t.dropLast(), 1) : t.hasSuffix("h") ? (t.dropLast(), 24) : (Substring(t), 1)
+        guard let v = Double(num.trimmingCharacters(in: .whitespaces)), v.isFinite, v >= 0, v / perDay <= 365 else {
+            throw ConfigError("`\(s)` は日数（例 7d、12h。365 日まで、0 で消さない）ではありません")
+        }
+        return Int((v / perDay).rounded(.up))
     }
 
     /// 英数と . _ - だけ（tmux のセッション名としてそのままコマンドに渡すため）

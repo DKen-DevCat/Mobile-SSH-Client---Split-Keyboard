@@ -117,6 +117,43 @@
 # vim・tmux・htop などがマウスを求めたら、タップやスクロールをマウスとして送る
 # mouse-reporting = true
 
+# ─── メディア（写真・動画・音声を送る） ─────────────────────────
+# 📎 で選んだり撮ったりしたものを、SSH の同じ接続で接続先の受け取り箱へ原本のまま送り、パスを入力行に入れる。
+# エージェントが読めない形式のときだけ変換する（HEIC → JPEG、動画 → コンタクトシート、音声 → 文字起こし）
+
+# 送り先のエージェント: claude-code / codex / generic（画像は png・jpeg まで）
+# agent = claude-code
+
+# エージェントが読める種類を上書きする（動画や音声を読めるエージェント用）。例: image,video,audio
+# agent-media =
+
+# 接続先の受け取り箱（~/ か / で始まり、英数と . _ - / だけ）
+# media-dir = ~/.splitterm/inbox
+
+# 受け取り箱に残す期間（7d・12h。0 で消さない）
+# media-retention = 7d
+
+# 写真・動画の位置情報を外す（再圧縮はしない）
+# media-strip-location = true
+
+# 送った後に入力行へ入れる文字（{paths} が送ったファイルのパス。Enter は押さない）
+# media-insert = "{paths} "
+
+# 動画の送り方
+#   auto    エージェントが動画を読めれば原本、読めなければコンタクトシート（＋文字起こし）
+#   file    いつも原本 / frames  いつもコンタクトシート / both  両方
+# video-mode = auto
+
+# コンタクトシートに並べる枚数（1〜24）と、シートの長い辺（px）
+# video-frames = 12
+# video-sheet-size = 1568
+
+# 動画の音声を、端末の中で文字にして添える（端末にモデルが無ければ外へ送らずに飛ばす）
+# video-transcribe = true
+
+# 音声の送り方: auto（読めれば原本、だめなら文字起こし）/ file / transcript / both
+# audio-mode = auto
+
 # ─── 安全 ───────────────────────────────────────────────
 # 起動時と、バックグラウンドからの復帰時に Face ID（かパスコード）を求める
 # app-lock = true

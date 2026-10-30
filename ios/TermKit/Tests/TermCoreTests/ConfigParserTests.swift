@@ -109,6 +109,49 @@ final class ConfigParserTests: XCTestCase {
         XCTAssertEqual(dup.diagnostics.map(\.line), [2])
     }
 
+    func testMediaSettings() {
+        let (c, d) = ConfigParser.parse("""
+        agent = codex
+        agent-media = image, video
+        media-dir = /Users/me/inbox
+        media-retention = 36h
+        media-insert = "見て: {paths} "
+        video-mode = both
+        video-frames = 6
+        video-sheet-size = 2048
+        audio-mode = transcript
+        """)
+        XCTAssertEqual(d, [])
+        XCTAssertEqual(c.agent, .codex)
+        XCTAssertEqual(c.readableMedia, [.image, .video])
+        XCTAssertEqual(c.mediaDir, "/Users/me/inbox")
+        XCTAssertEqual(c.mediaRetentionDays, 2)
+        XCTAssertEqual(c.mediaInsert, "見て: {paths} ")
+        XCTAssertEqual(c.videoMode, .both)
+        XCTAssertEqual(c.videoFrames, 6)
+        XCTAssertEqual(c.videoSheetSize, 2048)
+        XCTAssertEqual(c.audioMode, .transcript)
+        XCTAssertEqual(TermConfig().readableMedia, [.image])
+        XCTAssertTrue(AgentKind.claudeCode.imageFormats.contains("webp"))
+        XCTAssertFalse(AgentKind.generic.imageFormats.contains("webp"))
+    }
+
+    /// media-dir は接続先のシェルに渡すので、決まった文字だけ
+    func testMediaDirRejectsShellSyntax() {
+        for bad in ["inbox", "~/a b", "~/$(rm -rf ~)", "/tmp/../etc", "~/a;b", "~/a`b`", "/a~b", "~user/x", "~/\"x\""] {
+            XCTAssertEqual(ConfigParser.parse("media-dir = \(bad)").diagnostics.count, 1, bad)
+        }
+        XCTAssertEqual(ConfigParser.parse("media-dir = ~/.splitterm/in-box_2").diagnostics, [])
+    }
+
+    func testMediaValueErrors() {
+        for line in ["agent = gemini", "agent-media = image,pdf", "media-retention = 400d", "media-insert = x",
+                     "video-frames = 0", "video-sheet-size = 100", "audio-mode = loud"] {
+            XCTAssertEqual(ConfigParser.parse(line).diagnostics.count, 1, line)
+        }
+        XCTAssertEqual(ConfigParser.parse("media-retention = 0").config.mediaRetentionDays, 0)
+    }
+
     func testAutoConnect() {
         var c = TermConfig()
         XCTAssertNil(c.autoConnectHost)

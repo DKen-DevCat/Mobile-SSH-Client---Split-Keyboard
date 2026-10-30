@@ -53,7 +53,28 @@ public struct TermConfig: Equatable, Sendable {
     public var clipboardClear = 60.0
     public var mouseReporting = true
 
+    // MARK: メディア（docs/design.md「メディアを送る」）
+    /// 送り先のエージェント。読める形式と、動画・音声の既定の送り方を決める
+    public var agent: AgentKind = .claudeCode
+    /// 読める種類の上書き（`agent-media`）。nil なら agent の既定
+    public var agentMedia: Set<MediaKind>? = nil
+    /// 接続先の受け取り箱。`~/` か `/` で始まる、英数と . _ - / だけ（接続先のシェルに渡すため）
+    public var mediaDir = "~/.splitterm/inbox"
+    /// 受け取り箱に残す日数。0 なら消さない
+    public var mediaRetentionDays = 7
+    public var mediaStripLocation = true
+    /// 送った後に入力行へ入れる文字。`{paths}` が送ったファイルのパス（空白区切り）になる
+    public var mediaInsert = "{paths} "
+    public var videoMode: VideoMode = .auto
+    public var videoFrames = 12
+    public var videoSheetSize = 1568
+    public var videoTranscribe = true
+    public var audioMode: AudioMode = .auto
+
     public init() {}
+
+    /// 送り先のエージェントが読める種類
+    public var readableMedia: Set<MediaKind> { agentMedia ?? agent.media }
 
     public static let defaultPalette: [RGB] = [
         "#1C2128", "#FF5F6D", "#3FE08A", "#FFB454", "#2F81F7", "#FF6AC1", "#5CE1E6", "#C9D1D9",
@@ -74,6 +95,46 @@ public struct TermConfig: Equatable, Sendable {
         if autoConnect.isEmpty { return hosts.first }
         return host(named: autoConnect)
     }
+}
+
+/// 送り先のエージェント（docs/design.md「エージェントの読める形式」）
+public enum AgentKind: String, Sendable, CaseIterable {
+    case claudeCode = "claude-code"
+    case codex
+    case generic
+
+    /// そのまま読める画像の形式（拡張子、小文字）
+    public var imageFormats: Set<String> {
+        switch self {
+        case .claudeCode, .codex: return ["png", "jpg", "jpeg", "gif", "webp"]
+        case .generic: return ["png", "jpg", "jpeg"]
+        }
+    }
+
+    /// 既定で読める種類。動画・音声を読めるエージェントは `agent-media` で足す
+    public var media: Set<MediaKind> { [.image] }
+}
+
+public enum MediaKind: String, Sendable, CaseIterable, Hashable {
+    case image, video, audio
+}
+
+/// 動画の送り方
+public enum VideoMode: String, Sendable, CaseIterable {
+    /// エージェントが動画を読めれば原本、読めなければコンタクトシート（＋文字起こし）
+    case auto
+    case file
+    case frames
+    case both
+}
+
+/// 音声の送り方
+public enum AudioMode: String, Sendable, CaseIterable {
+    /// エージェントが音声を読めれば原本、読めなければ文字起こし
+    case auto
+    case file
+    case transcript
+    case both
 }
 
 public enum ColorSpace: String, Sendable, CaseIterable {
