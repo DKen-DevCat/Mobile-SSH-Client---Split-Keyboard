@@ -175,7 +175,9 @@ final class ConfigParserTests: XCTestCase {
 
         // 見本に書いた値（# を外した行）は、どれも読めて、既定値と同じであること
         let uncommented = text.split(separator: "\n").compactMap { line -> String? in
-            guard line.hasPrefix("# "), let eq = line.firstIndex(of: "=") else { return nil }
+            // 字下げした説明の行（#   key = value など）は値ではない
+            guard line.hasPrefix("# "), line.dropFirst(2).first?.isLetter == true,
+                  let eq = line.firstIndex(of: "=") else { return nil }
             let key = line.dropFirst(2)[..<eq].trimmingCharacters(in: .whitespaces)
             guard !key.isEmpty, key.allSatisfy({ $0.isLowercase || $0 == "-" }) else { return nil }
             return String(line.dropFirst(2))

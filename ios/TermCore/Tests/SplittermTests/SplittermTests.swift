@@ -55,7 +55,9 @@ final class CLITests: XCTestCase {
         XCTAssertTrue(show.output.contains("font-size = 12"))
         XCTAssertTrue(show.output.contains("host = mac me@mac.example.ts.net"))
         XCTAssertEqual(rig.run("host", "remove", "mac").exitCode, 0)
-        XCTAssertFalse(rig.config.contains("host = mac me@"))
+        // 見本のコメント（# host = mac me@mac）は残り、効いている行だけが消える
+        XCTAssertFalse(rig.config.contains("\nhost = mac me@"))
+        XCTAssertTrue(rig.config.contains("# host = mac me@mac"))
     }
 
     func testRefusedEditsLeaveTheFileAlone() throws {
