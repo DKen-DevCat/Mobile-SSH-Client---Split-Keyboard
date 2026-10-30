@@ -13,65 +13,132 @@ public struct ExecResult: Sendable {
 
 public enum ExecError: LocalizedError {
     case notConnected
+    /// 通信の問題（繋ぎ直せば続きから送れる）
     case failed(String)
+    /// 接続先がはっきり断った（もう一度試しても同じ。人が直す）
+    case refused(String)
+    /// 決まった時間、何も進まなかった
+    case timedOut(TimeInterval)
 
     public var errorDescription: String? {
         switch self {
         case .notConnected: return "接続していません"
-        case .failed(let s): return s
+        case .failed(let s), .refused(let s): return s
+        case .timedOut(let t): return "接続先が \(Int(t)) 秒応えませんでした"
         }
     }
 }
 
 extension SSHConnection {
-    /// コマンドを走らせ、終わるまで待つ。`input` があれば、その範囲を標準入力に流して EOF を送る
-    public func exec(_ command: String, input: FileInputRange? = nil,
+    /// コマンドを走らせ、終わるまで待つ。`input` があれば、その範囲を標準入力に流して EOF を送る。
+    /// `timeout` は「何も進まない時間」の上限（入力を流している間は、書けるたびに数え直す）。
+    /// Task を取り消すと、チャンネルを閉じて止める
+    public func exec(_ command: String, input: FileInputRange? = nil, timeout: TimeInterval = 60,
                      progress: (@Sendable (Int) -> Void)? = nil) async throws -> ExecResult {
         guard let root = currentRoot else { throw ExecError.notConnected }
         let done = root.eventLoop.makePromise(of: ExecResult.self)
         let started = root.eventLoop.makePromise(of: Void.self)
         let handler = ExecHandler(command: command, started: started, done: done)
-        let child = try await root.pipeline.handler(type: NIOSSHHandler.self).flatMap { ssh -> EventLoopFuture<Channel> in
-            let p = root.eventLoop.makePromise(of: Channel.self)
-            ssh.createChannel(p, channelType: .session) { child, type in
-                guard type == .session else { return child.eventLoop.makeFailedFuture(SSHError.channelRejected) }
-                return child.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).flatMapThrowing {
-                    try child.pipeline.syncOperations.addHandler(handler)
-                }
-            }
-            return p.futureResult
-        }.get()
+        let child: Channel
         do {
-            try await started.futureResult.get()
-            if let input {
-                try await stream(input, to: child, progress: progress)
-            }
-            // 標準入力の終わり（EOF）。接続先の cat が終わる
-            let eof: EventLoopFuture<Void> = child.close(mode: .output)
-            try await eof.get()
+            child = try await root.pipeline.handler(type: NIOSSHHandler.self).flatMap { ssh -> EventLoopFuture<Channel> in
+                let p = root.eventLoop.makePromise(of: Channel.self)
+                ssh.createChannel(p, channelType: .session) { child, type in
+                    guard type == .session else { return child.eventLoop.makeFailedFuture(SSHError.channelRejected) }
+                    return child.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).flatMapThrowing {
+                        try child.pipeline.syncOperations.addHandler(handler)
+                    }
+                }
+                return p.futureResult
+            }.get()
         } catch {
-            child.close(promise: nil)
+            // チャンネルを開けなかった。待っている約束を片付ける（ExecHandler が付いていれば、外すときにも片付く）
+            started.fail(error)
+            done.fail(error)
             throw error
         }
-        return try await done.futureResult.get()
+        let watchdog = Watchdog(channel: child, seconds: timeout)
+        watchdog.arm()
+        return try await withTaskCancellationHandler {
+            defer { watchdog.cancel() }
+            do {
+                try await started.futureResult.get()
+                if let input {
+                    try await stream(input, to: child, watchdog: watchdog, progress: progress)
+                }
+                // 標準入力の終わり（EOF）。接続先の cat が終わる。
+                // すぐ終わるコマンドでは、接続先が先にチャンネルを閉じていることがある（その失敗は気にしない）
+                let eof: EventLoopFuture<Void> = child.close(mode: .output)
+                try? await eof.get()
+            } catch {
+                child.close(promise: nil)
+                if watchdog.fired { throw ExecError.timedOut(timeout) }
+                throw error
+            }
+            let result = try await done.futureResult.get()
+            if watchdog.fired { throw ExecError.timedOut(timeout) }
+            if Task.isCancelled { throw CancellationError() }
+            return result
+        } onCancel: {
+            child.close(promise: nil)
+        }
     }
 
     /// ファイルの範囲を 256KB ずつ送る。1 つ書き終わるのを待ってから次を読む（メモリに溜めない。SSH の窓が流れを決める）
-    private func stream(_ input: FileInputRange, to child: Channel, progress: (@Sendable (Int) -> Void)?) async throws {
+    private func stream(_ input: FileInputRange, to child: Channel, watchdog: Watchdog,
+                        progress: (@Sendable (Int) -> Void)?) async throws {
         let handle = try FileHandle(forReadingFrom: input.url)
         defer { try? handle.close() }
         try handle.seek(toOffset: UInt64(input.offset))
         var sent = 0
         while true {
-            let data = try handle.read(upToCount: 256 * 1024) ?? Data()
+            try Task.checkCancellation()
+            // 数 GB を読み続けても、読み取りの一時のメモリを溜めない
+            let data = try autoreleasepool { try handle.read(upToCount: 256 * 1024) } ?? Data()
             if data.isEmpty { break }
             var buf = child.allocator.buffer(capacity: data.count)
             buf.writeBytes(data)
             let written: EventLoopFuture<Void> = child.writeAndFlush(buf)
             try await written.get()
+            watchdog.arm()
             sent += data.count
             progress?(sent)
         }
+    }
+}
+
+/// 決まった時間、何も進まなければチャンネルを閉じる
+final class Watchdog: @unchecked Sendable {
+    private let channel: Channel
+    private let seconds: TimeInterval
+    private let lock = NSLock()
+    private var scheduled: Scheduled<Void>?
+    private var didFire = false
+
+    init(channel: Channel, seconds: TimeInterval) {
+        self.channel = channel
+        self.seconds = seconds
+    }
+
+    var fired: Bool { lock.withLock { didFire } }
+
+    /// 数え直す
+    func arm() {
+        let next = channel.eventLoop.scheduleTask(in: .milliseconds(Int64(seconds * 1000))) { [weak self] in
+            guard let self else { return }
+            self.lock.withLock { self.didFire = true }
+            self.channel.close(promise: nil)
+        }
+        let previous = lock.withLock { () -> Scheduled<Void>? in
+            let p = scheduled
+            scheduled = next
+            return p
+        }
+        previous?.cancel()
+    }
+
+    func cancel() {
+        lock.withLock { scheduled }?.cancel()
     }
 }
 
@@ -169,47 +236,73 @@ public enum MediaUploader {
         }
     }
 
-    /// 送って、接続先の絶対パスを返す。`progress` は 0〜1
-    public static func upload(_ file: URL, as name: String, to target: Target, over conn: SSHConnection,
-                              progress: (@Sendable (Double) -> Void)? = nil) async throws -> String {
+    /// 送って、接続先の絶対パスを返す。`sha256` は `digest(of:)` で 1 度だけ計ったもの。`progress` は 0〜1
+    public static func upload(_ file: URL, as name: String, sha256 digest: String, to target: Target,
+                              over conn: SSHConnection, progress: (@Sendable (Double) -> Void)? = nil) async throws -> String {
         let size = (try FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.intValue ?? 0
-        let digest = try sha256(of: file)
+        let dir = target.mediaDir
         for attempt in 0..<2 {
-            let prep = try await conn.exec(try RemoteCommands.prepare(mediaDir: target.mediaDir, name: name,
-                                                                       retentionDays: target.retentionDays))
+            let prep = try await conn.exec(try RemoteCommands.prepare(mediaDir: dir, name: name,
+                                                                       retentionDays: target.retentionDays), timeout: 120)
+            try refuseIfRemoteSaidNo(prep, mediaDir: dir)
             guard prep.status == 0, let p = RemoteCommands.parsePrepare(prep.stdout) else {
-                throw ExecError.failed("受け取り箱を用意できませんでした（\(target.mediaDir)）")
+                throw ExecError.failed("受け取り箱を用意できませんでした（\(dir)）")
             }
             var offset = p.offset
             if offset > size {
-                _ = try await conn.exec(try RemoteCommands.discard(mediaDir: target.mediaDir, name: name))
+                let r = try await conn.exec(try RemoteCommands.discard(mediaDir: dir, name: name))
+                try refuseIfRemoteSaidNo(r, mediaDir: dir)
                 offset = 0
             }
             if offset < size {
                 let base = offset
-                let r = try await conn.exec(try RemoteCommands.append(mediaDir: target.mediaDir, name: name),
+                let r = try await conn.exec(try RemoteCommands.append(mediaDir: dir, name: name),
                                             input: FileInputRange(url: file, offset: offset)) { sent in
                     progress?(size > 0 ? Double(base + sent) / Double(size) : 1)
                 }
+                try refuseIfRemoteSaidNo(r, mediaDir: dir)
                 guard r.status == 0 else { throw ExecError.failed("送れませんでした（\(r.stdout)）") }
             }
-            let fin = try await conn.exec(try RemoteCommands.finish(mediaDir: target.mediaDir, name: name, sha256: digest))
-            if fin.stdout.contains("ok") {
+            // 数 GB でも接続先で計り終えるまで待つ
+            let fin = try await conn.exec(try RemoteCommands.finish(mediaDir: dir, name: name, sha256: digest), timeout: 900)
+            if RemoteCommands.finished(status: fin.status, stdout: fin.stdout) {
                 progress?(1)
                 return p.directory + "/" + name
             }
             // 中身が合わない（途中までの残りが別物だった など）。.part は消えているので、もう 1 度だけ最初から
-            if attempt == 1 { break }
+            if fin.status == RemoteCommands.Exit.mismatch && attempt == 0 { continue }
+            try refuseIfRemoteSaidNo(fin, mediaDir: dir)
+            throw ExecError.failed("送り終わりを確かめられませんでした")
         }
-        throw ExecError.failed("送ったファイルの中身が合いませんでした")
+        throw ExecError.refused("送ったファイルの中身が合いませんでした")
     }
 
-    /// ファイルの SHA-256（16 進の小文字）。1MB ずつ読む
+    /// 接続先のコマンドが決まった終了コードで断ったら、繋ぎ直しても同じなので、そのことを知らせる
+    static func refuseIfRemoteSaidNo(_ r: ExecResult, mediaDir: String) throws {
+        switch r.status {
+        case .some(RemoteCommands.Exit.noDirectory):
+            throw ExecError.refused("受け取り箱 \(mediaDir) を作れないか、入れません")
+        case .some(RemoteCommands.Exit.notOwner):
+            throw ExecError.refused("受け取り箱 \(mediaDir) は自分の持ち物ではないので使いません")
+        case .some(RemoteCommands.Exit.noHashTool):
+            throw ExecError.refused("接続先に SHA-256 を計る道具（shasum・sha256sum・sha256・openssl）がありません")
+        case .some(RemoteCommands.Exit.moveFailed):
+            throw ExecError.refused("受け取り箱で名前を付け替えられませんでした")
+        default:
+            return
+        }
+    }
+
+    /// ファイルの SHA-256（16 進の小文字）。裏で 1MB ずつ読む
+    public static func digest(of file: URL) async throws -> String {
+        try sha256(of: file)
+    }
+
     public static func sha256(of file: URL) throws -> String {
         let h = try FileHandle(forReadingFrom: file)
         defer { try? h.close() }
         var hasher = SHA256()
-        while let chunk = try h.read(upToCount: 1 << 20), !chunk.isEmpty {
+        while let chunk = try autoreleasepool(invoking: { try h.read(upToCount: 1 << 20) }), !chunk.isEmpty {
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()

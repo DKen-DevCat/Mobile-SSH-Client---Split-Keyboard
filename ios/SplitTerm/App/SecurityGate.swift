@@ -5,12 +5,15 @@ import UIKit
 /// アプリのロックと画面の保護（docs/design.md「セキュリティ要件」）。
 /// - 覆いは最前面の別のウィンドウに出す（アラートや「調べる」の画面より上。キー入力も覆いのウィンドウが受ける）
 /// - ロック中は、入力ルータがすべての入力を捨てる（`isLocked`）
-/// - config で守りを弱める変更（app-lock・privacy-blur を false に）は、本人の確認（Face ID かパスコード）の後でだけ効かせる。
-///   config は「ファイル」アプリから書き換えられるので、ロックを解かずに守りを外せないようにする
+/// - config で守りを弱める変更（app-lock・privacy-blur・media-strip-location を false に）は、本人の確認（Face ID か
+///   パスコード）の後でだけ効かせる。config は「ファイル」アプリや Mac のエージェント（splitterm の config_push）から
+///   書き換えられるので、端末の持ち主が知らないうちに守りを外せないようにする
 final class SecurityGate {
     /// 今効いている値（本人が確かめた値）。config の値とは別に、端末の中に覚えておく
     private(set) var appLock: Bool
     private(set) var privacyBlur: Bool
+    /// 送るメディアから位置情報を外す
+    private(set) var stripLocation: Bool
     /// ロックを解く必要がある
     private(set) var isLocked: Bool
 
@@ -31,16 +34,19 @@ final class SecurityGate {
     /// 確かめるまで保留している、守りを弱める変更
     private var pendingAppLock: Bool?
     private var pendingPrivacyBlur: Bool?
+    private var pendingStripLocation: Bool?
     private var toldNoPasscode = false
     private let defaults = UserDefaults.standard
     private static let appLockKey = "security.appLock"
     private static let privacyBlurKey = "security.privacyBlur"
+    private static let stripLocationKey = "security.stripLocation"
 
     init(colors: KeyboardColors) {
         self.colors = colors
         // 初めては守る側（true）から始める
         appLock = defaults.object(forKey: Self.appLockKey) as? Bool ?? true
         privacyBlur = defaults.object(forKey: Self.privacyBlurKey) as? Bool ?? true
+        stripLocation = defaults.object(forKey: Self.stripLocationKey) as? Bool ?? true
         isLocked = appLock
         promptOnActivate = appLock
     }
@@ -63,11 +69,13 @@ final class SecurityGate {
     // MARK: config の値
 
     /// config の値を受け取る。強める変更はすぐに、弱める変更は本人を確かめてから効かせる
-    func request(appLock wantLock: Bool, privacyBlur wantBlur: Bool) {
+    func request(appLock wantLock: Bool, privacyBlur wantBlur: Bool, stripLocation wantStrip: Bool) {
         if wantLock && !appLock { set(appLock: true) }
         if wantBlur && !privacyBlur { set(privacyBlur: true) }
+        if wantStrip && !stripLocation { set(stripLocation: true) }
         pendingAppLock = (!wantLock && appLock) ? false : nil
         pendingPrivacyBlur = (!wantBlur && privacyBlur) ? false : nil
+        pendingStripLocation = (!wantStrip && stripLocation) ? false : nil
         // ロック中・確かめている途中なら、ロックを解いた後に、変更の名前を出して別に確かめる
         guard !isLocked, !authenticating else { return }
         confirmPending()
@@ -75,7 +83,7 @@ final class SecurityGate {
 
     /// 保留している弱める変更を、何を外すかを示して確かめる
     private func confirmPending() {
-        guard pendingAppLock != nil || pendingPrivacyBlur != nil else { return }
+        guard pendingAppLock != nil || pendingPrivacyBlur != nil || pendingStripLocation != nil else { return }
         if !canAuthenticate {
             applyPending()
             return
@@ -83,6 +91,7 @@ final class SecurityGate {
         var what: [String] = []
         if pendingAppLock != nil { what.append("アプリのロック") }
         if pendingPrivacyBlur != nil { what.append("画面の保護（ぼかし）") }
+        if pendingStripLocation != nil { what.append("送るメディアの位置情報を外すこと") }
         authenticate(reason: "config の変更で\(what.joined(separator: "と"))を外す") { [weak self] ok in
             guard let self else { return }
             if ok {
@@ -90,6 +99,7 @@ final class SecurityGate {
             } else {
                 self.pendingAppLock = nil
                 self.pendingPrivacyBlur = nil
+                self.pendingStripLocation = nil
                 self.onNotice?("\(what.joined(separator: "と"))を外す config の変更は、本人の確認ができなかったので効かせていません")
             }
         }
@@ -98,8 +108,10 @@ final class SecurityGate {
     private func applyPending() {
         if let v = pendingAppLock { set(appLock: v) }
         if let v = pendingPrivacyBlur { set(privacyBlur: v) }
+        if let v = pendingStripLocation { set(stripLocation: v) }
         pendingAppLock = nil
         pendingPrivacyBlur = nil
+        pendingStripLocation = nil
     }
 
     private func set(appLock v: Bool) {
@@ -110,6 +122,11 @@ final class SecurityGate {
     private func set(privacyBlur v: Bool) {
         privacyBlur = v
         defaults.set(v, forKey: Self.privacyBlurKey)
+    }
+
+    private func set(stripLocation v: Bool) {
+        stripLocation = v
+        defaults.set(v, forKey: Self.stripLocationKey)
     }
 
     // MARK: 前面・裏

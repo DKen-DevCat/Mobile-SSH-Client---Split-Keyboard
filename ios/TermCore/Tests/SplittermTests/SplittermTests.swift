@@ -129,6 +129,7 @@ final class CLITests: XCTestCase {
         let files: [(String, TimeInterval)] = [
             ("20261030-101010-ab12.sheet.jpg", 60), ("20261030-101010-ab12.video.md", 60),
             ("20261020-090000-cd34.heic", 10 * 86_400), ("20261030-111111-ef56.m4a.part", 1),
+            ("notes.txt", 30 * 86_400),  // 人が置いたもの。古くても消さない
         ]
         for (name, age) in files {
             let u = inbox.appendingPathComponent(name)
@@ -136,11 +137,13 @@ final class CLITests: XCTestCase {
             try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-age)], ofItemAtPath: u.path)
         }
         let list = rig.run("inbox", "list").output.split(separator: "\n")
-        XCTAssertEqual(list.count, 3)  // 送っている途中（.part）は出さない
+        XCTAssertEqual(list.count, 4)  // 送っている途中（.part）は出さない
         XCTAssertTrue(list[0].hasPrefix("video-sheet") || list[0].hasPrefix("video-notes"))
         XCTAssertTrue(list[2].hasPrefix("image"))
         XCTAssertEqual(rig.run("inbox", "clean").output, "1 件消しました（7 日より古いもの）")
-        XCTAssertEqual(rig.run("inbox", "list").output.split(separator: "\n").count, 2)
+        let left = rig.run("inbox", "list").output.split(separator: "\n")
+        XCTAssertEqual(left.count, 3)
+        XCTAssertTrue(left.contains { $0.hasSuffix("/notes.txt") })
     }
 
     func testUnknownCommandShowsUsage() throws {
@@ -213,5 +216,21 @@ final class MCPTests: XCTestCase {
         XCTAssertEqual(((try call(s, "not json"))["error"] as? [String: Any])?["code"] as? Int, -32700)
         XCTAssertEqual(((try call(s, #"{"jsonrpc":"2.0","id":9,"method":"nope"}"#))["error"] as? [String: Any])?["code"] as? Int, -32601)
         XCTAssertEqual(((try call(s, #"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"rm"}}"#))["error"] as? [String: Any])?["code"] as? Int, -32602)
+        XCTAssertEqual(((try call(s, #"{"jsonrpc":"2.0","id":9,"method":7}"#))["error"] as? [String: Any])?["code"] as? Int, -32600)
+        XCTAssertEqual(((try call(s, #"{"jsonrpc":"2.0","id":9}"#))["error"] as? [String: Any])?["code"] as? Int, -32600)
+        XCTAssertEqual(((try call(s, String(repeating: " ", count: MCPServer.maxLine + 1) + "{}"))["error"] as? [String: Any])?["code"] as? Int, -32700)
+        // 応答には答えない
+        XCTAssertNil(s.handle(line: #"{"jsonrpc":"2.0","id":9,"result":{}}"#))
+    }
+
+    /// 道具は決まった config だけを触る（file を渡しても、ほかのファイルを書き換えない）
+    func testToolsIgnoreOtherFiles() throws {
+        let rig = try Rig()
+        _ = rig.run("config", "init")
+        let other = rig.home.appendingPathComponent(".npmrc")
+        try "registry = https://registry.npmjs.org/\n".write(to: other, atomically: true, encoding: .utf8)
+        let path = other.path.replacingOccurrences(of: "\"", with: "\\\"")
+        _ = try call(server(rig), #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"config_set","arguments":{"key":"registry","value":"https://evil.example","file":""# + path + #""}}}"#)
+        XCTAssertEqual(try String(contentsOf: other, encoding: .utf8), "registry = https://registry.npmjs.org/\n")
     }
 }

@@ -30,6 +30,14 @@ final class MediaPicker: NSObject {
         workDir.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext.isEmpty ? "bin" : ext)
     }
 
+    /// 前の起動の残り（送る途中で落ちた・止められた）を消す。起動のときだけ呼ぶ（送っている途中に呼ばない）
+    static func cleanWorkDir() {
+        let fm = FileManager.default
+        for u in (try? fm.contentsOfDirectory(at: workDir, includingPropertiesForKeys: nil)) ?? [] {
+            try? fm.removeItem(at: u)
+        }
+    }
+
     // MARK: 写真・動画を選ぶ
 
     func pickLibrary() {
@@ -82,9 +90,7 @@ extension MediaPicker: PHPickerViewControllerDelegate {
         picker.dismiss(animated: true)
         guard !results.isEmpty else { return }
         let group = DispatchGroup()
-        let lock = NSLock()
-        var picked: [(Int, PickedMedia)] = []
-        var failed = 0
+        let collected = Collected()
         for (i, r) in results.enumerated() {
             let provider = r.itemProvider
             // 動画を先に（Live Photo は静止画として送る）、次に画像。原本の形式を選ぶ
@@ -97,22 +103,34 @@ extension MediaPicker: PHPickerViewControllerDelegate {
                 defer { group.leave() }
                 // この url は閉包を抜けると消えるので、ここで写す
                 guard let url else {
-                    lock.withLock { failed += 1 }
+                    collected.fail()
                     return
                 }
                 let dst = MediaPicker.newURL(ext: url.pathExtension)
                 do {
                     try FileManager.default.copyItem(at: url, to: dst)
-                    lock.withLock { picked.append((i, PickedMedia(url: dst, originalName: url.lastPathComponent))) }
+                    collected.add(i, PickedMedia(url: dst, originalName: url.lastPathComponent))
                 } catch {
-                    lock.withLock { failed += 1 }
+                    collected.fail()
                 }
             }
         }
         group.notify(queue: .main) { [weak self] in
+            let (ordered, failed) = collected.result()
             if failed > 0 { self?.onError?("\(failed) 件を読めませんでした（iCloud にだけある写真なら、写真アプリで一度開いてから）") }
-            let ordered = picked.sorted { $0.0 < $1.0 }.map(\.1)
             if !ordered.isEmpty { self?.onPicked?(ordered) }
+        }
+    }
+
+    /// 写真の読み込みの結果（読み込みは別々のスレッドから届く）
+    private final class Collected: @unchecked Sendable {
+        private let lock = NSLock()
+        private var picked: [(Int, PickedMedia)] = []
+        private var failed = 0
+        func add(_ i: Int, _ m: PickedMedia) { lock.withLock { picked.append((i, m)) } }
+        func fail() { lock.withLock { failed += 1 } }
+        func result() -> ([PickedMedia], Int) {
+            lock.withLock { (picked.sorted { $0.0 < $1.0 }.map(\.1), failed) }
         }
     }
 }
@@ -131,14 +149,18 @@ extension MediaPicker: UIImagePickerControllerDelegate, UINavigationControllerDe
             }
             return
         }
-        // 撮った写真は UIImage でしか受け取れない。エージェントが読める JPEG（高い品質）にする（位置情報は付かない）
-        if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.95) {
-            let dst = MediaPicker.newURL(ext: "jpg")
-            do {
-                try data.write(to: dst)
-                onPicked?([PickedMedia(url: dst, originalName: nil)])
-            } catch {
-                onError?("撮った写真を書けませんでした")
+        // 撮った写真は UIImage でしか受け取れない。エージェントが読める JPEG（高い品質）にする（位置情報は付かない）。
+        // 4,800 万画素の JPEG 化は重いので、メインスレッドの外で
+        guard let image = info[.originalImage] as? UIImage else { return }
+        let dst = MediaPicker.newURL(ext: "jpg")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let ok = (try? image.jpegData(compressionQuality: 0.95)?.write(to: dst)) != nil
+            DispatchQueue.main.async {
+                if ok {
+                    self?.onPicked?([PickedMedia(url: dst, originalName: nil)])
+                } else {
+                    self?.onError?("撮った写真を書けませんでした")
+                }
             }
         }
     }
@@ -174,6 +196,8 @@ final class AudioRecorderViewController: UIViewController {
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .formSheet
+        // 下に払って閉じると、録音・タイマー・オーディオセッションが残る。「やめる」か「止めて送る」で閉じる
+        isModalInPresentation = true
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

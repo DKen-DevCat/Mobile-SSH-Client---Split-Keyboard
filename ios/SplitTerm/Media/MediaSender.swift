@@ -10,14 +10,25 @@ final class MediaSender {
     /// 環境バーに出す進み具合（nil で消す）
     var onStatus: ((String?) -> Void)?
     var onError: ((String) -> Void)?
-    /// 入力行へ入れる（Enter は押さない）
-    var onInsert: ((String) -> Void)?
+    /// 入力行へ入れる（Enter は押さない）。送った元のタブに入れる
+    var onInsert: ((String, TerminalSession) -> Void)?
     private(set) var busy = false
+    private var task: Task<Void, Never>?
 
     /// 1 回の送信。加工してできたファイルと、接続先での名前
     struct Outgoing {
         var local: URL
         var remoteName: String
+    }
+
+    /// 裏に回っても、区切りまでは送る（iOS が許す間だけ）
+    private final class BackgroundTask {
+        var id = UIBackgroundTaskIdentifier.invalid
+        func end() {
+            guard id != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(id)
+            id = .invalid
+        }
     }
 
     func send(_ items: [PickedMedia], config: TermConfig, session: TerminalSession) {
@@ -26,67 +37,87 @@ final class MediaSender {
             return
         }
         busy = true
-        var background = UIBackgroundTaskIdentifier.invalid
-        // 裏に回っても、区切りまでは送る（iOS が許す間だけ。切れたら次に開いたとき続きから）
-        background = UIApplication.shared.beginBackgroundTask(withName: "send-media") {
-            UIApplication.shared.endBackgroundTask(background)
-            background = .invalid
+        let background = BackgroundTask()
+        background.id = UIApplication.shared.beginBackgroundTask(withName: "send-media") {
+            background.end()
         }
-        Task { @MainActor [self] in
+        task = Task { @MainActor [self] in
             defer {
                 busy = false
+                task = nil
                 onStatus?(nil)
-                if background != .invalid { UIApplication.shared.endBackgroundTask(background) }
+                background.end()
                 for item in items { try? FileManager.default.removeItem(at: item.url) }
             }
             var paths: [String] = []
             for (i, item) in items.enumerated() {
+                if Task.isCancelled { break }
                 let prefix = items.count > 1 ? "\(i + 1)/\(items.count) " : ""
                 onStatus?("\(prefix)準備中")
                 let outgoing: [Outgoing]
                 do {
                     outgoing = try await Self.prepare(item, config: config)
                 } catch {
-                    onError?("送る準備ができませんでした: \(error.localizedDescription)")
+                    if !Task.isCancelled { onError?("送る準備ができませんでした: \(error.localizedDescription)") }
                     continue
                 }
                 defer { for o in outgoing where o.local != item.url { try? FileManager.default.removeItem(at: o.local) } }
                 for o in outgoing {
+                    if Task.isCancelled { break }
                     do {
                         let path = try await upload(o, config: config, session: session) { [weak self] p in
                             self?.onStatus?("\(prefix)送信中 \(Int(p * 100))%")
                         }
                         paths.append(path)
                     } catch {
-                        onError?("送れませんでした: \(error.localizedDescription)")
+                        if !Task.isCancelled { onError?("送れませんでした: \(error.localizedDescription)") }
                     }
                 }
             }
-            if !paths.isEmpty { onInsert?(MediaInsert.text(template: config.mediaInsert, paths: paths)) }
+            if Task.isCancelled {
+                onError?("送るのをやめました" + (paths.isEmpty ? "" : "（送り終えた \(paths.count) 件のパスは入れます）"))
+            }
+            if !paths.isEmpty { onInsert?(MediaInsert.text(template: config.mediaInsert, paths: paths), session) }
         }
     }
 
-    /// 送る。切れていたら繋ぎ直しを 30 秒まで待ち、同じ名前で続きから（3 回まで）
+    /// 送るのをやめる（今のチャンネルを閉じる。接続先の途中のファイルは、次の掃除で消える）
+    func cancel() {
+        task?.cancel()
+    }
+
+    /// 送る。切れていたら繋ぎ直しを 30 秒まで待ち、同じ名前で続きから（3 回まで）。
+    /// 接続先がはっきり断ったとき（受け取り箱を作れない など）は、繰り返さない
     private func upload(_ o: Outgoing, config: TermConfig, session: TerminalSession,
                         progress: @escaping @MainActor (Double) -> Void) async throws -> String {
         let target = MediaUploader.Target(mediaDir: config.mediaDir, retentionDays: config.mediaRetentionDays)
+        onStatus?("確かめる値を計算中")
+        let digest = try await MediaUploader.digest(of: o.local)
         var lastError: Error = ExecError.notConnected
         for _ in 0..<3 {
+            try Task.checkCancellation()
             guard let conn = await waitForConnection(session) else { throw lastError }
             do {
-                return try await MediaUploader.upload(o.local, as: o.remoteName, to: target, over: conn) { p in
+                return try await MediaUploader.upload(o.local, as: o.remoteName, sha256: digest, to: target, over: conn) { p in
                     Task { @MainActor in progress(p) }
                 }
+            } catch let e as ExecError {
+                if case .refused = e { throw e }
+                lastError = e
+            } catch is RemoteCommands.UnsafeInput {
+                throw ExecError.refused("受け取り箱の場所か名前が正しくありません（\(config.mediaDir)）")
             } catch {
+                if error is CancellationError { throw error }
                 lastError = error
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
+            try await Task.sleep(nanoseconds: 1_000_000_000)
         }
         throw lastError
     }
 
     private func waitForConnection(_ session: TerminalSession) async -> SSHConnection? {
         for _ in 0..<60 {
+            if Task.isCancelled { return nil }
             if let c = session.uploadConnection { return c }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
@@ -97,36 +128,47 @@ final class MediaSender {
 
     /// 何をどの名前で送るか。エージェントが読める形式・config の送り方から（MediaPlan）
     nonisolated static func prepare(_ item: PickedMedia, config: TermConfig) async throws -> [Outgoing] {
+        var out: [Outgoing] = []
+        do {
+            return try await prepare(item, config: config, into: &out)
+        } catch {
+            // 途中までに作ったもの（位置情報を外した数 GB の動画など）を残さない
+            for o in out where o.local != item.url { try? FileManager.default.removeItem(at: o.local) }
+            throw error
+        }
+    }
+
+    nonisolated private static func prepare(_ item: PickedMedia, config: TermConfig,
+                                            into out: inout [Outgoing]) async throws -> [Outgoing] {
         let ext = item.url.pathExtension
         let source = MediaSource(fileExtension: ext)
         let steps = MediaPlan.steps(for: source, config: config)
         let name = InboxName(date: Date(), random: UInt16.random(in: 0...UInt16.max))
-        var out: [Outgoing] = []
         var sheet: MediaProcessing.Sheet?
         var transcript: MediaProcessing.TranscriptOutcome?
         for step in steps {
+            try Task.checkCancellation()
             switch step {
             case .original:
-                let dst = MediaPicker.newURL(ext: ext)
-                switch source {
-                case .image where config.mediaStripLocation:
-                    try MediaProcessing.stripImageLocation(item.url, to: dst)
-                case .video where config.mediaStripLocation:
-                    try await MediaProcessing.stripVideoLocation(item.url, to: dst)
-                default:
+                if config.mediaStripLocation {
+                    // 外せなければ投げる（原本をそのまま送らない）。形式が変わることがある（RAW → JPEG など）
+                    let produced = try await MediaProcessing.withoutLocation(item.url)
+                    out.append(Outgoing(local: produced, remoteName: name.file(ext: produced.pathExtension)))
+                } else {
+                    let dst = MediaPicker.newURL(ext: ext)
                     try FileManager.default.copyItem(at: item.url, to: dst)
+                    out.append(Outgoing(local: dst, remoteName: name.file(ext: ext)))
                 }
-                out.append(Outgoing(local: dst, remoteName: name.file(ext: ext)))
             case .convertToJPEG:
                 let dst = MediaPicker.newURL(ext: "jpg")
                 try MediaProcessing.convertToJPEG(item.url, to: dst, stripLocation: config.mediaStripLocation)
                 out.append(Outgoing(local: dst, remoteName: name.file(ext: "jpg")))
             case .contactSheet:
                 let dst = MediaPicker.newURL(ext: "jpg")
+                out.append(Outgoing(local: dst, remoteName: name.sheet))
                 let s = try await MediaProcessing.contactSheet(item.url, to: dst, frames: config.videoFrames,
                                                                longSide: config.videoSheetSize)
                 sheet = s
-                out.append(Outgoing(local: dst, remoteName: name.sheet))
             case .transcript:
                 transcript = await MediaProcessing.transcribe(item.url)
             }

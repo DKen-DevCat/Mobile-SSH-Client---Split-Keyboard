@@ -17,61 +17,142 @@ enum MediaProcessing {
         }
     }
 
-    // MARK: 画像
+    /// 位置情報を外せなかった（送らずに止める。原本をそのまま送ることはしない）
+    static let locationNotRemoved = Failure.unreadable(
+        "位置情報を外せなかったので送りませんでした。そのまま送るなら config で media-strip-location = false（端末での確認が要ります）")
 
-    /// 位置情報だけを外した写し（再圧縮しない）。できない形式なら、そのままの写し
-    static func stripImageLocation(_ src: URL, to dst: URL) throws {
-        guard let source = CGImageSourceCreateWithURL(src as CFURL, nil), let type = CGImageSourceGetType(source),
-              let dest = CGImageDestinationCreateWithURL(dst as CFURL, type, CGImageSourceGetCount(source), nil) else {
-            try FileManager.default.copyItem(at: src, to: dst)
-            return
+    // MARK: 位置情報を外す
+
+    /// 位置情報を外した写しを作り、その場所を返す。外せたことを読み直して確かめる。外せなければ投げる（送らない）。
+    /// - 画像: メタデータだけ書き換える（再圧縮しない）。書き戻せない形式（RAW・WebP など）は JPEG にして外す
+    /// - 動画・m4a: 書き出し直す（再エンコードしない）。時系列の位置のトラックが残るものは送らない
+    /// - そのほか（PDF・テキスト・mp3・wav など、位置を持たない形式）: そのままの写し
+    static func withoutLocation(_ src: URL) async throws -> URL {
+        let ext = src.pathExtension.lowercased()
+        let type = UTType(filenameExtension: ext)
+        if type?.conforms(to: .image) == true && type?.conforms(to: .svg) != true {
+            return try stripImageLocation(src)
+        }
+        if type?.conforms(to: .movie) == true || type?.conforms(to: .video) == true || ext == "m4a" {
+            return try await stripAVLocation(src)
+        }
+        let dst = MediaPicker.newURL(ext: ext)
+        try FileManager.default.copyItem(at: src, to: dst)
+        return dst
+    }
+
+    private static func stripImageLocation(_ src: URL) throws -> URL {
+        guard let source = CGImageSourceCreateWithURL(src as CFURL, nil), let type = CGImageSourceGetType(source) else {
+            throw Failure.unreadable("画像を読めません")
+        }
+        let dst = MediaPicker.newURL(ext: src.pathExtension)
+        if copyWithoutGPS(source, type: type, to: dst) { return dst }
+        // 書き戻せない形式。JPEG にして外す
+        let jpg = MediaPicker.newURL(ext: "jpg")
+        try convertToJPEG(src, to: jpg, stripLocation: true)
+        return jpg
+    }
+
+    /// メタデータから GPS（EXIF と XMP）だけを外して写す。外せたことまで確かめられたら true
+    private static func copyWithoutGPS(_ source: CGImageSource, type: CFString, to dst: URL) -> Bool {
+        guard let dest = CGImageDestinationCreateWithURL(dst as CFURL, type, CGImageSourceGetCount(source), nil) else {
+            return false
         }
         let options: [CFString: Any] = [kCGImageMetadataShouldExcludeGPS: true]
         var error: Unmanaged<CFError>?
-        if CGImageDestinationCopyImageSource(dest, source, options as CFDictionary, &error) { return }
-        // 画素はそのまま、メタデータだけ書き換えられない形式。位置情報を外した性質で書き直す（高い品質で）
+        if CGImageDestinationCopyImageSource(dest, source, options as CFDictionary, &error), hasNoLocation(image: dst) {
+            return true
+        }
         try? FileManager.default.removeItem(at: dst)
-        try writeImage(source, to: dst, type: type, quality: 0.95, stripLocation: true)
+        return false
     }
 
-    /// エージェントが読めない画像（HEIC など）を JPEG に。大きさは変えない
+    /// 画像に位置情報が残っていないか（EXIF の GPS と、XMP の GPS のタグ）
+    static func hasNoLocation(image url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }
+        for i in 0..<CGImageSourceGetCount(source) {
+            if let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [CFString: Any],
+               props[kCGImagePropertyGPSDictionary] != nil {
+                return false
+            }
+            if let metadata = CGImageSourceCopyMetadataAtIndex(source, i, nil) {
+                var found = false
+                let options = [kCGImageMetadataEnumerateRecursively: true] as CFDictionary
+                CGImageMetadataEnumerateTagsUsingBlock(metadata, nil, options) { _, tag in
+                    if let name = CGImageMetadataTagCopyName(tag) as String?, name.hasPrefix("GPS") {
+                        found = true
+                        return false
+                    }
+                    return true
+                }
+                if found { return false }
+            }
+        }
+        return true
+    }
+
+    // MARK: 画像
+
+    /// エージェントが読めない画像（HEIC など）を JPEG に。大きさは変えない。位置情報を外すなら、外れたことまで確かめる
     static func convertToJPEG(_ src: URL, to dst: URL, stripLocation: Bool) throws {
         guard let source = CGImageSourceCreateWithURL(src as CFURL, nil) else {
             throw Failure.unreadable("画像を読めません")
         }
-        try writeImage(source, to: dst, type: UTType.jpeg.identifier as CFString, quality: 0.92, stripLocation: stripLocation)
+        let jpeg = UTType.jpeg.identifier as CFString
+        guard stripLocation else {
+            try writeImage(source, to: dst, type: jpeg, quality: 0.92)
+            return
+        }
+        // 一度 JPEG にしてから、メタデータの GPS（EXIF と XMP）を外して写す
+        let tmp = MediaPicker.newURL(ext: "jpg")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try writeImage(source, to: tmp, type: jpeg, quality: 0.92)
+        guard let encoded = CGImageSourceCreateWithURL(tmp as CFURL, nil), copyWithoutGPS(encoded, type: jpeg, to: dst) else {
+            throw locationNotRemoved
+        }
     }
 
-    private static func writeImage(_ source: CGImageSource, to dst: URL, type: CFString, quality: Double,
-                                   stripLocation: Bool) throws {
+    private static func writeImage(_ source: CGImageSource, to dst: URL, type: CFString, quality: Double) throws {
         guard let dest = CGImageDestinationCreateWithURL(dst as CFURL, type, 1, nil) else {
             throw Failure.unreadable("画像を書けません")
         }
         var props = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]) ?? [:]
         props[kCGImageDestinationLossyCompressionQuality] = quality
-        if stripLocation { props[kCGImagePropertyGPSDictionary] = kCFNull }
         CGImageDestinationAddImageFromSource(dest, source, 0, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw Failure.unreadable("画像を書けません") }
     }
 
-    // MARK: 動画
+    // MARK: 動画・音声
 
     /// 位置情報などの個人の情報を外した写し（再エンコードしない。AVMetadataItemFilter.forSharing）
-    static func stripVideoLocation(_ src: URL, to dst: URL) async throws {
-        let asset = AVURLAsset(url: src)
-        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-            try FileManager.default.copyItem(at: src, to: dst)
-            return
+    private static func stripAVLocation(_ src: URL) async throws -> URL {
+        let ext = src.pathExtension.lowercased()
+        let (fileType, outExt): (AVFileType, String) =
+            ext == "mp4" ? (.mp4, "mp4") : ext == "m4v" ? (.m4v, "m4v") : ext == "m4a" ? (.m4a, "m4a") : (.mov, "mov")
+        let dst = MediaPicker.newURL(ext: outExt)
+        guard let export = AVAssetExportSession(asset: AVURLAsset(url: src), presetName: AVAssetExportPresetPassthrough) else {
+            throw locationNotRemoved
         }
         export.outputURL = dst
-        export.outputFileType = dst.pathExtension.lowercased() == "mp4" ? .mp4 : .mov
+        export.outputFileType = fileType
         export.metadataItemFilter = .forSharing()
         export.shouldOptimizeForNetworkUse = false
         await export.export()
-        if export.status != .completed {
+        guard export.status == .completed, (try? await hasNoLocation(av: dst)) == true else {
             try? FileManager.default.removeItem(at: dst)
-            try FileManager.default.copyItem(at: src, to: dst)
+            throw locationNotRemoved
         }
+        return dst
+    }
+
+    /// 動画・音声に位置情報が残っていないか（位置のメタデータと、時系列のメタデータのトラック）
+    static func hasNoLocation(av url: URL) async throws -> Bool {
+        let asset = AVURLAsset(url: url)
+        for item in try await asset.load(.metadata) {
+            if item.commonKey == .commonKeyLocation { return false }
+            if let id = item.identifier?.rawValue.lowercased(), id.contains("location") || id.contains("gps") { return false }
+        }
+        return try await asset.loadTracks(withMediaType: .metadata).isEmpty
     }
 
     struct Sheet {
@@ -101,14 +182,18 @@ enum MediaProcessing {
         probe.maximumSize = CGSize(width: 64, height: 64)
         probe.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
         probe.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
-        let times = ContactSheetPlanner.probeTimes(duration: duration)
+        var times: [Double] = []
         var scores: [Double] = []
         var previous: [Double]?
-        for t in times {
-            let luma = lumaGrid(try await probe.image(at: CMTime(seconds: t, preferredTimescale: 600)).image)
+        for t in ContactSheetPlanner.probeTimes(duration: duration) {
+            // 読めない 1 枚は飛ばす（壊れた区間があっても、シートは作る）
+            guard let frame = try? await probe.image(at: CMTime(seconds: t, preferredTimescale: 600)) else { continue }
+            let luma = lumaGrid(frame.image)
+            times.append(t)
             scores.append(previous.map { prev in zip(prev, luma).map { abs($0 - $1) }.reduce(0, +) / 64 } ?? 0)
             previous = luma
         }
+        guard !times.isEmpty else { throw Failure.unreadable("動画の絵を読めません") }
 
         // 2. 選ぶ・3. 並べる
         let count = ContactSheetPlanner.frameCount(duration: duration, configured: frames, available: times.count)
@@ -211,7 +296,7 @@ enum MediaProcessing {
         if case .audio = MediaSource(fileExtension: media.pathExtension) {
             audio = media
         } else {
-            audio = media.deletingPathExtension().appendingPathExtension("audio.m4a")
+            audio = MediaPicker.newURL(ext: "m4a")
             let asset = AVURLAsset(url: media)
             guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
                 return .skipped("（音声を取り出せないので、文字起こしを飛ばしました）")
@@ -219,7 +304,10 @@ enum MediaProcessing {
             export.outputURL = audio
             export.outputFileType = .m4a
             await export.export()
-            guard export.status == .completed else { return .skipped("（動画に音声が無いので、文字起こしを飛ばしました）") }
+            guard export.status == .completed else {
+                try? FileManager.default.removeItem(at: audio)
+                return .skipped("（動画に音声が無いので、文字起こしを飛ばしました）")
+            }
         }
         defer { if audio != media { try? FileManager.default.removeItem(at: audio) } }
         let request = SFSpeechURLRecognitionRequest(url: audio)

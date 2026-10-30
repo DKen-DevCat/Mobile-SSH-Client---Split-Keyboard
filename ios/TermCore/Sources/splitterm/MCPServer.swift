@@ -19,42 +19,40 @@ struct MCPServer {
 
     var tools: [Tool] {
         let c = commands
-        func file(_ a: [String: Any]) -> URL? {
-            (a["file"] as? String).map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
-        }
-        let fileProp: [String: Any] = ["type": "string", "description": "config のファイル（省略すると ~/.config/splitterm/config）"]
+        // 道具が触るのは決まった config だけ（SPLITTERM_CONFIG か ~/.config/splitterm/config）。
+        // ファイルの場所は受け取らない（ほかのファイルを読み書きする道にしない。CLI の --file は人が使う）
         return [
             Tool(name: "doctor",
                  description: "準備（Xcode・無料の Team・jq・tmux・リモートログイン・端末・config・アプリ・公開鍵）を調べ、足りないものと直し方を返す。needs_human の項目は人に頼む",
                  properties: [:], required: []) { _ in doctor.report() },
             Tool(name: "config_show", description: "今効いている config の値（既定値を含む）と、読めない行",
-                 properties: ["file": fileProp], required: []) { a in c.configShow(file: file(a)) },
+                 properties: [:], required: []) { _ in c.configShow(file: nil) },
             Tool(name: "config_check", description: "config の読めない行を行番号付きで返す。問題が無ければ成功",
-                 properties: ["file": fileProp], required: []) { a in c.configCheck(file: file(a)) },
+                 properties: [:], required: []) { _ in c.configCheck(file: nil) },
             Tool(name: "config_set",
                  description: "config の 1 項目を書き換える（コメントと並びは残る）。書いた後に読み直し、読めなくなる書き換えは断る。値を空にすると既定値。host は host_add / host_remove を使う",
                  properties: ["key": ["type": "string", "description": "項目（例 font-size）"],
-                              "value": ["type": "string", "description": "値（例 12）"], "file": fileProp],
+                              "value": ["type": "string", "description": "値（例 12）"]],
                  required: ["key", "value"]) { a in
-                c.configSet(key: a["key"] as? String ?? "", value: a["value"] as? String ?? "", file: file(a))
+                c.configSet(key: a["key"] as? String ?? "", value: a["value"] as? String ?? "", file: nil)
             },
             Tool(name: "host_add", description: "接続先を足す（同じ名前があれば断る）",
                  properties: ["name": ["type": "string", "description": "名前（英数と . _ -）"],
                               "user": ["type": "string"], "address": ["type": "string", "description": "ホスト名か IP"],
                               "port": ["type": "integer", "description": "既定 22"],
                               "tmux": ["type": "string", "description": "tmux のセッション名。none で素のシェル。既定 main"],
-                              "auth": ["type": "string", "enum": ["key", "password"]], "file": fileProp],
+                              "auth": ["type": "string", "enum": ["key", "password"]]],
                  required: ["name", "user", "address"]) { a in
                 let tmux = a["tmux"] as? String ?? "main"
                 let entry = HostEntry(name: a["name"] as? String ?? "", user: a["user"] as? String ?? "",
                                       address: a["address"] as? String ?? "", port: a["port"] as? Int ?? 22,
                                       tmuxSession: tmux == "none" ? nil : tmux,
                                       auth: HostEntry.AuthKind(rawValue: a["auth"] as? String ?? "key") ?? .key)
-                return c.hostAdd(entry, file: file(a))
+                return c.hostAdd(entry, file: nil)
             },
             Tool(name: "host_remove", description: "接続先を消す",
-                 properties: ["name": ["type": "string"], "file": fileProp], required: ["name"]) { a in
-                c.hostRemove(a["name"] as? String ?? "", file: file(a))
+                 properties: ["name": ["type": "string"]], required: ["name"]) { a in
+                c.hostRemove(a["name"] as? String ?? "", file: nil)
             },
             Tool(name: "config_push", description: "config を端末へ送る（読めない行があれば送らない）。アプリは開いていればすぐ読み直す",
                  properties: [:], required: []) { _ in c.push() },
@@ -82,14 +80,19 @@ struct MCPServer {
     // MARK: JSON-RPC
 
     /// 1 行の要求に答える。通知（id が無い）には nil
+    /// 1 行の上限（config の道具に大きな入力は要らない）
+    static let maxLine = 1 << 20
+
     func handle(line: String) -> String? {
-        guard let data = line.data(using: .utf8),
+        guard line.utf8.count <= Self.maxLine, let data = line.data(using: .utf8),
               let msg = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return encode(["jsonrpc": "2.0", "id": NSNull(), "error": ["code": -32700, "message": "parse error"]])
         }
         guard let method = msg["method"] as? String else {
-            // 応答（こちらからは要求を出さない）は捨てる
-            return nil
+            // 応答（こちらからは要求を出さないので、来ても捨てる）。それ以外の形は不正な要求
+            if msg["result"] != nil || msg["error"] != nil { return nil }
+            return encode(["jsonrpc": "2.0", "id": msg["id"] ?? NSNull(),
+                           "error": ["code": -32600, "message": "invalid request"]])
         }
         guard let id = msg["id"] else { return nil }
         let params = msg["params"] as? [String: Any] ?? [:]

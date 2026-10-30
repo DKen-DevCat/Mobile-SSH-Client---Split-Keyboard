@@ -138,7 +138,8 @@ final class ConfigParserTests: XCTestCase {
 
     /// media-dir は接続先のシェルに渡すので、決まった文字だけ
     func testMediaDirRejectsShellSyntax() {
-        for bad in ["inbox", "~/a b", "~/$(rm -rf ~)", "/tmp/../etc", "~/a;b", "~/a`b`", "/a~b", "~user/x", "~/\"x\""] {
+        for bad in ["inbox", "~/a b", "~/$(rm -rf ~)", "/tmp/../etc", "~/a;b", "~/a`b`", "/a~b", "~user/x", "~/\"x\"",
+                    "~/", "/", "~/.", "//"] {
             XCTAssertEqual(ConfigParser.parse("media-dir = \(bad)").diagnostics.count, 1, bad)
         }
         XCTAssertEqual(ConfigParser.parse("media-dir = ~/.splitterm/in-box_2").diagnostics, [])

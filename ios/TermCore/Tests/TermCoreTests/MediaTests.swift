@@ -45,12 +45,17 @@ final class InboxAndCommandTests: XCTestCase {
 
     func testPrepareCommand() throws {
         let c = try RemoteCommands.prepare(mediaDir: "~/.splitterm/inbox", name: "20261030-064000-ab12.jpg", retentionDays: 7)
-        XCTAssertEqual(c, "umask 077; mkdir -p \"$HOME\"/'.splitterm/inbox' && cd \"$HOME\"/'.splitterm/inbox' && "
-            + "{ find . -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null; true; } && "
-            + "if [ -f '20261030-064000-ab12.jpg.part' ]; then wc -c < '20261030-064000-ab12.jpg.part' | tr -d ' '; else echo 0; fi && pwd -P")
+        // ログインシェルが何であっても /bin/sh で動かす
+        XCTAssertTrue(c.hasPrefix("exec /bin/sh -c '"))
+        XCTAssertFalse(c.contains("\n"))
+        // 消すのはアプリの名前のものだけ。自分の持ち物でない受け取り箱では何もしない
+        XCTAssertTrue(c.contains("-name '\\''\(InboxName.glob)'\\'' -mtime +7"))
+        XCTAssertTrue(c.contains("[ -O . ] || exit \(RemoteCommands.Exit.notOwner)"))
+        // 0 バイトでも送れるよう .part を先に作る
+        XCTAssertTrue(c.contains(": >> '\\''20261030-064000-ab12.jpg.part'\\''"))
         let keep = try RemoteCommands.prepare(mediaDir: "/srv/in", name: "a.jpg", retentionDays: 0)
-        XCTAssertTrue(keep.contains("{ true; }"))
-        XCTAssertTrue(keep.contains("mkdir -p '/srv/in'"))
+        XCTAssertFalse(keep.contains("find"))
+        XCTAssertTrue(keep.contains("mkdir -p '\\''/srv/in'\\''"))
     }
 
     func testCommandsRefuseUnsafeInput() {
@@ -59,17 +64,32 @@ final class InboxAndCommandTests: XCTestCase {
         XCTAssertThrowsError(try RemoteCommands.append(mediaDir: "~/in", name: "../a"))
         XCTAssertThrowsError(try RemoteCommands.finish(mediaDir: "~/in", name: "a.jpg", sha256: "x"))
         XCTAssertThrowsError(try RemoteCommands.finish(mediaDir: "~/in", name: "a.jpg", sha256: String(repeating: "A", count: 64)))
+        // ホームや / そのものは受け取り箱にしない（古いものを消すので）
+        for bad in ["~/", "/", "~", "~/.", "/./", "//"] {
+            XCTAssertThrowsError(try RemoteCommands.prepare(mediaDir: bad, name: "a.jpg", retentionDays: 7), bad)
+        }
     }
 
     func testAppendAndFinish() throws {
-        XCTAssertEqual(try RemoteCommands.append(mediaDir: "~/in", name: "a.jpg"), "umask 077; cat >> \"$HOME\"/'in'/'a.jpg.part'")
+        XCTAssertEqual(try RemoteCommands.append(mediaDir: "~/in", name: "a.jpg"),
+                       "exec /bin/sh -c 'umask 077; cd \"$HOME\"/'\\''in'\\'' || exit 3; [ -O . ] || exit 4; cat >> '\\''a.jpg.part'\\'''")
         let sum = String(repeating: "0f", count: 32)
         let f = try RemoteCommands.finish(mediaDir: "~/in", name: "a.jpg", sha256: sum)
-        XCTAssertTrue(f.contains("if [ \"$s\" = '\(sum)' ]; then mv 'a.jpg.part' 'a.jpg' && echo ok"))
+        XCTAssertTrue(f.contains("if [ \"$s\" != '\\''\(sum)'\\'' ]"))
+        XCTAssertTrue(f.hasSuffix("echo \(RemoteCommands.doneMarker)'"))
+        for tool in ["shasum -a 256", "sha256sum", "sha256 -q", "openssl dgst -sha256"] { XCTAssertTrue(f.contains(tool), tool) }
+    }
+
+    func testFinishedNeedsStatusAndMarker() {
+        XCTAssertTrue(RemoteCommands.finished(status: 0, stdout: "Looking up…\nsplitterm-done\n"))
+        XCTAssertFalse(RemoteCommands.finished(status: 0, stdout: "token ok\n"))
+        XCTAssertFalse(RemoteCommands.finished(status: RemoteCommands.Exit.mismatch, stdout: "splitterm-done\n"))
+        XCTAssertFalse(RemoteCommands.finished(status: nil, stdout: "splitterm-done"))
     }
 
     func testDiscard() throws {
-        XCTAssertEqual(try RemoteCommands.discard(mediaDir: "~/in", name: "a.jpg"), "rm -f \"$HOME\"/'in'/'a.jpg.part'")
+        XCTAssertEqual(try RemoteCommands.discard(mediaDir: "~/in", name: "a.jpg"),
+                       "exec /bin/sh -c 'cd \"$HOME\"/'\\''in'\\'' || exit 3; [ -O . ] || exit 4; rm -f '\\''a.jpg.part'\\'''")
         XCTAssertThrowsError(try RemoteCommands.discard(mediaDir: "~/in", name: "*"))
     }
 
@@ -79,6 +99,17 @@ final class InboxAndCommandTests: XCTestCase {
         XCTAssertEqual(RemoteCommands.parsePrepare("1234\n/Users/me/in")?.directory, "/Users/me/in")
         XCTAssertNil(RemoteCommands.parsePrepare("oops"))
         XCTAssertNil(RemoteCommands.parsePrepare("-1\n/x"))
+        // 入力行に入れるので、制御文字の入ったパスは読まない
+        XCTAssertNil(RemoteCommands.parsePrepare("0\n/Users/me/\u{1b}[2Jin"))
+    }
+
+    func testAppNamesForCleaning() {
+        XCTAssertTrue(InboxName.isAppName("20261030-060000-ab12.jpg"))
+        XCTAssertTrue(InboxName.isAppName("20261030-060000-ab12.sheet.jpg"))
+        XCTAssertTrue(InboxName.isAppName("20261030-060000-ab12.mov.part"))
+        for other in ["notes.txt", "authorized_keys", "20261030-060000-ab12", "20261030-060000-AB12.jpg", "2026103-060000-ab12.jpg"] {
+            XCTAssertFalse(InboxName.isAppName(other), other)
+        }
     }
 
     func testInsertText() {

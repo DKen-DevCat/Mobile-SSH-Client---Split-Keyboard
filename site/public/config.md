@@ -100,9 +100,9 @@ splitterm config check --file path/to/config
 | --- | --- | --- |
 | `agent` | `claude-code` | 送り先のエージェント: claude-code / codex / generic（画像は png・jpeg まで） |
 | `agent-media` | 空 | エージェントが読める種類を上書きする（動画や音声を読めるエージェント用）。例: image,video,audio |
-| `media-dir` | `~/.splitterm/inbox` | 接続先の受け取り箱（~/ か / で始まり、英数と . _ - / だけ） |
+| `media-dir` | `~/.splitterm/inbox` | 接続先の受け取り箱（~/ か / で始まる専用のフォルダ。英数と . _ - / だけ。ホームや / そのものは不可） 古いものとして消すのは、アプリが付けた名前のファイルだけ。自分の持ち物でないフォルダには送らない |
 | `media-retention` | `7d` | 受け取り箱に残す期間（7d・12h。0 で消さない） |
-| `media-strip-location` | `true` | 写真・動画の位置情報を外す（再圧縮はしない） |
+| `media-strip-location` | `true` | 写真・動画の位置情報を外す（再圧縮はしない。外せなければ送らない） false にする変更は、端末で本人の確認（Face ID かパスコード）の後で効く |
 | `media-insert` | `"{paths} "` | 送った後に入力行へ入れる文字（{paths} が送ったファイルのパス。Enter は押さない） |
 | `video-mode` | `auto` | 動画の送り方 ・`auto`: エージェントが動画を読めれば原本、読めなければコンタクトシート（＋文字起こし） ・`file`: いつも原本 / frames  いつもコンタクトシート / both  両方 |
 | `video-frames` | `12` | コンタクトシートに並べる枚数（1〜24）と、シートの長い辺（px） |

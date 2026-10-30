@@ -136,7 +136,7 @@ final class RootViewController: UIViewController {
         terminalView.cursorBlink = c.cursorBlink
         terminalView.setColorSpace(c.colorSpace)
         gate.colors = colors
-        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur)
+        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur, stripLocation: c.mediaStripLocation)
         if initial || zoom.steps != c.zoomSteps {
             zoom = ZoomSteps(steps: c.zoomSteps, current: initial ? nil : zoom.percent)
         }
@@ -304,8 +304,10 @@ final class RootViewController: UIViewController {
 
     // MARK: 入力ルータ（docs/design.md「入力設計」）
 
-    private var encodingContext: EncodingContext {
-        let m = active?.engine.modes() ?? TerminalModes()
+    private var encodingContext: EncodingContext { encodingContext(for: active) }
+
+    private func encodingContext(for session: TerminalSession?) -> EncodingContext {
+        let m = session?.engine.modes() ?? TerminalModes()
         return EncodingContext(applicationCursor: m.applicationCursor, bracketedPaste: m.bracketedPaste,
                                optionAsMeta: config.optionAsMeta, newline: config.newline)
     }
@@ -426,8 +428,20 @@ final class RootViewController: UIViewController {
         picker.onError = { [weak self] message in self?.alert("メディア", message) }
         sender.onStatus = { [weak self] text in self?.envBar.setProgress(text) }
         sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
-        sender.onInsert = { [weak self] text in self?.insertMediaPaths(text) }
-        envBar.attach.menu = UIMenu(children: [
+        sender.onInsert = { [weak self] text, session in self?.insertMediaPaths(text, into: session) }
+        // 開くたびに作る（送っている途中なら「やめる」を出す）
+        envBar.attach.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.mediaMenu() ?? [])
+        }])
+    }
+
+    private func mediaMenu() -> [UIMenuElement] {
+        if sender.busy {
+            return [UIAction(title: "送るのをやめる", image: UIImage(systemName: "xmark.circle"), attributes: .destructive) {
+                [weak self] _ in self?.sender.cancel()
+            }]
+        }
+        return [
             UIAction(title: "写真・動画を選ぶ", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
                 self?.startPicking { $0.pickLibrary() }
             },
@@ -440,7 +454,7 @@ final class RootViewController: UIViewController {
             UIAction(title: "ファイルを選ぶ", image: UIImage(systemName: "doc")) { [weak self] _ in
                 self?.startPicking { $0.pickFile() }
             },
-        ])
+        ]
     }
 
     /// 繋がっているタブがあるときだけ選ばせる（選んだのに送れない、を避ける）
@@ -459,15 +473,33 @@ final class RootViewController: UIViewController {
 
     private func sendMedia(_ items: [PickedMedia]) {
         guard let s = active else { return }
-        sender.send(items, config: config, session: s)
+        // 位置情報を外すかは、本人が確かめた値（config の値ではなく。SecurityGate）
+        var c = config
+        c.mediaStripLocation = gate.stripLocation
+        sender.send(items, config: c, session: s)
     }
 
-    /// 送ったファイルのパスを入力行に入れる（Enter は押さない。貼り付けと同じく制御文字は除く）
-    private func insertMediaPaths(_ text: String) {
-        guard !gate.isLocked, let s = active else { return }
-        if composer.isComposing { commitComposition(nil) }
-        s.scrollTop = nil
-        s.send(KeyEncoder.paste(text, encodingContext))
+    /// ロック中に送り終わったパス（ロックを解いたら入れる）
+    private var pendingMediaInsert: (text: String, session: TerminalSession)?
+
+    /// 送ったファイルのパスを、送った元のタブの入力行に入れる（Enter は押さない。貼り付けと同じく制御文字は除く）
+    private func insertMediaPaths(_ text: String, into session: TerminalSession) {
+        guard sessions.contains(where: { $0 === session }) else { return }  // タブを閉じた
+        guard !gate.isLocked else {
+            pendingMediaInsert = (text, session)
+            return
+        }
+        // 改行は入れない（config の media-insert に何が書かれていても、コマンドを実行しない）
+        let line = text.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
+        if session === active, composer.isComposing { commitComposition(nil) }
+        session.scrollTop = nil
+        session.send(KeyEncoder.paste(line, encodingContext(for: session)))
+    }
+
+    private func flushPendingMediaInsert() {
+        guard let p = pendingMediaInsert else { return }
+        pendingMediaInsert = nil
+        insertMediaPaths(p.text, into: p.session)
     }
 
     private func copyPublicKey() {
@@ -531,6 +563,7 @@ final class RootViewController: UIViewController {
             if let host = config.autoConnectHost { openSession(host) }
         }
         for s in sessions { s.becameActive() }
+        flushPendingMediaInsert()
         terminalView.becomeFirstResponder()
         terminalView.requestRender()
     }

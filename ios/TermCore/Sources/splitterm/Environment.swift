@@ -53,6 +53,14 @@ struct ProcessResult {
 
 /// 外のプログラムを、シェルを通さずに起動する（引数はそのまま渡す。人が入れた文字がシェルに解釈されない）
 enum ProcessRunner {
+    /// 読み取りのスレッドが書く入れ物（ロックで守る）
+    private final class Output: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        func set(_ d: Data) { lock.withLock { data = d } }
+        func get() -> Data { lock.withLock { data } }
+    }
+
     static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) -> ProcessResult {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: executable)
@@ -62,17 +70,15 @@ enum ProcessRunner {
         p.standardOutput = out
         p.standardError = err
         // 出力が大きくてもパイプが詰まらないよう、読みながら待つ
-        var outData = Data(), errData = Data()
+        let outData = Output(), errData = Output()
         let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global().async {
-            outData = out.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-        group.enter()
-        DispatchQueue.global().async {
-            errData = err.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
+        for (pipe, box) in [(out, outData), (err, errData)] {
+            let reader = pipe.fileHandleForReading
+            group.enter()
+            DispatchQueue.global().async {
+                box.set(reader.readDataToEndOfFile())
+                group.leave()
+            }
         }
         // 終わりの知らせは起動の前に付ける（すぐ終わるプログラムで知らせを取りこぼさない）
         let done = DispatchSemaphore(value: 0)
@@ -89,12 +95,20 @@ enum ProcessRunner {
         if done.wait(timeout: .now() + timeout) == .timedOut {
             timedOut = true
             p.terminate()
-            done.wait()
+            if done.wait(timeout: .now() + 5) == .timedOut {
+                kill(p.processIdentifier, SIGKILL)
+                done.wait()
+            }
         }
-        group.wait()
+        // 時間切れのときは、孫のプロセス（xcodebuild など）がパイプを持ったままのことがある。待ちすぎない
+        // （読み取りのスレッドは孫が終わるまで残るが、MCP サーバーは次の要求を受けられる）
+        if group.wait(timeout: .now() + (timedOut ? 5 : 3600)) == .timedOut {
+            return ProcessResult(status: p.terminationStatus, stdout: "",
+                                 stderr: "\(executable) の子のプロセスが出力を閉じませんでした", timedOut: true)
+        }
         return ProcessResult(status: p.terminationStatus,
-                             stdout: String(decoding: outData, as: UTF8.self),
-                             stderr: String(decoding: errData, as: UTF8.self),
+                             stdout: String(decoding: outData.get(), as: UTF8.self),
+                             stderr: String(decoding: errData.get(), as: UTF8.self),
                              timedOut: timedOut)
     }
 }

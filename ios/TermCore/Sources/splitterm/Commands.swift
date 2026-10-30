@@ -205,7 +205,8 @@ struct Commands {
         guard keep > 0 else { return .ok("消しません（media-retention = 0）") }
         let limit = env.now().addingTimeInterval(-Double(keep) * 86_400)
         do {
-            let old = try inboxItems().filter { $0.modified < limit }
+            // 消すのはアプリが付けた名前のものだけ（受け取り箱に人が置いたものは残す）
+            let old = try inboxItems().filter { $0.modified < limit && InboxName.isAppName($0.name) }
             for item in old { try FileManager.default.removeItem(atPath: item.path) }
             return .ok("\(old.count) 件消しました（\(keep) 日より古いもの）")
         } catch {

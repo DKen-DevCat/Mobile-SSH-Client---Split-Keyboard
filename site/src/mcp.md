@@ -57,7 +57,9 @@ Claude Code 以外の MCP クライアントも、同じ stdio のサーバー�
 | `app_install` | アプリを作り直して端末に入れる（`scripts/ios_reinstall.sh`） | 初回だけ、端末で開発元を信頼 |
 | `app_status` | 入れたアプリの期限とビルドを見る | – |
 | `inbox_list` | 端末から届いたメディアの一覧（新しい順、種類、元の動画との対応） | – |
-| `inbox_clean` | 受け取り箱の古いものを消す | – |
+| `inbox_clean` | 受け取り箱の古いもの（アプリが付けた名前のものだけ）を消す | – |
+
+道具が触る config は決まった 1 つ（`SPLITTERM_CONFIG`、無ければ `~/.config/splitterm/config`）だけで、ファイルの場所は受け取らない。守りを弱める変更（`app-lock`・`privacy-blur`・`media-strip-location` を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。
 
 ## 人の手が要る所 {#needs-human}
 

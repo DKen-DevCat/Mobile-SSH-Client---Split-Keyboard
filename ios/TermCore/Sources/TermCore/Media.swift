@@ -85,6 +85,18 @@ public struct InboxName: Equatable, Sendable {
     public var videoNotes: String { "\(base).video.md" }
     public var transcript: String { "\(base).transcript.md" }
 
+    /// アプリが付けた名前に合う find のパターン（古いものを消すのは、これに合うものだけ）
+    public static let glob = "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f].*"
+
+    /// アプリが付けた名前か（`20261030-101010-ab12.` で始まる）
+    public static func isAppName(_ name: String) -> Bool {
+        let u = Array(name.unicodeScalars)
+        guard u.count > 21, u[8] == "-", u[15] == "-", u[20] == "." else { return false }
+        let digits = (0..<8).map { u[$0] } + (9..<15).map { u[$0] }
+        let hex = (16..<20).map { u[$0] }
+        return digits.allSatisfy { ("0"..."9").contains($0) } && hex.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+
     /// 受け取り箱の名前として正しいか（接続先のシェルに渡す前に必ず確かめる）
     public static func isSafe(_ name: String) -> Bool {
         !name.isEmpty && name.count <= 80 && !name.hasPrefix(".") && name.unicodeScalars.allSatisfy { u in
@@ -93,9 +105,28 @@ public struct InboxName: Equatable, Sendable {
     }
 }
 
-/// 送るときに接続先で動かすコマンド（決まった文字列に、確かめた名前と場所だけを入れる）
+/// 送るときに接続先で動かすコマンド（決まった文字列に、確かめた名前と場所だけを入れる）。
+/// ログインシェルが fish や tcsh でも同じに動くよう、どれも `exec /bin/sh -c '…'` で包み、1 行で書く。
+/// 消すのはアプリが付けた名前（`InboxName.glob`）のファイルだけ。受け取り箱が自分の持ち物でなければ何もしない
 public enum RemoteCommands {
     public struct UnsafeInput: Error, Equatable {}
+
+    /// 終了コード（0 は成功）
+    public enum Exit {
+        /// 受け取り箱を作れない・入れない
+        public static let noDirectory: Int = 3
+        /// 受け取り箱が自分の持ち物ではない
+        public static let notOwner: Int = 4
+        /// SHA-256 を計る道具が無い
+        public static let noHashTool: Int = 5
+        /// 中身が合わない（.part は消した）
+        public static let mismatch: Int = 6
+        /// 名前を付け替えられない
+        public static let moveFailed: Int = 7
+    }
+
+    /// finish が最後に出す印（ログインシェルの出す文字と取り違えない）
+    public static let doneMarker = "splitterm-done"
 
     /// 受け取り箱の場所をシェルの書き方に。`~/x` は `"$HOME"/'x'`、`/x` は `'/x'`
     static func dir(_ mediaDir: String) throws -> String {
@@ -104,44 +135,69 @@ public enum RemoteCommands {
         return "'\(mediaDir)'"
     }
 
-    /// 受け取り箱を作り、古いものを消し、途中まで届いている大きさと、受け取り箱の絶対パスを出す（2 行）
+    /// `/bin/sh -c` に渡す形へ（' は '\'' に）
+    static func sh(_ script: String) -> String {
+        "exec /bin/sh -c '" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    /// 受け取り箱に入り、自分の持ち物かを確かめる
+    static func enter(_ d: String) -> String {
+        "cd \(d) || exit \(Exit.noDirectory); [ -O . ] || exit \(Exit.notOwner)"
+    }
+
+    /// 受け取り箱を作り、古いもの（アプリの名前のものだけ）を消し、途中まで届いている大きさと、受け取り箱の絶対パスを出す（2 行）。
+    /// .part はここで作る（0 バイトのファイルも送れるように）
     public static func prepare(mediaDir: String, name: String, retentionDays: Int) throws -> String {
         guard InboxName.isSafe(name), retentionDays >= 0 else { throw UnsafeInput() }
         let d = try dir(mediaDir)
         let clean = retentionDays > 0
-            ? "find . -maxdepth 1 -type f -mtime +\(retentionDays) -delete 2>/dev/null; " : ""
-        return "umask 077; mkdir -p \(d) && cd \(d) && { \(clean)true; } && "
-            + "if [ -f '\(name).part' ]; then wc -c < '\(name).part' | tr -d ' '; else echo 0; fi && pwd -P"
+            ? "find . -maxdepth 1 -type f -name '\(InboxName.glob)' -mtime +\(retentionDays) -exec rm -f {} + 2>/dev/null; " : ""
+        return sh("umask 077; mkdir -p \(d) || exit \(Exit.noDirectory); \(enter(d)); \(clean)"
+            + ": >> '\(name).part' || exit \(Exit.noDirectory); wc -c < '\(name).part' | tr -d ' '; pwd -P")
     }
 
     /// 標準入力を、途中まで届いているファイルの続きに書く
     public static func append(mediaDir: String, name: String) throws -> String {
         guard InboxName.isSafe(name) else { throw UnsafeInput() }
-        return "umask 077; cat >> \(try dir(mediaDir))/'\(name).part'"
+        return sh("umask 077; \(enter(try dir(mediaDir))); cat >> '\(name).part'")
     }
 
-    /// SHA-256 が合えば .part を外して ok を出す。合わなければ .part を消して ng（次は最初から送る）
+    /// SHA-256 が合えば .part を外して印を出す。合わなければ .part を消して Exit.mismatch（次は最初から送る）
     public static func finish(mediaDir: String, name: String, sha256: String) throws -> String {
         guard InboxName.isSafe(name), sha256.count == 64, sha256.allSatisfy({ $0.isHexDigit && !$0.isUppercase }) else {
             throw UnsafeInput()
         }
-        let d = try dir(mediaDir)
-        return "cd \(d) && s=$( (shasum -a 256 '\(name).part' 2>/dev/null || sha256sum '\(name).part') | cut -d' ' -f1 ) && "
-            + "if [ \"$s\" = '\(sha256)' ]; then mv '\(name).part' '\(name)' && echo ok; else rm -f '\(name).part'; echo ng; fi"
+        let part = "'\(name).part'"
+        let hash = "if command -v shasum >/dev/null 2>&1; then s=$(shasum -a 256 \(part) | cut -d' ' -f1); "
+            + "elif command -v sha256sum >/dev/null 2>&1; then s=$(sha256sum \(part) | cut -d' ' -f1); "
+            + "elif command -v sha256 >/dev/null 2>&1; then s=$(sha256 -q \(part)); "
+            + "elif command -v openssl >/dev/null 2>&1; then s=$(openssl dgst -sha256 -r \(part) | cut -d' ' -f1); "
+            + "else exit \(Exit.noHashTool); fi"
+        return sh("\(enter(try dir(mediaDir))); \(hash); "
+            + "if [ \"$s\" != '\(sha256)' ]; then rm -f \(part); exit \(Exit.mismatch); fi; "
+            + "mv \(part) '\(name)' || exit \(Exit.moveFailed); echo \(doneMarker)")
+    }
+
+    /// finish が成功したか（終了コードと、最後の行の印）
+    public static func finished(status: Int?, stdout: String) -> Bool {
+        status == 0 && stdout.split(whereSeparator: \.isNewline).last.map { $0.trimmingCharacters(in: .whitespaces) } == doneMarker
     }
 
     /// 途中まで届いているものを捨てる（手元のファイルより大きいなど、続きから送れないとき）
     public static func discard(mediaDir: String, name: String) throws -> String {
         guard InboxName.isSafe(name) else { throw UnsafeInput() }
-        return "rm -f \(try dir(mediaDir))/'\(name).part'"
+        return sh("\(enter(try dir(mediaDir))); rm -f '\(name).part'")
     }
 
-    /// prepare の出力を読む（届いている大きさ、受け取り箱の絶対パス）
+    /// prepare の出力を読む（届いている大きさ、受け取り箱の絶対パス）。パスに制御文字があれば読まない（入力行に入れるので）
     public static func parsePrepare(_ output: String) -> (offset: Int, directory: String)? {
         let lines = output.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
-        guard lines.count >= 2, let offset = Int(lines[lines.count - 2]), offset >= 0,
-              lines[lines.count - 1].hasPrefix("/") else { return nil }
-        return (offset, lines[lines.count - 1])
+        guard lines.count >= 2, let offset = Int(lines[lines.count - 2]), offset >= 0 else { return nil }
+        let directory = lines[lines.count - 1]
+        guard directory.hasPrefix("/"), directory.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7f }) else {
+            return nil
+        }
+        return (offset, directory)
     }
 }
 
@@ -220,8 +276,9 @@ public enum ContactSheetPlanner {
             let sheetAspect = Double(cols) * aspect / Double(rows)
             // 16:9 前後のシートが、画面にも画像の入力にも収まりがよい。空きのタイルは減点
             let score = abs(log(sheetAspect / (16.0 / 9.0))) + Double(cols * rows - n) * 0.15
-            // 同点なら列の多い方（横長のシート。同じ長い辺なら面積が小さく、トークンが少ない）
-            if best == nil || score <= best!.score { best = (cols, rows, score) }
+            // 同点なら列の多い方（横長のシート。同じ長い辺なら面積が小さく、トークンが少ない）。
+            // 16:9 の動画 12 枚の 4×3 と 3×4 は、計算の誤差（1e-16 ほど）しか違わないので、差に幅を持たせて比べる
+            if best == nil || score <= best!.score + 1e-9 { best = (cols, rows, score) }
         }
         let cols = best!.cols, rows = best!.rows
         let sheetAspect = Double(cols) * aspect / Double(rows)

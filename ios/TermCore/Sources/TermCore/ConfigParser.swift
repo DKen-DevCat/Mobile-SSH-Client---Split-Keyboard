@@ -135,7 +135,7 @@ public enum ConfigParser {
         case "media-dir":
             if reset { c.mediaDir = d.mediaDir; return }
             guard isRemotePath(value) else {
-                throw ConfigError("media-dir は ~/ か / で始まり、英数と . _ - / だけで書きます（.. は使えません）")
+                throw ConfigError("media-dir は ~/ か / で始まる専用のフォルダで、英数と . _ - / だけで書きます（.. と、ホームや / そのものは使えません）")
             }
             c.mediaDir = value
         case "media-retention": c.mediaRetentionDays = reset ? d.mediaRetentionDays : try days(value)
@@ -204,13 +204,16 @@ public enum ConfigParser {
         return seconds
     }
 
-    /// 接続先のシェルに渡せる場所（`~/` か `/` で始まり、英数と . _ - / だけ、`..` を含まない）
+    /// 接続先のシェルに渡せる場所（`~/` か `/` で始まり、英数と . _ - / だけ、`..` と `.` の段を含まない）。
+    /// ホームや / そのものは断る（受け取り箱は専用のフォルダにする）
     static func isRemotePath(_ s: String) -> Bool {
         guard s.hasPrefix("~/") || s.hasPrefix("/"), !s.contains(".."), s.count <= 200 else { return false }
-        return s.unicodeScalars.allSatisfy { u in
+        let chars = s.unicodeScalars.allSatisfy { u in
             ("a"..."z").contains(u) || ("A"..."Z").contains(u) || ("0"..."9").contains(u)
                 || u == "." || u == "_" || u == "-" || u == "/" || u == "~"
-        } && !s.dropFirst().contains("~")
+        }
+        let parts = s.dropFirst(s.hasPrefix("~/") ? 2 : 1).split(separator: "/")
+        return chars && !s.dropFirst().contains("~") && !parts.isEmpty && !parts.contains(".")
     }
 
     /// `7d`・`12h`・`7`（単位を省くと日）。日に直して返す（端数は切り上げ）。0 は「消さない」
