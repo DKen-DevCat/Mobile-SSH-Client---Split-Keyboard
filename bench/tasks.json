@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "note": "ベンチマーク B の課題（bench/agent_bench.py）。required は「どれかに当たればよい正規表現」の組の一覧で、すべての組に当たれば合格。forbidden は当たってはいけない正規表現、order は答えの中でこの順に出てくること。config の課題は expect（項目 → 値の正規表現）・forbid・expect_host（host の名前・ユーザー・アドレス・ポート・tmux・auth）と、config の検査で採点する。examples は採点の見本（--dry-run で確かめる）",
+  "thresholds": {"qa": 0.9, "config": 1.0},
+  "tasks": [
+    {
+      "id": "min-ios",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard を使うのに必要な、最低の iOS のバージョンは？ 対応する iPhone と iPad の世代も答えて。",
+      "required": [["(iOS|iPadOS)[^0-9]{0,12}17"]],
+      "forbidden": ["(iOS|iPadOS)\\s*1[0-6](\\.\\d+)?\\s*(以上|以降|から|or later|\\+)"],
+      "examples": {
+        "pass": ["iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。"],
+        "fail": ["iOS 16 以上で動きます。", "分かりません。"]
+      }
+    },
+    {
+      "id": "min-ios-en",
+      "kind": "qa",
+      "lang": "en",
+      "prompt": "What is the minimum iOS version required by Mobile-SSH-Client---Split-Keyboard?",
+      "required": [["iOS[^0-9]{0,12}17"]],
+      "forbidden": ["iOS\\s*1[0-6](\\.\\d+)?\\s*(or later|and later|or newer|or above|\\+)"],
+      "examples": {
+        "pass": ["It needs iOS / iPadOS 17 or later."],
+        "fail": ["iOS 15 or later.", "I don't know."]
+      }
+    },
+    {
+      "id": "price",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard を使うのに、お金はいくらかかる？ アプリの料金と、署名に有料の登録が要るかを答えて。",
+      "required": [
+        ["(?<![0-9,.])0\\s*円", "¥\\s*0(?![0-9,.])", "無料"],
+        ["(有料|Apple Developer Program|年会費)[^。]{0,30}(要らない|不要|いらない|必要ない|必要ありません|要りません)", "無料の\\s*Apple\\s*ID"]
+      ],
+      "examples": {
+        "pass": ["0 円です。アプリに料金は無く、署名は無料の Apple ID で行うので、有料の Apple Developer Program は要らない。"],
+        "fail": ["App Store で 480 円です。", "年 99 ドルの Apple Developer Program に登録すれば使えます。"]
+      }
+    },
+    {
+      "id": "app-store",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard は App Store からダウンロードできる？ できないなら、どうやって入れる？",
+      "required": [
+        ["(App Store|TestFlight)[^。]{0,40}(ない|ません|不可)", "いいえ"],
+        ["Xcode"],
+        ["ソース|ビルド"]
+      ],
+      "examples": {
+        "pass": ["いいえ。App Store・TestFlight では配っていない。Mac の Xcode でソースからビルドし、無料の Apple ID で署名して入れる。"],
+        "fail": ["はい、App Store で名前を検索して入れます。"]
+      }
+    },
+    {
+      "id": "install-steps",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard を Mac と iPhone に入れる手順を、順番に短く挙げて。人が手で行う所も書いて。",
+      "required": [
+        ["Xcode"],
+        ["Apple\\s*ID"],
+        ["USB"],
+        ["デベロッパ\\s*モード", "Developer Mode"],
+        ["ios_reinstall\\.sh", "splitterm install", "app_install"],
+        ["VPN\\s*とデバイス管理", "開発元[^。]{0,10}信頼", "Apple Development"],
+        ["指紋"]
+      ],
+      "order": [
+        "Apple\\s*ID",
+        "ios_reinstall\\.sh|splitterm install|app_install",
+        "VPN\\s*とデバイス管理|開発元[^。]{0,10}信頼|Apple Development"
+      ],
+      "examples": {
+        "pass": ["1. Xcode に Apple ID でサインインする（人）\n2. iPhone を USB でつないで信頼し、デベロッパモードをオンにする（人）\n3. scripts/ios_reinstall.sh で入れる\n4. 設定 > 一般 > VPN とデバイス管理で開発元を信頼する（人）\n5. config を送り、公開鍵を登録する（指紋をアプリの表示と見比べる）\n6. launchd に自動の入れ直しを登録する"],
+        "fail": [
+          "App Store からダウンロードして開くだけ。",
+          "端末の VPN とデバイス管理で開発元を信頼する。その後 Xcode に Apple ID でサインインし、USB でつないでデベロッパモードをオンにし、scripts/ios_reinstall.sh を実行する。指紋を確かめる。"
+        ]
+      }
+    },
+    {
+      "id": "seven-days",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "無料の Apple ID で入れたアプリは 7 日で使えなくなると聞いた。Mobile-SSH-Client---Split-Keyboard ではどうなる？",
+      "required": [["7\\s*日"], ["launchd"], ["自動"]],
+      "examples": {
+        "pass": ["無料の署名は 7 日で切れるが、Mac の launchd が 1 時間ごとに期限を見て、残りが 48 時間を切ったら自動で入れ直す。"],
+        "fail": ["7 日ごとに自分で App Store から更新する。"]
+      }
+    },
+    {
+      "id": "video-claude-code",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "iPhone で撮った動画を、Mac の tmux で動いている Claude Code に見せたい。Mobile-SSH-Client---Split-Keyboard を使うとどうなる？",
+      "required": [["コンタクトシート", "contact sheet"], ["文字起こし", "transcri"]],
+      "forbidden": ["Claude Code は動画を(そのまま)?読める"],
+      "examples": {
+        "pass": ["📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。"],
+        "fail": ["動画ファイルをそのまま scp で送れば、Claude Code は動画を読める。"]
+      }
+    },
+    {
+      "id": "config-location",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard の設定ファイルは、Mac と iPhone のそれぞれどこにある？",
+      "required": [["~/\\.config/splitterm/config"], ["ファイル.{0,3}アプリ", "設定を編集"]],
+      "examples": {
+        "pass": ["Mac は ~/.config/splitterm/config。iPhone は「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config（アプリの ＋ →「設定を編集」でも直せる）。"],
+        "fail": ["アプリの設定画面から変えます。"]
+      }
+    },
+    {
+      "id": "mcp-register",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard の MCP サーバーを Claude Code に登録するには？ 作り方とコマンドを答えて。",
+      "required": [
+        ["swift build[^\\n]*ios/TermCore"],
+        ["claude mcp add splitterm"],
+        ["splitterm[\"']?\\s+mcp"]
+      ],
+      "examples": {
+        "pass": ["swift build -c release --package-path ios/TermCore で作り、claude mcp add splitterm -- <repo>/ios/TermCore/.build/release/splitterm mcp で登録する。"],
+        "fail": ["npm install -g splitterm-mcp を入れて、claude mcp add で登録する。"]
+      }
+    },
+    {
+      "id": "privacy",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard は、ターミナルの内容やテレメトリを外部に送る？",
+      "required": [
+        ["(外|外部|どこ)[^。]{0,10}送(らない|りません|られない|られません)", "テレメトリ[^。]{0,15}(持たない|持ちません|ない|ありません|なし)"],
+        ["テレメトリ"]
+      ],
+      "forbidden": ["テレメトリを(送る|送ります|集める|集めます)"],
+      "examples": {
+        "pass": ["送らない。テレメトリ・クラウド同期・AI 機能を持たず、ターミナルの内容をディスクに書かず、外へ送らない。"],
+        "fail": ["分からない。", "匿名のテレメトリを送ります。"]
+      }
+    },
+    {
+      "id": "pubkey-fingerprint",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard の公開鍵を Mac に登録するとき、何を確かめる？",
+      "required": [["指紋", "fingerprint"], ["公開鍵をコピー", "アプリ(の画面|に出|の表示)"]],
+      "examples": {
+        "pass": ["アプリの ＋ →「公開鍵をコピー」に出た指紋と、scripts/ios_pubkey.sh が出す指紋が同じかを確かめてから足す。"],
+        "fail": ["特に確かめずに authorized_keys に追記すればよい。"]
+      }
+    },
+    {
+      "id": "gemini-cli",
+      "kind": "qa",
+      "lang": "ja",
+      "prompt": "Gemini CLI に、Mobile-SSH-Client---Split-Keyboard から動画をそのまま送って読ませられる？",
+      "required": [["(確か|確認|検証)[^。]{0,15}(ていない|てない|ていません|できていない|まだ|未)", "画像だけ"]],
+      "examples": {
+        "pass": ["動画・音声を読めるかをまだ確かめていないので、今は画像だけのエージェントとして扱う。"],
+        "fail": ["はい、Gemini CLI は動画を読めるので、そのまま送れる。"]
+      }
+    },
+    {
+      "id": "what-en",
+      "kind": "qa",
+      "lang": "en",
+      "prompt": "What is Mobile-SSH-Client---Split-Keyboard, and who is it for?",
+      "required": [["SSH"], ["iPhone", "iPad"], ["landscape", "split"], ["Mac"]],
+      "forbidden": ["SplitTerm"],
+      "examples": {
+        "pass": ["An SSH terminal for iPhone and iPad used in landscape with a split keyboard, for driving tmux and Claude Code on your own Mac."],
+        "fail": ["It is a mechanical keyboard for Windows PCs."]
+      }
+    },
+    {
+      "id": "config-font-host",
+      "kind": "config",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard の config を書いて。文字の大きさを 12 にし、Mac（ユーザー dken、アドレス mac.example.ts.net）に tmux のセッション main でつなぐ。",
+      "expect": {"font-size": "12(\\.0)?"},
+      "expect_host": {"user": "dken", "address": "mac\\.example\\.ts\\.net", "tmux": "main"},
+      "examples": {
+        "pass": [
+          "```\nhost = mac dken@mac.example.ts.net tmux=main\nfont-size = 12\n```",
+          "```text\n# 例\nhost = mymac dken@mac.example.ts.net\nfont-size = 12\n```"
+        ],
+        "fail": [
+          "```\nhost: dken@mac.example.ts.net\nfontSize: 12\n```",
+          "```\nhost = mac dken@mac.example.ts.net tmux=main\nfont-size = 14\n```"
+        ]
+      }
+    },
+    {
+      "id": "config-kana-clipboard",
+      "kind": "config",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard の config を書いて。起動時のキーボードをかなにし、アプリからコピーした内容を 30 秒で消す。Face ID のロックは切らない。",
+      "expect": {"keyboard": "kana", "clipboard-clear": "30(\\.0)?\\s*s?"},
+      "forbid": {"app-lock": "false|no|off|0"},
+      "examples": {
+        "pass": [
+          "```\nkeyboard = kana\nclipboard-clear = 30s\n```",
+          "```\nkeyboard = kana\nclipboard-clear = 30s\napp-lock = true\n```"
+        ],
+        "fail": [
+          "```\nkeyboard = kana\nclipboard-clear = 30s\napp-lock = false\n```",
+          "```\nkeyboard = japanese-flick\nclipboard = 30\n```"
+        ]
+      }
+    },
+    {
+      "id": "config-media-codex",
+      "kind": "config",
+      "lang": "ja",
+      "prompt": "Mobile-SSH-Client---Split-Keyboard の config を書いて。送り先のエージェントは Codex。動画はいつもコンタクトシートにして送り、受け取り箱は ~/inbox にする。位置情報は外したままにする。",
+      "expect": {"agent": "codex", "video-mode": "frames", "media-dir": "~/inbox/?"},
+      "forbid": {"media-strip-location": "false|no|off|0"},
+      "examples": {
+        "pass": ["```\nagent = codex\nvideo-mode = frames\nmedia-dir = ~/inbox\n```"],
+        "fail": ["```\nagent = codex\nvideo-mode = sheet\nmedia-dir = ~/inbox\nmedia-strip-location = false\n```"]
+      }
+    }
+  ]
+}
