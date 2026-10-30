@@ -42,7 +42,7 @@ final class SplitKeyboardView: UIView {
         case stick
         /// 空白を長押しして、キーボード全体をトラックパッドにしている指
         case trackpad
-        /// トラックパッドの間に触れたほかの指（タップで右クリック。キーは打たない）
+        /// トラックパッドの間に触れたほかの指（タップで左クリック。キーは打たない）
         case tap
     }
 
@@ -60,8 +60,10 @@ final class SplitKeyboardView: UIView {
         var windowPoint: CGPoint
         /// トラックパッドに入った点（ウィンドウの座標）
         var trackpadOrigin: CGPoint = .zero
-        /// トラックパッドに入ってから、タップの範囲を超えて動かしたか
+        /// トラックパッドに入ってから（`.tap` の指は触れてから）、タップの範囲を超えて動かしたか
         var moved = false
+        /// 触れた時刻（`.tap` の指が、タップの時間内に離れたかを見る）
+        var began: TimeInterval = 0
         var guide: FlickGuide?
         var timer: Timer?
         var repeated = false
@@ -228,11 +230,11 @@ final class SplitKeyboardView: UIView {
             let id = ObjectIdentifier(t)
             let wp = t.location(in: nil)
             if model.trackpadMode {
-                // トラックパッドの間は、ほかの指のタップが右クリック（キーは打たない）
+                // トラックパッドの間は、ほかの指のタップが左クリック（キーは打たない。ポインタには渡さず、離したときに決める）
                 let state = TouchState(key: hit.key, frame: hit.frame, start: p, windowPoint: wp, highlight: CALayer())
                 state.role = .tap
+                state.began = t.timestamp
                 active[id] = state
-                model.pointer.down(id, at: wp, time: t.timestamp)
                 continue
             }
             if case .pointer = hit.key.action {
@@ -295,7 +297,8 @@ final class SplitKeyboardView: UIView {
                 }
                 model.pointer.moved(id, to: s.windowPoint, time: t.timestamp)
             case .tap:
-                break
+                let p = t.location(in: self)
+                if hypot(p.x - s.start.x, p.y - s.start.y) > PointerStick.tapSlop { s.moved = true }
             case .key:
                 let p = t.location(in: self)
                 switch s.key.action {
@@ -330,7 +333,12 @@ final class SplitKeyboardView: UIView {
             case .trackpad:
                 endTrackpad(s, id: id, at: t.location(in: nil), time: t.timestamp)
             case .tap:
-                model.pointer.up(id, at: t.location(in: nil), time: t.timestamp)
+                // 触れていた時間と動きがタップの範囲なら左クリック（ノートパソコンのトラックパッドと同じ）
+                let p = t.location(in: self)
+                if !s.moved, hypot(p.x - s.start.x, p.y - s.start.y) <= PointerStick.tapSlop,
+                   t.timestamp - s.began <= PointerStick.tapTime {
+                    model.pointer.click(right: false)
+                }
             case .key:
                 switch s.key.action {
                 case .modifier(let m):
@@ -355,8 +363,11 @@ final class SplitKeyboardView: UIView {
             guard let s = active.removeValue(forKey: id) else { continue }
             finish(s)
             switch s.role {
-            case .stick, .tap:
+            case .stick:
                 model.pointer.cancel(id)
+            case .tap:
+                // 取り消されたタップは何もしない
+                break
             case .trackpad:
                 endTrackpad(s, id: id, at: s.windowPoint, time: t.timestamp, cancelled: true)
             case .key:
