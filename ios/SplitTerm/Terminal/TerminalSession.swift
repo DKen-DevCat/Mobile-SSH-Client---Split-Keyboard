@@ -80,8 +80,10 @@ final class TerminalSession {
             return
         }
         let allowPassword = config.passwordAuth || host.auth == .password
-        // 閉包の型を先に決める（async の閉包を三項演算子に入れると、型を推し量れない）
-        let hostKeyCheck: SSHConnection.HostKeyCheck = { [weak self] presented in
+        // 閉包の型を先に決める（async の閉包を三項演算子に入れると、型を推し量れない）。
+        // 閉包は裏で呼ばれるので、self は弱い参照の箱で渡し、画面（presenter）にはメインで触る
+        let weakSelf = WeakRef(self)
+        let hostKeyCheck: SSHConnection.HostKeyCheck = { presented in
             let stored: String?
             do {
                 stored = try HostKeyStore.load(for: host.endpointID)
@@ -91,8 +93,10 @@ final class TerminalSession {
             }
             let verdict = HostKeyVerdict.judge(stored: stored, presented: presented)
             if verdict == .trusted { return true }
-            guard let presenter = await self?.presenter else { return false }
-            let ok = await presenter.confirmHostKey(host: host, verdict: verdict)
+            let ok = await Task { @MainActor in
+                guard let presenter = weakSelf.value?.presenter else { return false }
+                return await presenter.confirmHostKey(host: host, verdict: verdict)
+            }.value
             guard ok, case .unknown = verdict else { return false }
             // 確かめている間に、別の接続が鍵を保存したかもしれない。まだ無いときだけ保存し、あれば照合し直す
             if let now = try? HostKeyStore.load(for: host.endpointID) { return now == presented }
@@ -105,19 +109,21 @@ final class TerminalSession {
         }
         var passwordPrompt: SSHConnection.PasswordPrompt?
         if allowPassword {
-            passwordPrompt = { [weak self] in
-                guard let presenter = await self?.presenter else { return nil }
-                return await presenter.askPassword(host: host)
+            passwordPrompt = {
+                await Task { @MainActor in
+                    guard let presenter = weakSelf.value?.presenter else { return nil }
+                    return await presenter.askPassword(host: host)
+                }.value
             }
         }
         let conn = SSHConnection(target: target, key: key, hostKeyCheck: hostKeyCheck, passwordPrompt: passwordPrompt)
         let engine = self.engine
         conn.onData = { bytes in engine.feed(bytes) }
         // conn を強く持たない（持つと onClose → conn の循環で、接続ごとに NIO のチャンネルが残る）
-        conn.onClose = { [weak self, weak conn] (reason: SSHCloseReason) in
-            DispatchQueue.main.async { [weak self, weak conn] in
+        conn.onClose = { [weak conn] (reason: SSHCloseReason) in
+            DispatchQueue.main.async { [weak conn] in
                 guard let conn else { return }
-                self?.connectionClosed(reason, conn)
+                weakSelf.value?.connectionClosed(reason, conn)
             }
         }
         connection = conn
@@ -261,4 +267,10 @@ final class ConnectionBox: @unchecked Sendable {
 
     func set(_ c: SSHConnection?) { lock.withLock { value = c } }
     func get() -> SSHConnection? { lock.withLock { value } }
+}
+
+/// 裏で呼ばれる閉包に、弱い参照を渡す箱（中身にはメインで触る）
+private final class WeakRef<T: AnyObject>: @unchecked Sendable {
+    weak var value: T?
+    init(_ value: T) { self.value = value }
 }
