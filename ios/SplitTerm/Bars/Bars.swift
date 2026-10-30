@@ -14,6 +14,10 @@ final class EnvironmentBar: UIView {
     var onZoom: (() -> Void)?
     var onKeyboard: (() -> Void)?
     var onShowDiagnostics: (() -> Void)?
+    /// 📎（写真・動画・音声・ファイルを送る）。メニューは画面の側で作る
+    let attach = UIButton(type: .system)
+    /// メディアを送っている途中の進み具合
+    private let progress = UILabel()
 
     private let tabs = UIStackView()
     private let scroll = UIScrollView()
@@ -42,7 +46,11 @@ final class EnvironmentBar: UIView {
         for b in [zoom, keyboard] {
             b.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
         }
-        for v in [plus, warning, zoom, keyboard] { addSubview(v) }
+        attach.setImage(UIImage(systemName: "paperclip"), for: .normal)
+        attach.showsMenuAsPrimaryAction = true
+        progress.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        progress.isHidden = true
+        for v in [plus, attach, progress, warning, zoom, keyboard] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -51,7 +59,15 @@ final class EnvironmentBar: UIView {
         backgroundColor = colors.background
         accent = colors.accent
         text = colors.text
-        for b in [plus, zoom, keyboard] { b.tintColor = colors.text }
+        for b in [plus, attach, zoom, keyboard] { b.tintColor = colors.text }
+        progress.textColor = colors.subText
+    }
+
+    /// 送っている途中の進み具合（nil で消す）
+    func setProgress(_ text: String?) {
+        progress.text = text
+        progress.isHidden = text == nil
+        setNeedsLayout()
     }
 
     func update(tabs items: [Tab], zoomPercent: Int, keyboard kind: KeyboardKind, showKeyboardButton: Bool,
@@ -107,6 +123,13 @@ final class EnvironmentBar: UIView {
             right -= w
             b.frame = CGRect(x: right, y: 0, width: w, height: h)
         }
+        if !progress.isHidden {
+            let w = min(110, progress.sizeThatFits(CGSize(width: 200, height: h)).width + 8)
+            right -= w
+            progress.frame = CGRect(x: right, y: 0, width: w, height: h)
+        }
+        right -= 36
+        attach.frame = CGRect(x: right, y: 0, width: 36, height: h)
         right -= 36
         plus.frame = CGRect(x: right, y: 0, width: 36, height: h)
         scroll.frame = CGRect(x: 4, y: 0, width: max(0, right - 4), height: h)

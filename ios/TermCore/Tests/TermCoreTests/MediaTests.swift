@@ -68,6 +68,11 @@ final class InboxAndCommandTests: XCTestCase {
         XCTAssertTrue(f.contains("if [ \"$s\" = '\(sum)' ]; then mv 'a.jpg.part' 'a.jpg' && echo ok"))
     }
 
+    func testDiscard() throws {
+        XCTAssertEqual(try RemoteCommands.discard(mediaDir: "~/in", name: "a.jpg"), "rm -f \"$HOME\"/'in'/'a.jpg.part'")
+        XCTAssertThrowsError(try RemoteCommands.discard(mediaDir: "~/in", name: "*"))
+    }
+
     func testParsePrepare() {
         XCTAssertEqual(RemoteCommands.parsePrepare("0\n/Users/me/.splitterm/inbox\n")?.offset, 0)
         XCTAssertEqual(RemoteCommands.parsePrepare("motd line\n1234\n/Users/me/in")?.offset, 1234)

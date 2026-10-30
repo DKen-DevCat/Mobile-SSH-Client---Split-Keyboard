@@ -37,6 +37,9 @@ final class RootViewController: UIViewController {
 
     // 安全（ロックと画面の保護は SecurityGate。ロック中は入力をすべて捨てる）
     private lazy var gate = SecurityGate(colors: colors)
+    // メディアを送る（docs/design.md「メディアを送る」）
+    private let picker = MediaPicker()
+    private let sender = MediaSender()
     /// 起動時の自動接続を、最初にロックを解くまで待たせる
     private var autoConnectPending = true
     private let pathMonitor = NWPathMonitor()
@@ -72,6 +75,7 @@ final class RootViewController: UIViewController {
         envBar.onKeyboard = { [weak self] in self?.switchKeyboard() }
         envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
         candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
+        setUpMedia()
 
         gate.scene = { [weak self] in self?.view.window?.windowScene }
         gate.onResume = { [weak self] in self?.resume() }
@@ -412,6 +416,58 @@ final class RootViewController: UIViewController {
         guard let s = active else { return }
         s.scrollTop = nil
         s.send(KeyEncoder.paste(text, ctx))
+    }
+
+    // MARK: メディアを送る
+
+    private func setUpMedia() {
+        picker.presenter = self
+        picker.onPicked = { [weak self] items in self?.sendMedia(items) }
+        picker.onError = { [weak self] message in self?.alert("メディア", message) }
+        sender.onStatus = { [weak self] text in self?.envBar.setProgress(text) }
+        sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
+        sender.onInsert = { [weak self] text in self?.insertMediaPaths(text) }
+        envBar.attach.menu = UIMenu(children: [
+            UIAction(title: "写真・動画を選ぶ", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+                self?.startPicking { $0.pickLibrary() }
+            },
+            UIAction(title: "撮る", image: UIImage(systemName: "camera")) { [weak self] _ in
+                self?.startPicking { $0.capture() }
+            },
+            UIAction(title: "録音する", image: UIImage(systemName: "mic")) { [weak self] _ in
+                self?.startPicking { $0.record() }
+            },
+            UIAction(title: "ファイルを選ぶ", image: UIImage(systemName: "doc")) { [weak self] _ in
+                self?.startPicking { $0.pickFile() }
+            },
+        ])
+    }
+
+    /// 繋がっているタブがあるときだけ選ばせる（選んだのに送れない、を避ける）
+    private func startPicking(_ open: (MediaPicker) -> Void) {
+        guard !gate.isLocked else { return }
+        guard let s = active, s.isConnected else {
+            alert("メディア", "繋がっているタブがありません。接続してから送ってください")
+            return
+        }
+        guard !sender.busy else {
+            alert("メディア", "前のメディアを送っている途中です")
+            return
+        }
+        open(picker)
+    }
+
+    private func sendMedia(_ items: [PickedMedia]) {
+        guard let s = active else { return }
+        sender.send(items, config: config, session: s)
+    }
+
+    /// 送ったファイルのパスを入力行に入れる（Enter は押さない。貼り付けと同じく制御文字は除く）
+    private func insertMediaPaths(_ text: String) {
+        guard !gate.isLocked, let s = active else { return }
+        if composer.isComposing { commitComposition(nil) }
+        s.scrollTop = nil
+        s.send(KeyEncoder.paste(text, encodingContext))
     }
 
     private func copyPublicKey() {

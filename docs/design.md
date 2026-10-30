@@ -12,10 +12,10 @@ iPhone と iPad 向けに、SSH 先のシェルを操作するネイティブの
 
 | 区分 | 内容 |
 | --- | --- |
-| 含む | SSH 接続、切断からの自動復帰（tmux）、横持ちのレイアウト（iPhone・iPad）、US 分割・かなフリック（かな漢字変換つき）、iPad のハードウェアキーボード、タッチ操作、高解像度描画、テーマ、config ファイル 1 枚の設定、無料の署名での配布と自動の入れ直し |
+| 含む | SSH 接続、切断からの自動復帰（tmux）、横持ちのレイアウト（iPhone・iPad）、US 分割・かなフリック（かな漢字変換つき）、iPad のハードウェアキーボード、タッチ操作、高解像度描画、テーマ、config ファイル 1 枚の設定、無料の署名での配布と自動の入れ直し、写真・動画・音声の送信（動画のコンタクトシート化と文字起こし）、Mac の `splitterm` コマンドと MCP、Get Started のサイト（Cloudflare Pages）と AIO のベンチマーク |
 | 後続タスク | 入力行のネイティブ編集（UITextInput の影のテキスト）、ハードウェアキーボードでの日本語入力、mosh 系の接続方式 |
 | 拡張 | Haiku を指揮役にしたエージェントハーネス |
-| 含まない | 縦持ち、iOS のシステムキーボード、App Store・TestFlight での配布、SFTP・ポート転送、アプリ内での AI コマンド生成、クラウド同期、絵文字パレット |
+| 含まない | 縦持ち、iOS のシステムキーボード、App Store・TestFlight での配布、SFTP・ポート転送（メディアは SSH の exec で送る）、アプリ内での AI コマンド生成、クラウド同期、絵文字パレット、独自ドメイン |
 
 ### この版で決めたこと（2026-10-30）
 
@@ -26,6 +26,9 @@ iPhone と iPad 向けに、SSH 先のシェルを操作するネイティブの
 | 3 | 設定は Ghostty のように config ファイル 1 枚で管理する | 設定画面を作らない。テーマ・キーボード・接続先・安全の設定をすべて 1 枚に書く（「設定ファイル」） |
 | 4 | 配布は lfm3-vl-server の iPhone アプリを踏襲する（無料の署名、launchd が 1 時間ごとに期限を見て入れ直す） | App Store との相性を判断基準から外した（「配布」） |
 | 5 | 通信の速さと操作感を最優先にする | 性能目標はそのまま。SSH は Network.framework の上で直接動かし、入力は指を離した瞬間に送る |
+| 7 | Get Started を Cloudflare Pages（無料、`mobile-ssh-client---split-keyboard.pages.dev`）で配信し、設定と運用はエージェントが Mac の `splitterm`（CLI と MCP）で実行できるようにする。サイトは日本語＋英語（トップ・Get Started・llms.txt） | 設計案 `docs/proposal-2026-10-30.md`（2026-10-30 承認） |
+| 8 | 写真・動画・音声（撮影・録音も）を、同じ SSH の接続で Mac の受け取り箱へ原本のまま送る。動画を読めないエージェントには、12 枚のコンタクトシート（1,568px）と端末の中での文字起こしにする。位置情報は既定で外す。Gemini CLI は確かめるまで画像だけのエージェントとして扱う | 同上 |
+| 9 | アプリの名前は「Mobile-SSH-Client---Split-Keyboard」。コマンド・フォルダの短い名前は `splitterm` / `SplitTerm`（内部） | 同上 |
 | 6 | 最低 OS を iOS / iPadOS 17 にする。古い OS に合わせて操作感を落としたり、保守の止まった版や非公式の依存を抱えたりしない | iPad 第 5 世代（iPadOS 16 まで）を外した。かな漢字変換（AzooKey の最新版）を今回組み込んだ。SSH は Citadel ではなく Apple 公式の swift-nio-ssh を維持した（「技術スタックと段階計画」） |
 
 ## 設計原則と性能目標
@@ -154,6 +157,7 @@ Ghostty と同じく、**config ファイル 1 枚**ですべてを決める。�
 | 表示 | `font-family = system-mono`、`font-family-cjk = Hiragino Sans`、`font-size = 10`、`zoom-steps = 85, 100`（先頭が起動時）、`color-space = display-p3`、`background`・`foreground`・`cursor-color`・`accent`・`selection-background`、`palette = 0〜15=#RRGGBB`、`minimum-contrast = 4.5`、`cursor-style = block`、`cursor-blink = false`、`scrollback-limit = 10000` |
 | キーボード | `keyboard = us`、`keyboard-pitch = auto`、`key-repeat-delay = 400ms`、`key-repeat-interval = 50ms`、`option-as-meta = true`、`haptics = true`、`newline = auto`、`soft-keyboard-with-hardware = false` |
 | 操作 | `mouse-reporting = true` |
+| メディア | `agent = claude-code`（`codex`・`generic`）、`agent-media`（読める種類の上書き）、`media-dir = ~/.splitterm/inbox`、`media-retention = 7d`、`media-strip-location = true`、`media-insert = "{paths} "`、`video-mode = auto`、`video-frames = 12`、`video-sheet-size = 1568`、`video-transcribe = true`、`audio-mode = auto` |
 | 安全 | `app-lock = true`、`privacy-blur = true`、`clipboard-clear = 60s` |
 
 ## 入力設計
@@ -373,6 +377,75 @@ Ghostty と同じく、**config ファイル 1 枚**ですべてを決める。�
 
 入れ直しても書類フォルダ（config・公開鍵）とキーチェーン（Secure Enclave の鍵・ホスト鍵）は残る（lfm3-vl-server の N0 で確かめた）。
 
+## メディアを送る
+
+📎 から写真・動画を選ぶ・撮る・録音する・ファイルを選ぶと、同じ SSH の接続で接続先の受け取り箱（`media-dir`）へ送り、届いたファイルのパスを入力行に入れる（Enter は押さない）。Claude Code などのエージェントは、そのパスで読む。
+
+### iOS の制限で落とさない
+
+| 入口 | 使うもの | 落とさないための設定 |
+| --- | --- | --- |
+| 写真・動画を選ぶ | PHPicker（写真へのアクセスの許可が要らない） | `preferredAssetRepresentationMode = .current`（HEIC・HEVC・ProRAW を変換しない）。複数選べる |
+| 撮る | UIImagePickerController | 画質 `.typeHigh`、長さの上限 4 時間（既定は 10 分） |
+| 録音 | AVAudioRecorder | AAC 48kHz、時間の上限なし |
+| ファイル | UIDocumentPicker | どの形式でも |
+
+### 何を送るか（`MediaPlan`）
+
+| `agent` | 画像 | 動画 | 音声 |
+| --- | --- | --- | --- |
+| `claude-code`（既定）・`codex` | png・jpeg・gif・webp は原本。ほか（HEIC など）は JPEG（品質 0.92、大きさは変えない） | コンタクトシート＋添え書き（文字起こし） | 文字起こし |
+| `generic` | png・jpeg は原本。ほかは JPEG | 同上 | 同上 |
+| `agent-media` で `video`・`audio` を足したとき | 同上 | 原本 | 原本 |
+
+`video-mode`・`audio-mode` で、いつも原本・いつもシート（文字起こし）・両方、も選べる。位置情報は既定で外す（写真はメタデータだけ書き換えて再圧縮しない。動画は再エンコードなしで個人の情報を外す）。
+
+### 送り方
+
+- 名前はアプリが付ける（`20261030-101010-ab12.heic`。日時と乱数だけ）。接続先で動かすコマンドは決まった文字列に、確かめた受け取り箱の場所（`~/` か `/` で始まる英数と `. _ - /`）と名前と SHA-256 だけを入れる（`RemoteCommands`）。
+- 端末とは別のチャンネルで `exec` する（PTY は開かない）。`umask 077`、受け取り箱を作り、古いもの（`media-retention`）を消し、途中まで届いている大きさを聞く → 続きを `cat >>` で送る（256KB ずつ、書き終わるのを待ってから次。SSH の窓が流れを決める）→ SHA-256 が合えば `.part` を外す。合わなければ消して、もう 1 度だけ最初から。
+- 切れたら、繋ぎ直しを 30 秒まで待って、同じ名前で続きから（3 回まで）。裏に回っても、iOS が許す間は送る。
+- SFTP は使わない（swift-nio-ssh に SFTP のクライアントが無く、接続先で切られていることもある）。
+
+## 動画を画像にして送る
+
+画像は読めるが動画は読めないエージェントへ、動画を少ないトークンで渡す。処理はすべて端末の中で、軽くする。
+
+1. **下見**: 64px の縮図を 0.5 秒ごと（最大 240 枚）に取り、8×8 の明るさの前との差を点数にする。全解像度は読まない。
+2. **選ぶ**: 時間を枚数の区間に分け、各区間で最も変わった時刻を選ぶ（最初の 1 枚は先頭）。既定 12 枚、10 秒未満は半分（`ContactSheetPlanner.select`）。
+3. **並べる**: 選んだ時刻だけを、タイルの大きさで取る。シートの長い辺は 1,568px（`video-sheet-size`）。並びは、シートが 16:9 に近くなるもの（16:9 の動画 12 枚は 4×3 で 1,568×660、縦長の動画は 6×2）。各タイルの左下に時刻。JPEG 品質 0.8。
+4. **文字起こし**: `SFSpeechRecognizer`（日本語）を `requiresOnDeviceRecognition` で。端末にモデルが無ければ、外へ送らずに飛ばす（添え書きに理由を書く）。
+5. **添え書き**: 長さ・解像度・各タイルの時刻・文字起こしを Markdown 1 枚（`*.video.md`）に。シートと添え書きのパスを入力行へ。
+
+| 送り方（Claude、幅×高さ÷750） | 目安のトークン |
+| --- | --- |
+| 12 枚を 1,568×882 で別々に | 約 22,100 |
+| **コンタクトシート 1 枚（4×3、1,568×660）** | **約 1,400** |
+| ＋ 1 分の文字起こし | 約 300〜500 |
+
+軽さの目標: iPad 第 6 世代（A10）で 1 分の 1080p の動画を 3 秒以内（文字起こしを除く）、メモリ 50MB 以内。
+
+## Get Started と MCP
+
+### Mac の `splitterm`（CLI と MCP）
+
+`ios/TermCore` の依存の無いパッケージにある（数秒でビルドできる）。config の読み取りはアプリと同じ `TermCore` なので、検査の規則がずれない。`splitterm mcp` で MCP サーバー（stdio、1 行に 1 つの JSON-RPC）になる。ネットには出ない。外のプログラム（scripts/）はシェルを通さずに起動する。
+
+| 道具（MCP） | CLI | すること |
+| --- | --- | --- |
+| `doctor` | `doctor` | Xcode・無料の Team・jq・tmux・リモートログイン・端末・config・アプリ・公開鍵を調べ、直し方を返す。人の手が要るものに印（needs_human） |
+| `config_show` / `config_check` | `config show` / `config check` | 今効いている値 / 読めない行 |
+| `config_set` | `config set KEY VALUE` | 1 項目を書き換える（コメントと並びを残す。読めなくなる書き換えと改行の混入は断る） |
+| `host_add` / `host_remove` | `host add` / `host remove` | 接続先を足す・消す |
+| `config_push` | `push` | 端末へ送る（読めない行があれば送らない） |
+| `pubkey_install` | `pubkey --fingerprint` | 公開鍵を authorized_keys へ（アプリに出た指紋が要る。`restrict,pty` 付き） |
+| `app_install` / `app_status` | `install` / `status` | 入れ直す / 期限 |
+| `inbox_list` / `inbox_clean` | `inbox list` / `inbox clean` | 端末から届いたメディアの一覧（新しい順）/ 古いものを消す |
+
+### サイトと AIO
+
+`site/`（Markdown から標準ライブラリだけの `site/build.py` で作り、生成物も git に入れる。Cloudflare 側ではビルドしない）。すべてのページに Markdown の双子、`llms.txt`・`llms-full.txt`、JSON-LD、`robots.txt`（AI のクローラを許す）、`sitemap.xml`、安全なヘッダー（`_headers`）。費用は 0 円（Cloudflare Pages の無料枠、公開リポジトリの GitHub Actions）。ベンチマークは `bench/`（A: 静的な検査を CI で毎回、B: 手元の `claude -p` に課題を解かせる、C: AI 検索での見え方を手で記録）。詳細は `site/README.md` と `docs/proposal-2026-10-30.md`。
+
 ## 拡張：エージェントハーネス
 
 拡張として、軽量な Haiku を指揮役（オーケストレーター）にし、必要なときだけ上位モデルを呼ぶハーネスを作る。目的はエージェントの応答速度で、簡単な依頼は Haiku が即答し、難しい依頼だけを分解して並列に回す。
@@ -418,6 +491,11 @@ Sakana AI の Conductor は、7B の小さなモデルが質問ごとに作業�
 | 2. 横持ちのキーボード | レイアウト算出（iPhone・iPad）、US 分割、かなフリック（ひらがな・カタカナ）、同時入力、ハードウェアキーボード | 実装済み・実機未確認 |
 | 3. タッチ操作 | タップ、スクロール（慣性）、選択とコピー、マウス報告の 3 モード、ピンチと倍率、入力行のタップでカーソル移動 | 実装済み・実機未確認 |
 | 4. 仕上げ | アプリロック、画面の保護、クリップボード消去 | 実装済み・実機未確認 |
+| M1. splitterm | CLI と MCP、config の編集 | 実装済み・Mac で未ビルド |
+| M2. サイト | Get Started、llms.txt、Cloudflare Pages、CI の静的な検査 | 実装済み |
+| M3. メディア | 選ぶ・撮る・録音・ファイル、原本、位置情報、再開と SHA-256 | 実装済み・実機未確認 |
+| M4. 動画 | コンタクトシート、文字起こし、添え書き | 実装済み・実機未確認 |
+| M5. ベンチマーク | 静的な検査（CI）、エージェントの課題、AI 検索の記録 | 整備済み・初回の計測はまだ |
 | 5. 入力行のネイティブ編集 | UITextInput の影のテキスト、虫眼鏡、OSC 133 | 未着手 |
 | 6. かな漢字変換 | AzooKey、候補バー、文節の確定 | 実装済み・実機未確認 |
 | 7. 拡張ハーネス | 固定パターン版から始める | 未着手 |

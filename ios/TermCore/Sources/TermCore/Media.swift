@@ -130,6 +130,12 @@ public enum RemoteCommands {
             + "if [ \"$s\" = '\(sha256)' ]; then mv '\(name).part' '\(name)' && echo ok; else rm -f '\(name).part'; echo ng; fi"
     }
 
+    /// 途中まで届いているものを捨てる（手元のファイルより大きいなど、続きから送れないとき）
+    public static func discard(mediaDir: String, name: String) throws -> String {
+        guard InboxName.isSafe(name) else { throw UnsafeInput() }
+        return "rm -f \(try dir(mediaDir))/'\(name).part'"
+    }
+
     /// prepare の出力を読む（届いている大きさ、受け取り箱の絶対パス）
     public static func parsePrepare(_ output: String) -> (offset: Int, directory: String)? {
         let lines = output.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }

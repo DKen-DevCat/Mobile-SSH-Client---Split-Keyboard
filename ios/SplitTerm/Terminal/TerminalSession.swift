@@ -224,6 +224,12 @@ final class TerminalSession {
 
     var isConnected: Bool { if case .connected = state { return true } else { return false } }
 
+    /// メディアを送るのに使う接続（端末を開いて繋がっているときだけ）
+    var uploadConnection: SSHConnection? {
+        guard isConnected, let c = connection, c.isOpen else { return nil }
+        return c
+    }
+
     func send(_ bytes: [UInt8]) {
         guard !bytes.isEmpty else { return }
         connection?.send(bytes)
