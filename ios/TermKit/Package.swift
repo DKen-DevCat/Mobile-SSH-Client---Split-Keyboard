@@ -17,9 +17,10 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssh.git", .upToNextMinor(from: "0.15.1")),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.81.0"),
         .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.28.0"),
-        // SwiftTerm が保守するのは最新版だけ（SECURITY.md）。1.99 系（2.0 の API）は動いているので、次の小さな版までに止め、
-        // 新しい版が出たら上げる
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", .upToNextMinor(from: "1.99.2")),
+        // SwiftTerm が保守するのは最新版だけ（SECURITY.md）。ふだんは最新に追従する。
+        // 一時的に 1.99.1 に止めている: 1.99.2（2026-10-29）の PowerlineRenderer.swift:386 が Xcode 26.3（Swift 6.2.4）で
+        // コンパイルできない（#774 で入った式。1.99.1 には無い。使っている API は同じ）。直った版が出たら最新に戻す
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.99.1"),
         // 1.0 までは小さな版で壊れる変更がありうる（README の指示どおり upToNextMinor）
         .package(url: "https://github.com/azooKey/AzooKeyKanaKanjiConverter.git", .upToNextMinor(from: "0.11.2")),
     ],

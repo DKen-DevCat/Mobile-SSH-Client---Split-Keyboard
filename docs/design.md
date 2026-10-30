@@ -504,7 +504,7 @@ Sakana AI の Conductor は、7B の小さなモデルが質問ごとに作業�
 | UI | UIKit | 自前キーボードとターミナルビューは細かいタッチ制御が要る。画面は 1 枚なので SwiftUI は使わない |
 | レイアウト | 自前のレイアウト算出（`LayoutEngine`） | iPhone と iPad を 1 つの仕組みで扱う |
 | 設定 | 自前の config 読み取り（`ConfigParser`） | Ghostty と同じ形の 1 枚のファイル |
-| 端末エミュレーション | SwiftTerm（MIT、1.99 系＝2.0 の API）の解釈・画面バッファ部分 | xterm 互換の実績がある。別スレッドで解釈し、ロックの下で画面の写しを取る（`makeRenderSnapshot`。1.20 以前には無く、メインスレッドで解釈することになる）。作者が保守するのは最新版だけなので、最新に追従する。描画部分は使わない。接続先に許すことを絞る（「セキュリティ要件」） |
+| 端末エミュレーション | SwiftTerm（MIT、1.99 系＝2.0 の API）の解釈・画面バッファ部分 | xterm 互換の実績がある。別スレッドで解釈し、ロックの下で画面の写しを取る（`makeRenderSnapshot`。1.20 以前には無く、メインスレッドで解釈することになる）。作者が保守するのは最新版だけなので、最新に追従する（2026-10-30 時点は 1.99.1 に一時的に固定: 1.99.2 が Xcode 26.3 でコンパイルできないため。直った版で戻す）。描画部分は使わない。接続先に許すことを絞る（「セキュリティ要件」） |
 | 描画 | Metal＋Core Text | 物理ピクセル描画、Display P3、グリフアトラス |
 | SSH | swift-nio-ssh（Apple 公式、0.15 系）＋ swift-nio-transport-services（Network.framework） | Apple が保守を続けている（2026-10 も更新）。Secure Enclave の鍵をそのまま渡せる。Network.framework で TCP の keepalive と回線の扱いを iOS に任せる。iOS 17 に上げても Citadel にしない理由: Citadel は Apple の swift-nio-ssh ではなく個人のフォーク（Wellz26/swift-nio-ssh 0.3 系）に依存しており、暗号と認証の部分を保守の見えないコードに頼ることになる。Citadel の便利さ（SFTP・RSA・高水準の API）は、このアプリでは使わない（PTY・exec・公開鍵認証・ホスト鍵の照合だけ） |
 | かな漢字変換 | AzooKeyKanaKanjiConverter（0.11 系、同梱の辞書） | iOS で動く実績がある変換エンジン。ニューラル変換（Zenzai）は使わない（重さとアプリの大きさ） |
