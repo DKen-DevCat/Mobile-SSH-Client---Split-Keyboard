@@ -4,10 +4,16 @@ import UIKit
 /// キーボードが入力ルータへ渡すもの
 enum KeyboardEmit {
     case key(TermKey, KeyModifiers)
-    case flick(keyID: String, set: FlickSet, direction: FlickDirection)
+    /// フリック。upper は英字を大文字にする（a/A が入のとき）
+    case flick(keyID: String, set: FlickSet, direction: FlickDirection, upper: Bool)
     case kanaBreak
     case kanaModify
+    /// 前のキーボードへ（🌐 のタップ）
     case switchKeyboard
+    /// そのキーボードへ（ABC・あいう）
+    case setKeyboard(KeyboardKind)
+    /// キーボードを選ぶ吹き出しを出す（🌐 の長押し）。anchor はウィンドウの座標
+    case keyboardMenu(anchor: CGRect)
     /// Touch ID の位置のキー。アプリをすぐロックする
     case lockApp
 }
@@ -51,6 +57,14 @@ final class KeyboardModel {
             if m == .fn && !cancelled && !usedWhileHeld.contains(.fn) { output?.keyboard(.switchKeyboard) }
         }
         onChange?()
+    }
+
+    /// 🌐 を長押しした。離してもキーボードは切り替えず、選ぶ吹き出しを出す
+    func globeLongPressed(anchor: CGRect) {
+        // fn として矢印などに使っている間は出さない
+        guard !usedWhileHeld.contains(.fn) else { return }
+        usedWhileHeld.insert(.fn)
+        output?.keyboard(.keyboardMenu(anchor: anchor))
     }
 
     func toggleCapsLock() {
@@ -111,10 +125,12 @@ final class KeyboardModel {
             emit = .key(.newline, [])
         case .switchKeyboard:
             emit = .switchKeyboard
+        case .setKeyboard(let kind):
+            emit = .setKeyboard(kind)
         case .lockApp:
             emit = .lockApp
         case .flick(let set):
-            emit = .flick(keyID: spec.id, set: set, direction: direction)
+            emit = .flick(keyID: spec.id, set: set, direction: direction, upper: capsLock || mods.contains(.shift))
         case .kanaBreak:
             emit = .kanaBreak
         case .kanaModify:

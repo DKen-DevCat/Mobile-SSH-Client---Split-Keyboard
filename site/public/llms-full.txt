@@ -426,7 +426,7 @@ splitterm config check --file path/to/config
 
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
-| `keyboard` | `us` | 起動時のキーボード: us（英語。Mac の英国式の配列）/ kana（かなフリック） |
+| `keyboard` | `english` | 起動時のキーボード（🌐 の長押しでも選べる）: romaji（分割・ローマ字）/ english（分割・英語。Mac の JIS 配列）/ kana（日本語フリック分割）/ flick-romaji（英語フリック分割・ローマ字）/ flick-english（英語フリック分割・英語） |
 | `keyboard-pitch` | `auto` | キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50） |
 | `key-repeat-delay` | `400ms` | ⌫ と矢印の長押しリピート |
 | `key-repeat-interval` | `50ms` | ⌫ と矢印の長押しリピート |

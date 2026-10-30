@@ -25,7 +25,7 @@ public struct TermConfig: Equatable, Sendable {
     public var scrollbackLimit = 10_000
 
     // MARK: キーボード
-    public var keyboard: KeyboardKind = .us
+    public var keyboard: KeyboardKind = .english
     /// キーの基準の大きさ（pt）。nil なら画面から算出する
     public var keyboardPitch: Double? = nil
     public var keyRepeatDelay = 0.40
@@ -149,8 +149,49 @@ public enum CursorShape: String, Sendable, CaseIterable {
     case block, bar, underline
 }
 
+/// キーボードの種類（docs/design.md「入力設計」）。🌐 の長押しで選ぶ
 public enum KeyboardKind: String, Sendable, CaseIterable {
-    case us, kana
+    /// 分割キーボード（ローマ字）。Mac の JIS 配列で、英字をローマ字としてかなにする
+    case romaji
+    /// 分割キーボード（英語）。Mac の JIS 配列（日本語の刻印なし）
+    case english
+    /// 日本語フリック分割
+    case kana
+    /// 英語フリック分割（ローマ字）。英字のフリックを、ローマ字としてかなにする
+    case flickRomaji = "flick-romaji"
+    /// 英語フリック分割（英語）
+    case flickEnglish = "flick-english"
+
+    /// 🌐 の長押しのメニューの順
+    public static let menuOrder: [KeyboardKind] = [.romaji, .english, .kana, .flickRomaji, .flickEnglish]
+
+    public var title: String {
+        switch self {
+        case .romaji: return "分割キーボード（ローマ字）"
+        case .english: return "分割キーボード（英語）"
+        case .kana: return "日本語フリック分割"
+        case .flickRomaji: return "英語フリック分割（ローマ字）"
+        case .flickEnglish: return "英語フリック分割（英語）"
+        }
+    }
+
+    /// 環境バーに出す短い名前
+    public var shortTitle: String {
+        switch self {
+        case .romaji: return "ローマ字"
+        case .english: return "英語"
+        case .kana: return "かな"
+        case .flickRomaji: return "abcローマ字"
+        case .flickEnglish: return "abc"
+        }
+    }
+
+    /// フリックの面（上に寄せて置く）
+    public var isFlick: Bool { self == .kana || self == .flickRomaji || self == .flickEnglish }
+    /// 英字をローマ字としてかなにする
+    public var usesRomaji: Bool { self == .romaji || self == .flickRomaji }
+    /// かな漢字変換を使う（候補バーを出す）
+    public var isJapanese: Bool { self == .romaji || self == .kana || self == .flickRomaji }
 }
 
 /// 改行キーが送るもの（docs/design.md「改行と送信」）

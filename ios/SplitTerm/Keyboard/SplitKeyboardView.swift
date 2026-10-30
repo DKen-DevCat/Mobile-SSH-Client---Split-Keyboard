@@ -17,6 +17,8 @@ final class SplitKeyboardView: UIView {
     }
     /// フリックとみなす移動量（pt）
     var flickThreshold: CGFloat = 14
+    /// 🌐 を長押しとみなす時間
+    static let globeHoldTime: TimeInterval = 0.45
 
     /// ThinkPad の TrackPoint の赤
     static let pointerRed = UIColor(red: 0.86, green: 0.13, blue: 0.11, alpha: 1)
@@ -215,6 +217,7 @@ final class SplitKeyboardView: UIView {
             switch hit.key.action {
             case .modifier(let m):
                 model.modifierDown(m)
+                if hit.key.id == "globe" { startGlobeHold(state) }
             case .capsLock:
                 model.toggleCapsLock()
             case .key(_, _, true):
@@ -291,6 +294,16 @@ final class SplitKeyboardView: UIView {
         s.highlight.removeFromSuperlayer()
         CATransaction.commit()
         s.popup?.removeFromSuperview()
+    }
+
+    /// 🌐 を押したまま少し待ったら、キーボードを選ぶ吹き出しを出す（ほかのキーを押していなければ）
+    private func startGlobeHold(_ s: TouchState) {
+        s.timer = Timer.scheduledTimer(withTimeInterval: Self.globeHoldTime, repeats: false) { [weak self, weak s] _ in
+            MainActor.assumeIsolated {
+                guard let self, let s, self.active.values.contains(where: { $0 === s }) else { return }
+                self.model.globeLongPressed(anchor: self.convert(s.frame, to: nil))
+            }
+        }
     }
 
     private func startRepeat(_ s: TouchState) {

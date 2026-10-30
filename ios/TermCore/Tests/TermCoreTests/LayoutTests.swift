@@ -15,9 +15,9 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(r.shell.width, 344)
         XCTAssertEqual(r.leftKeyboard?.minX, 44)
         XCTAssertEqual(r.rightKeyboard?.maxX, 812 - 44)
-        // 上 40pt を空けて下寄せ、ホームインジケータの上まで
+        // 高さは幅 × 1.35 まで（やや縦長）。英語・ローマ字の分割は下寄せで、ホームインジケータの上まで
+        XCTAssertEqual(r.leftKeyboard?.height, (182 * LayoutEngine.keyboardAspect).rounded())
         XCTAssertEqual(r.leftKeyboard?.maxY, 375 - 21)
-        XCTAssertEqual(r.leftKeyboard?.minY ?? 0, 40, accuracy: 0.01)
         XCTAssertEqual(r.environmentBar.height, 44)
         XCTAssertEqual(r.environmentBar.maxY, 375 - 21)
         XCTAssertEqual(r.shell.maxY, r.environmentBar.minY)
@@ -31,8 +31,20 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(r.candidateBar?.height, 34)
         XCTAssertEqual(r.candidateBar?.maxY, r.environmentBar.minY)
         XCTAssertEqual(r.shell.maxY, r.candidateBar?.minY)
-        // キーボードの幅は US と同じ（切り替えてもシェルの桁数が変わらない）
+        // キーボードの幅は英語と同じ（切り替えてもシェルの桁数が変わらない）
         XCTAssertEqual(r.shell.width, LayoutEngine.compute(mini).shell.width)
+        // フリックは上に寄せる（上 40pt を空けて）
+        XCTAssertEqual(r.leftKeyboard?.minY ?? 0, 40, accuracy: 0.01)
+        XCTAssertEqual(r.leftKeyboard?.height, LayoutEngine.compute(mini).leftKeyboard?.height)
+    }
+
+    /// かな漢字変換を使うキーボード（ローマ字・かな・英字フリックのローマ字）だけ候補バーを出す
+    func testCandidateBarFollowsTheKeyboard() {
+        for kind in KeyboardKind.allCases {
+            var input = mini
+            input.keyboard = kind
+            XCTAssertEqual(LayoutEngine.compute(input).candidateBar != nil, kind.isJapanese, kind.rawValue)
+        }
     }
 
     func testIPadScalesUpAndCapsRowHeight() {

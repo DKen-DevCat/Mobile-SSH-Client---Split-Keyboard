@@ -89,8 +89,10 @@
 # scrollback-limit = 10000
 
 # ─── キーボード ─────────────────────────────────────────
-# 起動時のキーボード: us（英語。Mac の英国式の配列）/ kana（かなフリック）
-# keyboard = us
+# 起動時のキーボード（🌐 の長押しでも選べる）:
+#   romaji（分割・ローマ字）/ english（分割・英語。Mac の JIS 配列）/ kana（日本語フリック分割）/
+#   flick-romaji（英語フリック分割・ローマ字）/ flick-english（英語フリック分割・英語）
+# keyboard = english
 
 # キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50）
 # keyboard-pitch = auto

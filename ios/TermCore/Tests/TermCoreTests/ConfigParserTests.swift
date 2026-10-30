@@ -57,6 +57,17 @@ final class ConfigParserTests: XCTestCase {
         XCTAssertEqual(d.map(\.line), [5])
     }
 
+    /// キーボードの種類（us は前の版の名前で、英語の分割）
+    func testKeyboardKinds() {
+        XCTAssertEqual(TermConfig().keyboard, .english)
+        for kind in KeyboardKind.allCases {
+            XCTAssertEqual(ConfigParser.parse("keyboard = \(kind.rawValue)").config.keyboard, kind)
+        }
+        XCTAssertEqual(ConfigParser.parse("keyboard = us").config.keyboard, .english)
+        XCTAssertEqual(ConfigParser.parse("keyboard = qwerty").diagnostics.count, 1)
+        XCTAssertEqual(KeyboardKind.menuOrder.count, KeyboardKind.allCases.count)
+    }
+
     /// Face ID を求めるまでの時間（既定 15 分、0 で毎回）
     func testAppLockAfter() {
         XCTAssertEqual(TermConfig().appLockAfter, 900)

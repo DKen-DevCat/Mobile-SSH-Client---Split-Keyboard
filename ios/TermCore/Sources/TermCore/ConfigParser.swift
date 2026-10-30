@@ -91,7 +91,9 @@ public enum ConfigParser {
         case "scrollback-limit":
             c.scrollbackLimit = reset ? d.scrollbackLimit : Int(try number(value, in: 0...200_000))
 
-        case "keyboard": c.keyboard = reset ? d.keyboard : try choice(value, key: key)
+        case "keyboard":
+            // us は前の版の名前（英語の分割）
+            c.keyboard = reset ? d.keyboard : value.lowercased() == "us" ? .english : try choice(value, key: key)
         case "keyboard-pitch":
             c.keyboardPitch = reset || value == "auto" ? nil : try number(value, in: 20...80)
         case "key-repeat-delay": c.keyRepeatDelay = reset ? d.keyRepeatDelay : try duration(value, defaultUnit: .ms)

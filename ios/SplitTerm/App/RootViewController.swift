@@ -15,8 +15,10 @@ final class RootViewController: UIViewController {
 
     private let terminalView = TerminalView(frame: .zero)
     private let model = KeyboardModel()
-    private lazy var leftKeyboard = SplitKeyboardView(face: KeyboardLayouts.usLeft, model: model, colors: colors)
-    private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.usRight, model: model, colors: colors)
+    private lazy var leftKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisLeft, model: model, colors: colors)
+    private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisRight, model: model, colors: colors)
+    /// 📎（写真・動画・音声・ファイルを送る）。シェルの左下に置く
+    private let clipButton = UIButton(type: .system)
     private let envBar = EnvironmentBar()
     private let candidateBar = CandidateBar()
     private let notice = UILabel()
@@ -26,7 +28,13 @@ final class RootViewController: UIViewController {
     private var activeIndex = 0
     private var active: TerminalSession? { sessions.indices.contains(activeIndex) ? sessions[activeIndex] : nil }
 
-    private var keyboardKind: KeyboardKind = .us
+    private var keyboardKind: KeyboardKind = .english
+    /// 🌐 のタップで戻る、前のキーボード
+    private var previousKeyboard: KeyboardKind = .romaji
+    /// ローマ字入力のまだかなにならない英字（docs/design.md「ローマ字入力」）
+    private var romaji = RomajiConverter()
+    /// 最後に出した候補と、その読み（空白の変換に使う）
+    private var lastCandidates: (reading: String, candidates: [KanaCandidate]) = ("", [])
     private var zoom = ZoomSteps(steps: [85, 100])
     private var composer = KanaComposer()
     /// かな漢字変換（AzooKey）。裏のキューで変換し、最新の結果だけを候補バーに出す
@@ -73,7 +81,9 @@ final class RootViewController: UIViewController {
         envBar.onSelectTab = { [weak self] i in self?.selectTab(i) }
         envBar.onCloseTab = { [weak self] i in self?.closeTab(i) }
         envBar.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
-        envBar.onKeyboard = { [weak self] in self?.switchKeyboard() }
+        envBar.setKeyboardMenu(UIMenu(title: "キーボード", children: [UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.keyboardMenuElements() ?? [])
+        }]))
         envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
         candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
         setUpMedia()
@@ -92,9 +102,13 @@ final class RootViewController: UIViewController {
         nc.addObserver(self, selector: #selector(didActivate), name: UIScene.didActivateNotification, object: nil)
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）
-            guard path.status == .satisfied, let type = path.availableInterfaces.first?.type else { return }
-            DispatchQueue.main.async { [weak self] in self?.pathChanged(type) }
+            // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）。
+            // 環境バーの通信の印には、つながっていないことも出す
+            let type = path.status == .satisfied ? path.availableInterfaces.first?.type : nil
+            DispatchQueue.main.async { [weak self] in
+                self?.envBar.setNetwork(type)
+                if let type { self?.pathChanged(type) }
+            }
         }
         pathMonitor.start(queue: DispatchQueue(label: "splitterm.path"))
 
@@ -103,7 +117,8 @@ final class RootViewController: UIViewController {
         // 自動接続は、ロックを解いてから（resume）
     }
 
-    override var prefersStatusBarHidden: Bool { true }
+    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は環境バーに出す）
+    override var prefersStatusBarHidden: Bool { false }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     /// キーボードは画面の下端と左右の端に触れるので、システムのジェスチャを後回しにする
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
@@ -124,6 +139,7 @@ final class RootViewController: UIViewController {
         leftKeyboard.colors = colors
         rightKeyboard.colors = colors
         envBar.apply(colors: colors)
+        clipButton.tintColor = colors.text.withAlphaComponent(0.85)
         candidateBar.apply(colors: colors)
         notice.textColor = colors.subText
         emptyLabel.textColor = colors.subText
@@ -142,7 +158,10 @@ final class RootViewController: UIViewController {
         if initial || zoom.steps != c.zoomSteps {
             zoom = ZoomSteps(steps: c.zoomSteps, current: initial ? nil : zoom.percent)
         }
-        if initial { keyboardKind = c.keyboard }
+        if initial {
+            keyboardKind = c.keyboard
+            previousKeyboard = c.keyboard == .english ? .romaji : .english
+        }
         for s in sessions { s.config = c }
         envBar.plus.menu = makeMenu()
         updateEnvBar()
@@ -188,6 +207,8 @@ final class RootViewController: UIViewController {
         notice.text = "窓が狭いので画面のキーボードを隠しています"
         notice.frame = CGRect(x: r.shell.minX, y: r.environmentBar.minY - 18, width: r.shell.width, height: 16)
         emptyLabel.frame = r.shell.insetBy(dx: 16, dy: 16)
+        clipButton.frame = CGRect(x: r.shell.minX + 6, y: r.shell.maxY - 42, width: 36, height: 36)
+        view.bringSubviewToFront(clipButton)
         updateEnvBar()
         regrid()
     }
@@ -291,12 +312,40 @@ final class RootViewController: UIViewController {
         updateEnvBar()
     }
 
+    /// 🌐 のタップ: 前のキーボードへ
     private func switchKeyboard() {
-        if composer.isComposing { commitComposition(nil) }
-        keyboardKind = keyboardKind == .us ? .kana : .us
+        setKeyboard(previousKeyboard)
+    }
+
+    private func setKeyboard(_ kind: KeyboardKind) {
+        guard kind != keyboardKind else { return }
+        if composer.isComposing || !romaji.isEmpty { commitComposition(nil) }
+        previousKeyboard = keyboardKind
+        keyboardKind = kind
         model.reset()
         view.setNeedsLayout()
         updateEnvBar()
+    }
+
+    /// キーボードを選ぶメニューの中身（環境バーのボタン・🌐 の長押しの吹き出し）
+    private func keyboardMenuElements() -> [UIMenuElement] {
+        KeyboardKind.menuOrder.map { kind in
+            UIAction(title: kind.title, state: kind == keyboardKind ? .on : .off) { [weak self] _ in self?.setKeyboard(kind) }
+        }
+    }
+
+    /// 🌐 の長押し: iOS の吹き出し（ポップオーバー）でキーボードを選ぶ
+    private func presentKeyboardMenu(anchor: CGRect) {
+        guard !gate.isLocked, presentedViewController == nil else { return }
+        let vc = KeyboardMenuController(current: keyboardKind) { [weak self] kind in self?.setKeyboard(kind) }
+        vc.modalPresentationStyle = .popover
+        if let pop = vc.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = view.convert(anchor, from: nil)
+            pop.permittedArrowDirections = [.down, .up, .left, .right]
+            pop.delegate = self
+        }
+        present(vc, animated: true)
     }
 
     @objc private func hardwareKeyboardChanged() {
@@ -323,14 +372,15 @@ final class RootViewController: UIViewController {
             handleCommand(key)
             return
         }
-        if composer.isComposing {
+        if composer.isComposing || !romaji.isEmpty {
             switch key {
             case .enter, .newline:
                 // 変換中の ⏎ は確定だけで、接続先には何も送らない
                 commitComposition(nil)
                 return
             case .backspace:
-                _ = composer.deleteBackward()
+                // まだかなにならない英字から消す
+                if !romaji.deleteBackward() { _ = composer.deleteBackward() }
                 updateCandidates()
                 return
             default:
@@ -370,6 +420,9 @@ final class RootViewController: UIViewController {
     }
 
     private func commitComposition(_ text: String?) {
+        // まだかなにならない英字も入れてから（n は「ん」）
+        let rest = romaji.flush()
+        if !rest.isEmpty { composer.append(rest) }
         let out = composer.commit(text)
         kana.reset()
         updateCandidates()
@@ -390,8 +443,22 @@ final class RootViewController: UIViewController {
     }
 
     private func updateCandidates() {
-        kana.request(composer.reading) { [weak self] candidates in
-            self?.candidateBar.update(candidates: candidates)
+        let reading = composer.reading
+        let pending = romaji.pending
+        kana.request(reading) { [weak self] candidates in
+            self?.lastCandidates = (reading, candidates)
+            self?.candidateBar.update(candidates: candidates, pending: pending)
+        }
+    }
+
+    /// ローマ字の空白: いちばん上の候補で確定する（候補がまだ無ければ読みのまま）
+    private func convertComposition() {
+        let rest = romaji.flush()
+        if !rest.isEmpty { composer.append(rest) }
+        if lastCandidates.reading == composer.reading, let top = lastCandidates.candidates.first {
+            pickCandidate(top)
+        } else {
+            commitComposition(nil)
         }
     }
 
@@ -444,7 +511,14 @@ final class RootViewController: UIViewController {
         sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
         sender.onInsert = { [weak self] text, session in self?.insertMediaPaths(text, into: session) }
         // 開くたびに作る（送っている途中なら「やめる」を出す）
-        envBar.attach.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
+        // 📎 はシェルの左下（環境バーのものは使わない）
+        envBar.attach.isHidden = true
+        clipButton.setImage(UIImage(systemName: "paperclip.circle.fill",
+                                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 26)), for: .normal)
+        clipButton.showsMenuAsPrimaryAction = true
+        clipButton.accessibilityLabel = "メディアを送る"
+        view.addSubview(clipButton)
+        clipButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
             completion(self?.mediaMenu() ?? [])
         }])
     }
@@ -596,14 +670,40 @@ extension RootViewController: KeyboardOutput {
         guard !gate.isLocked else { return }
         switch emit {
         case .key(let k, let mods):
-            if keyboardKind == .kana, composer.isComposing, case .text(" ") = k, mods.isEmpty {
-                // 空白: 変換中なら確定してから空白を送る
+            // ローマ字: 英字と句読点（、。ー「」）はかなにして読みに足す
+            if keyboardKind.usesRomaji, mods.subtracting(.shift).isEmpty, case .text(let t) = k, t.count == 1,
+               let c = t.first, let kana = romaji.input(c) {
+                terminalView.hidePointer()
+                if !kana.isEmpty { composer.append(kana) }
+                updateCandidates()
+                return
+            }
+            if keyboardKind.isJapanese, composer.isComposing || !romaji.isEmpty, case .text(" ") = k, mods.isEmpty {
+                if keyboardKind.usesRomaji {
+                    // 空白は変換（いちばん上の候補で確定）
+                    convertComposition()
+                    return
+                }
+                // かな: 読みのまま確定してから空白を送る
                 commitComposition(nil)
             }
             route(k, mods)
-        case .flick(let id, let set, let d):
-            composer.input(keyID: id, set: set, direction: d, now: CACurrentMediaTime())
-            updateCandidates()
+        case .flick(let id, let set, let d, let upper):
+            let c = set.character(d)
+            switch keyboardKind {
+            case .flickEnglish:
+                route(.text(upper ? c.uppercased() : c), [])
+            case .flickRomaji:
+                if c.count == 1, let first = c.first, let kana = romaji.input(first) {
+                    if !kana.isEmpty { composer.append(kana) }
+                    updateCandidates()
+                } else {
+                    route(.text(c), [])
+                }
+            default:
+                composer.input(keyID: id, set: set, direction: d, now: CACurrentMediaTime())
+                updateCandidates()
+            }
         case .kanaBreak:
             composer.breakToggle()
         case .kanaModify:
@@ -611,6 +711,10 @@ extension RootViewController: KeyboardOutput {
             updateCandidates()
         case .switchKeyboard:
             switchKeyboard()
+        case .setKeyboard(let kind):
+            setKeyboard(kind)
+        case .keyboardMenu(let anchor):
+            presentKeyboardMenu(anchor: anchor)
         case .lockApp:
             gate.lockNow()
         }
@@ -818,5 +922,14 @@ extension RootViewController: SessionPresenter {
                 self.topPresenter.present(a, animated: true)
             }
         }
+    }
+}
+
+// MARK: - 🌐 の吹き出し（iPhone でもポップオーバーのまま出す）
+
+extension RootViewController: UIPopoverPresentationControllerDelegate {
+    func adaptivePresentationStyle(for controller: UIPresentationController,
+                                   traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+        .none
     }
 }

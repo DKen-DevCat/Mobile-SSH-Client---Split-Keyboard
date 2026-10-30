@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// 画面のキーボードの配置（データだけ。描画と触れ方はアプリ側）。docs/design.md「横持ち：英語（Mac の英国式）分割」「横持ち：かなフリック」
+/// 画面のキーボードの配置（データだけ。描画と触れ方はアプリ側）。docs/design.md「JIS の分割」「フリックの分割」
 public struct KeySpec: Hashable, Sendable {
     public var id: String
     public var label: String
@@ -65,8 +65,10 @@ public enum KeyAction: Hashable, Sendable {
     case send
     /// 改行（設定の `newline`）
     case newline
-    /// 英語とかなの切り替え
+    /// 前のキーボードへ切り替える（🌐 のタップ）
     case switchKeyboard
+    /// そのキーボードへ切り替える（かなフリックの ABC、英字フリックの あいう）
+    case setKeyboard(KeyboardKind)
     /// Touch ID の位置。アプリをすぐロックする
     case lockApp
     /// スペースの横の赤い丸。触れている間はシェルのポインタを動かす（触れ方はアプリ側）
@@ -184,11 +186,12 @@ public struct KeyboardFace: Sendable {
 }
 
 public enum KeyboardLayouts {
-    // MARK: 英語（Mac の英国式、ISO）分割。写真の配列（docs/design.md）をそのまま左右に分ける。
-    // 5|6・T|Y・G|H・B|N で分ける。最上段は esc と F1〜F12、最下段は fn（🌐）・control・option・command・矢印
+    // MARK: 分割（Mac の JIS 配列から日本語の刻印を外したもの。利用者の写真、2026-10-31）。
+    // 6・Y・H・N の列は左右の両方に置く（左の右端と右の左端が同じキー）。
+    // 英数とかなの位置は赤い丸（ポインタ）。🌐 はタップで前のキーボード、長押しでキーボードを選ぶ
 
-    static func ch(_ c: String, _ shifted: String? = nil, option: String? = nil, fn: TermKey? = nil) -> KeySpec {
-        KeySpec("ch-\(c)", c, sub: shifted, option: option, action: .character(c, shifted: shifted, fn: fn))
+    static func ch(_ c: String, _ shifted: String? = nil, option: String? = nil, fn: TermKey? = nil, id: String? = nil) -> KeySpec {
+        KeySpec(id ?? "ch-\(c)", c, sub: shifted, option: option, action: .character(c, shifted: shifted, fn: fn))
     }
 
     static func letter(_ c: String, homing: Bool = false) -> KeySpec {
@@ -210,57 +213,72 @@ public enum KeyboardLayouts {
         fnKey("f\(n)", "F\(n)", .function(n), symbol: symbol, width: width)
     }
 
-    static func space(_ id: String, width: CGFloat) -> KeySpec {
-        KeySpec(id, "", width: width, action: .character(" ", shifted: nil, fn: nil))
+    static func space(_ id: String, width: CGFloat, label: String = "") -> KeySpec {
+        KeySpec(id, label, width: width, action: .character(" ", shifted: nil, fn: nil))
     }
 
-    static func pointer(_ side: PointerSide) -> KeySpec {
-        KeySpec("pointer-\(side)", "", action: .pointer(side), style: .pointer)
+    static func pointer(_ side: PointerSide, width: CGFloat = 1) -> KeySpec {
+        KeySpec("pointer-\(side)", "", width: width, action: .pointer(side), style: .pointer)
+    }
+
+    /// 🌐（fn）。タップで前のキーボード、長押しでキーボードを選ぶ。押しながら矢印などで fn の層
+    static func globe(width: CGFloat = 1) -> KeySpec {
+        KeySpec("globe", "", symbol: "globe", width: width, action: .modifier(.fn), style: .modifier)
     }
 
     /// F キーの段の高さ（ほかの段を 1 として）
     public static let functionRowWeight: CGFloat = 0.6
 
-    public static let usLeft = KeyboardFace(rows: [
+    static let f6 = fKey(6, "moon")
+    static let k6 = ch("6", "&", fn: .function(6))
+    static let y = letter("y"), h = letter("h"), n = letter("n")
+
+    public static let jisLeft = KeyboardFace(rows: [
         [fnKey("esc", "esc", .escape, width: 1.5), fKey(1, "sun.min"), fKey(2, "sun.max"), fKey(3, "rectangle.3.group"),
-         fKey(4, "magnifyingglass"), fKey(5, "mic"), fKey(6, "moon")],
-        [ch("§", "±"), ch("1", "!", fn: .function(1)), ch("2", "@", option: "€", fn: .function(2)),
-         ch("3", "£", option: "#", fn: .function(3)), ch("4", "$", fn: .function(4)), ch("5", "%", fn: .function(5))],
-        [fnKey("tab", "⇥", .tab, width: 1.5), letter("q"), letter("w"), letter("e"), letter("r"), letter("t")],
-        [KeySpec("caps", "⇪", width: 1.75, action: .capsLock, style: .modifier),
-         letter("a"), letter("s"), letter("d"), letter("f", homing: true), letter("g")],
-        [mod(.shift, "⇧", width: 1.25, id: "mod-shift-l"), ch("`", "~"),
-         letter("z"), letter("x"), letter("c"), letter("v"), letter("b")],
-        [mod(.fn, "fn", symbol: "globe"), mod(.control, "control", sub: "^", id: "mod-control-l"),
-         mod(.option, "option", sub: "⌥", id: "mod-option-l"), mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-l"),
-         space("space-l", width: 1.5), pointer(.left)],
+         fKey(4, "magnifyingglass"), fKey(5, "mic"), f6],
+        [ch("1", "!", fn: .function(1)), ch("2", "\"", fn: .function(2)), ch("3", "#", fn: .function(3)),
+         ch("4", "$", fn: .function(4)), ch("5", "%", fn: .function(5)), k6],
+        [fnKey("tab", "⇥", .tab, width: 1.5), letter("q"), letter("w"), letter("e"), letter("r"), letter("t"), y],
+        [mod(.control, "control", sub: "^", width: 1.75, id: "mod-control-l"),
+         letter("a"), letter("s"), letter("d"), letter("f", homing: true), letter("g"), h],
+        [mod(.shift, "⇧", width: 2.25, id: "mod-shift-l"), letter("z"), letter("x"), letter("c"), letter("v"), letter("b"), n],
+        [KeySpec("caps", "⇪", width: 1.25, action: .capsLock, style: .modifier),
+         mod(.option, "option", sub: "⌥", width: 1.15, id: "mod-option-l"),
+         mod(.command, "command", sub: "⌘", width: 1.35, id: "mod-command-l"),
+         pointer(.left, width: 1.15), space("space-l", width: 2.1)],
     ], rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
 
-    public static let usRight = KeyboardFace(rows: [
-        [fKey(7, "backward", width: 1.25), fKey(8, "playpause", width: 1.25), fKey(9, "forward", width: 1.25),
-         fKey(10, "speaker", width: 1.25), fKey(11, "speaker.wave.1", width: 1.25), fKey(12, "speaker.wave.3", width: 1.25),
-         KeySpec("lock", "", symbol: "touchid", action: .lockApp, style: .function)],
-        [ch("6", "^", fn: .function(6)), ch("7", "&", fn: .function(7)), ch("8", "*", fn: .function(8)),
-         ch("9", "(", fn: .function(9)), ch("0", ")", fn: .function(10)), ch("-", "_", fn: .function(11)),
-         ch("=", "+", fn: .function(12)), fnKey("bs", "⌫", .backspace, fn: .delete, width: 1.5, repeats: true)],
-        [letter("y"), letter("u"), letter("i"), letter("o"), letter("p"), ch("[", "{"), ch("]", "}"),
-         KeySpec("send", "⏎", width: 1.5, rowSpan: 2, action: .send, style: .function)],
-        [letter("h"), letter("j", homing: true), letter("k"), letter("l"), ch(";", ":"), ch("'", "\""), ch("\\", "|")],
-        [letter("n"), letter("m"), ch(",", "<"), ch(".", ">"), ch("/", "?"), mod(.shift, "⇧", width: 3.5, id: "mod-shift-r")],
-        [pointer(.right), space("space-r", width: 2.25), mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-r"),
-         mod(.option, "option", sub: "⌥", id: "mod-option-r"),
-         fnKey("left", "◀", .left, fn: .home, repeats: true),
-         KeySpec("updown", "", stacked: [fnKey("up", "▲", .up, fn: .pageUp, repeats: true),
-                                         fnKey("down", "▼", .down, fn: .pageDown, repeats: true)],
+    /// 右: 1 単位 = 幅 ÷ 9.5（return が 2 段にまたがるので、全段で共通の格子）
+    public static let jisRight = KeyboardFace(rows: [
+        [fKey(6, "moon", width: 1.2), fKey(7, "backward", width: 1.2), fKey(8, "playpause", width: 1.2),
+         fKey(9, "forward", width: 1.2), fKey(10, "speaker", width: 1.2), fKey(11, "speaker.wave.1", width: 1.2),
+         fKey(12, "speaker.wave.3", width: 1.2),
+         KeySpec("lock", "", symbol: "lock", width: 1.1, action: .lockApp, style: .function)],
+        [k6, ch("7", "'", fn: .function(7)), ch("8", "(", fn: .function(8)), ch("9", ")", fn: .function(9)),
+         ch("0", nil, fn: .function(10)), ch("-", "=", fn: .function(11)), ch("^", "~", fn: .function(12)),
+         // ¥ のキーは、端末で使う \ を打つ（option で ¥）
+         KeySpec("ch-yen", "¥", sub: "|", option: "¥", action: .character("\\", shifted: "|", fn: nil)),
+         fnKey("bs", "⌫", .backspace, fn: .delete, width: 1.5, repeats: true)],
+        [y, letter("u"), letter("i"), letter("o"), letter("p"), ch("@", "`"), ch("[", "{"),
+         KeySpec("send", "⏎", width: 2.5, rowSpan: 2, action: .send, style: .function)],
+        [h, letter("j", homing: true), letter("k"), letter("l"), ch(";", "+"), ch(":", "*"), ch("]", "}")],
+        [n, letter("m"), ch(",", "<"), ch(".", ">"), ch("/", "?"), ch("_", "_"), mod(.shift, "⇧", width: 3.5, id: "mod-shift-r")],
+        [space("space-r", width: 2.25), pointer(.right), mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-r"),
+         globe(),
+         fnKey("left", "◀", .left, fn: .home, width: 4.0 / 3, repeats: true),
+         KeySpec("updown", "", width: 4.0 / 3, stacked: [fnKey("up", "▲", .up, fn: .pageUp, repeats: true),
+                                                           fnKey("down", "▼", .down, fn: .pageDown, repeats: true)],
                  action: .key(.up, fn: nil, repeats: false), style: .function),
-         fnKey("right", "▶", .right, fn: .end, repeats: true)],
-    ], gridUnits: 8.5, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
+         fnKey("right", "▶", .right, fn: .end, width: 4.0 / 3, repeats: true)],
+    ], gridUnits: 9.5, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
 
-    // MARK: かなフリック。iOS の 12 キーを左右に 1 面ずつ。上に 1 段足す
+    // MARK: フリックの分割。iOS の 12 キーを左右に 1 面ずつ。最下段に 🌐・空白・ポインタ（ポインタは内側）
 
-    static func kana(_ id: String, _ set: FlickSet) -> KeySpec {
-        KeySpec("kana-\(id)", set.center, action: .flick(set))
+    static func flick(_ id: String, _ set: FlickSet, label: String? = nil) -> KeySpec {
+        KeySpec("flick-\(id)", label ?? set.center, action: .flick(set))
     }
+
+    static func kana(_ id: String, _ set: FlickSet) -> KeySpec { flick("kana-\(id)", set) }
 
     static let a = kana("a", FlickSet("あ", "い", "う", "え", "お"))
     static let ka = kana("ka", FlickSet("か", "き", "く", "け", "こ"))
@@ -275,35 +293,53 @@ public enum KeyboardLayouts {
     static let punct = kana("punct", FlickSet("、", "。", "？", "！", nil))
     static let dash = kana("dash", FlickSet("ー", "〜", "・", "…", nil))
 
-    static func kanaFace(top: [KeySpec], corner: KeySpec, tall: KeySpec) -> KeyboardFace {
+    // 英字のフリック（iOS の ABC と同じ並び。小文字。a/A で大文字に）
+    static let symbols = flick("sym", FlickSet("@", "#", "/", "&", "_"), label: "@#/&_")
+    static let abc = flick("abc", FlickSet("a", "b", "c", nil, nil), label: "abc")
+    static let def = flick("def", FlickSet("d", "e", "f", nil, nil), label: "def")
+    static let ghi = flick("ghi", FlickSet("g", "h", "i", nil, nil), label: "ghi")
+    static let jkl = flick("jkl", FlickSet("j", "k", "l", nil, nil), label: "jkl")
+    static let mno = flick("mno", FlickSet("m", "n", "o", nil, nil), label: "mno")
+    static let pqrs = flick("pqrs", FlickSet("p", "q", "r", "s", nil), label: "pqrs")
+    static let tuv = flick("tuv", FlickSet("t", "u", "v", nil, nil), label: "tuv")
+    static let wxyz = flick("wxyz", FlickSet("w", "x", "y", "z", nil), label: "wxyz")
+    static let quotes = flick("quotes", FlickSet("'", "\"", "(", ")", nil), label: "'\"()")
+    static let periods = flick("periods", FlickSet(".", ",", "?", "!", nil), label: ".,?!")
+    static let maths = flick("maths", FlickSet("-", "+", "=", "*", "%"), label: "-+=*")
+
+    static let send = KeySpec("send", "send", action: .send, style: .accent)
+    static let sendTall = KeySpec("send", "send", rowSpan: 2, action: .send, style: .accent)
+    static let newline = KeySpec("newline", "↩︎", action: .newline, style: .function)
+    static let newlineTall = KeySpec("newline", "↩︎", rowSpan: 2, action: .newline, style: .function)
+
+    /// 左は 改行が外側の角・send が内側の縦 2 マス。右はその逆。最下段の内側にポインタ
+    static func flickFace(grid: [[KeySpec]], switchKey: KeySpec, left: Bool) -> KeyboardFace {
         KeyboardFace(rows: [
-            top,
-            [KeySpec("kana-break", "→", action: .kanaBreak, style: .function), a, ka, sa,
-             fnKey("bs", "⌫", .backspace, repeats: true)],
-            [dash, ta, na, ha, KeySpec("space", "空白", action: .character(" ", shifted: nil, fn: nil), style: .function)],
-            [KeySpec("switch", "ABC", action: .switchKeyboard, style: .function), ma, ya, ra, tall],
-            [corner, KeySpec("kana-mod", "゛゜小", action: .kanaModify, style: .character), wa, punct],
+            [KeySpec("kana-break", "→", action: .kanaBreak, style: .function)] + grid[0]
+                + [fnKey("bs", "⌫", .backspace, repeats: true)],
+            grid[1] + [space("space", width: 1, label: "空白")],
+            [switchKey] + grid[2] + [left ? sendTall : newlineTall],
+            [left ? newline : send] + grid[3],
+            left ? [globe(), space("space-b", width: 3), pointer(.left)]
+                 : [pointer(.right), space("space-b", width: 3), globe()],
         ], gridUnits: 5)
     }
 
-    /// 左: 上段は esc / tab / ctrl / alt / ⌨。左下が改行（☺ の位置）、右下が送信（⏎ の位置、縦 2 マス）
-    public static let kanaLeft = kanaFace(
-        top: [fnKey("esc", "esc", .escape), fnKey("tab", "tab", .tab), mod(.control, "ctrl"), mod(.option, "alt"),
-              KeySpec("switch-top", "⌨", action: .switchKeyboard, style: .function)],
-        corner: KeySpec("newline", "改行", action: .newline, style: .function),
-        tall: KeySpec("send", "送信", rowSpan: 2, action: .send, style: .accent))
+    static let kanaGrid: [[KeySpec]] = [[a, ka, sa], [dash, ta, na, ha], [ma, ya, ra],
+                                        [KeySpec("kana-mod", "゛゜小", action: .kanaModify, style: .character), wa, punct]]
+    static let alphaGrid: [[KeySpec]] = [[symbols, abc, def], [maths, ghi, jkl, mno], [pqrs, tuv, wxyz],
+                                         [KeySpec("case", "a/A", action: .capsLock, style: .character), quotes, periods]]
 
-    /// 右: 上段は ← ↓ ↑ →。左下が送信（☺ の位置）、右下が改行（⏎ の位置、縦 2 マス）
-    public static let kanaRight = kanaFace(
-        top: [fnKey("left", "←", .left, width: 1.25, repeats: true), fnKey("down", "↓", .down, width: 1.25, repeats: true),
-              fnKey("up", "↑", .up, width: 1.25, repeats: true), fnKey("right", "→", .right, width: 1.25, repeats: true)],
-        corner: KeySpec("send", "送信", action: .send, style: .accent),
-        tall: KeySpec("newline", "改行", rowSpan: 2, action: .newline, style: .function))
+    public static let kanaLeft = flickFace(grid: kanaGrid, switchKey: KeySpec("to-alpha", "ABC", action: .setKeyboard(.flickEnglish), style: .function), left: true)
+    public static let kanaRight = flickFace(grid: kanaGrid, switchKey: KeySpec("to-alpha", "ABC", action: .setKeyboard(.flickEnglish), style: .function), left: false)
+    public static let alphaLeft = flickFace(grid: alphaGrid, switchKey: KeySpec("to-kana", "あいう", action: .setKeyboard(.kana), style: .function), left: true)
+    public static let alphaRight = flickFace(grid: alphaGrid, switchKey: KeySpec("to-kana", "あいう", action: .setKeyboard(.kana), style: .function), left: false)
 
     public static func faces(for kind: KeyboardKind) -> (left: KeyboardFace, right: KeyboardFace) {
         switch kind {
-        case .us: return (usLeft, usRight)
+        case .english, .romaji: return (jisLeft, jisRight)
         case .kana: return (kanaLeft, kanaRight)
+        case .flickRomaji, .flickEnglish: return (alphaLeft, alphaRight)
         }
     }
 }

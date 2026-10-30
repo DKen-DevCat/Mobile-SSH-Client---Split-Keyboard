@@ -13,7 +13,7 @@ public struct LayoutInput: Equatable, Sendable {
     public var pitchOverride: Double?
     public var softKeyboardWithHardware: Bool
 
-    public init(size: CGSize, safeArea: Insets, hardwareKeyboard: Bool = false, keyboard: KeyboardKind = .us,
+    public init(size: CGSize, safeArea: Insets, hardwareKeyboard: Bool = false, keyboard: KeyboardKind = .english,
                 pitchOverride: Double? = nil, softKeyboardWithHardware: Bool = false) {
         self.size = size
         self.safeArea = safeArea
@@ -63,8 +63,10 @@ public enum LayoutEngine {
     public static let keyboardTopGap: CGFloat = 40
     /// キーボードの片側の幅 = pitch × この値（13 mini: 30 × 6.07 ≒ 182pt）
     public static let keyboardWidthUnits: CGFloat = 6.07
-    /// 片側の段の数（US: 数字＋3 段＋最下段、かな: 上の 1 段＋12 キーの 4 段）
+    /// 片側の段の数の目安（1 段の高さ = キーボードの高さ ÷ これ。面ごとの段の高さは面の比で決まる）
     public static let keyboardRows = 5
+    /// キーボードの高さの上限 = 幅 × この値（やや縦長。縦に長すぎないように）
+    public static let keyboardAspect: CGFloat = 1.35
     /// pitch = 画面の短辺 × この値を、下の範囲に収める
     public static let pitchRatio: CGFloat = 0.08
     public static let pitchRange: ClosedRange<CGFloat> = 28...50
@@ -108,17 +110,19 @@ public enum LayoutEngine {
 
         let kbWidth = (pitch * keyboardWidthUnits).rounded()
         let available = max(0, bottom - s.top - keyboardTopGap)
-        let rowHeight = min(available / CGFloat(keyboardRows), maximumRowHeight)
-        let kbHeight = rowHeight * CGFloat(keyboardRows)
-        let left = CGRect(x: contentLeft, y: bottom - kbHeight, width: kbWidth, height: kbHeight)
-        let right = CGRect(x: contentRight - kbWidth, y: bottom - kbHeight, width: kbWidth, height: kbHeight)
+        let kbHeight = min(available, (kbWidth * keyboardAspect).rounded(), maximumRowHeight * CGFloat(keyboardRows))
+        let rowHeight = kbHeight / CGFloat(keyboardRows)
+        // 英語・ローマ字の分割は下に、フリックは上に寄せる（日本語の入力で、親指の届きやすい高さに上げる）
+        let kbY = input.keyboard.isFlick ? s.top + keyboardTopGap : bottom - kbHeight
+        let left = CGRect(x: contentLeft, y: kbY, width: kbWidth, height: kbHeight)
+        let right = CGRect(x: contentRight - kbWidth, y: kbY, width: kbWidth, height: kbHeight)
 
         let centerX = left.maxX + keyboardGap
         let centerWidth = right.minX - keyboardGap - centerX
         let barY = bottom - environmentBarHeight
         var shellBottom = barY
         var candidate: CGRect? = nil
-        if input.keyboard == .kana {
+        if input.keyboard.isJapanese {
             shellBottom -= candidateBarHeight
             candidate = CGRect(x: centerX, y: shellBottom, width: centerWidth, height: candidateBarHeight)
         }

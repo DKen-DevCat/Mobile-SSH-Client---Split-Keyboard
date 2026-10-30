@@ -11,8 +11,8 @@ protocol PointerOutput: AnyObject {
     func pointerClick(right: Bool)
 }
 
-/// スペースの横の赤い丸（docs/design.md「ポインタ」）。ThinkPad の TrackPoint のように、触れた点からのずれの向きと
-/// 大きさで、ポインタが進む向きと速さが決まる（指を動かし続けなくてよい）。
+/// スペースの横の赤い丸（docs/design.md「ポインタ」）。指を動かした分だけすぐに動き（細かい動きに付いてくる）、
+/// 大きくずらしたままにすると、ThinkPad の TrackPoint のようにずれの向きと大きさで進み続ける（`PointerCurve`）。
 /// - 左右どちらでも、先に触れた方がポインタを動かす
 /// - 片方だけを軽くタップするとクリック、両方を同時に押すと右クリック
 /// - クリックには、押し込んだ手応えの振動を返す（3D Touch のような感触）
@@ -69,9 +69,14 @@ final class PointerStick {
 
     func moved(_ id: ObjectIdentifier, to p: CGPoint) {
         guard var t = primary, t.id == id else { return }
+        // 指を動かした分だけ、すぐに動かす（細かい動きにそのまま付いてくる）
+        let dx = p.x - t.current.x, dy = p.y - t.current.y
         t.current = p
         if hypot(p.x - t.start.x, p.y - t.start.y) > Self.tapSlop { t.moved = true }
         primary = t
+        if dx != 0 || dy != 0 {
+            output?.pointerMove(dx: dx * PointerCurve.directGain, dy: dy * PointerCurve.directGain)
+        }
     }
 
     func up(_ id: ObjectIdentifier, at p: CGPoint, time: TimeInterval) {

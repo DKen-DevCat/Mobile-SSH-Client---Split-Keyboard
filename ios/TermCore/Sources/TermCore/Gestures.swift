@@ -96,16 +96,20 @@ public struct ZoomSteps: Sendable, Equatable {
     }
 }
 
-/// スペースの横の赤い丸（ポインタ）の速さ（docs/design.md「ポインタ」）。ThinkPad の TrackPoint のように、触れた点からの
-/// ずれ（pt）で速さ（pt/秒）が決まる。小さなずれは細かく、大きなずれは速く
+/// スペースの横の赤い丸（ポインタ）の動き（docs/design.md「ポインタ」）。2 つを足し合わせる:
+/// - 指を動かした分だけ、すぐにポインタを動かす（細かい動きにそのまま付いてくる。`directGain` 倍）
+/// - 触れた点から `rateStart` より大きくずらしたままにすると、ずれに応じて進み続ける（TrackPoint のように。遠くへ速く）
 public enum PointerCurve {
-    /// ずれがこれより小さい間は動かさない（触れた指の揺れ）
-    public static let deadZone: CGFloat = 3
-    /// 速さの上限（pt/秒）
+    /// 指の動きに対するポインタの動きの倍率
+    public static let directGain: CGFloat = 2.5
+    /// これより大きくずらすと、進み続ける（pt）
+    public static let rateStart: CGFloat = 14
+    /// 進み続ける速さの上限（pt/秒）
     public static let maxSpeed: CGFloat = 1600
 
+    /// ずれ（pt）から、進み続ける速さ（pt/秒）
     public static func speed(for offset: CGFloat) -> CGFloat {
-        let e = max(0, offset - deadZone)
-        return min(maxSpeed, 14 * e + 1.6 * e * e)
+        let e = max(0, offset - rateStart)
+        return min(maxSpeed, 10 * e + 1.2 * e * e)
     }
 }
