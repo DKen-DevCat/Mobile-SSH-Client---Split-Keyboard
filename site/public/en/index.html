@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Mobile-SSH-Client---Split-Keyboard — a landscape split-keyboard SSH terminal for iPhone and iPad</title>
+<meta name="description" content="An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell. Built to drive tmux and Claude Code on your own Mac. iOS / iPadOS 17 or later, free (¥0). Not on the App Store; you build it from source on a Mac and install it with a free Apple ID.">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://mobile-ssh-client---split-keyboard.pages.dev/en/">
+<link rel="alternate" hreflang="en" href="https://mobile-ssh-client---split-keyboard.pages.dev/en/">
+<link rel="alternate" hreflang="ja" href="https://mobile-ssh-client---split-keyboard.pages.dev/">
+<link rel="alternate" hreflang="x-default" href="https://mobile-ssh-client---split-keyboard.pages.dev/">
+<link rel="alternate" type="text/markdown" href="/en/index.md" title="Markdown">
+<link rel="alternate" type="text/plain" href="/en/llms.txt" title="llms.txt">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:title" content="Mobile-SSH-Client---Split-Keyboard — a landscape split-keyboard SSH terminal for iPhone and iPad">
+<meta property="og:description" content="An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell. Built to drive tmux and Claude Code on your own Mac. iOS / iPadOS 17 or later, free (¥0). Not on the App Store; you build it from source on a Mac and install it with a free Apple ID.">
+<meta property="og:url" content="https://mobile-ssh-client---split-keyboard.pages.dev/en/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "SoftwareApplication",
+ "name": "Mobile-SSH-Client---Split-Keyboard",
+ "description": "An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell. Built to drive tmux and Claude Code on your own Mac. iOS / iPadOS 17 or later, free (¥0). Not on the App Store; you build it from source on a Mac and install it with a free Apple ID.",
+ "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/",
+ "inLanguage": "en",
+ "applicationCategory": "DeveloperApplication",
+ "applicationSubCategory": "SSH terminal",
+ "operatingSystem": "iOS 17 or later, iPadOS 17 or later",
+ "softwareRequirements": "A Mac with Xcode and a free Apple ID. Not distributed on the App Store",
+ "isAccessibleForFree": true,
+ "offers": {
+  "@type": "Offer",
+  "price": "0",
+  "priceCurrency": "JPY"
+ },
+ "sameAs": [
+  "https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard"
+ ],
+ "dateModified": "2026-10-30"
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header><p class="brand"><a href="/en/">Mobile-SSH-Client---Split-Keyboard</a></p><nav aria-label="Site"><ul><li><a href="/en/" aria-current="page">Home</a></li><li><a href="/en/get-started">Get Started</a></li><li><a href="/" hreflang="ja" lang="ja">日本語</a></li></ul></nav></header>
+<main id="main">
+<h1 id="mobile-ssh-client-split-keyboard">Mobile-SSH-Client---Split-Keyboard</h1>
+<p>An SSH terminal for iPhone and iPad that you hold in landscape, with the keyboard split into two halves on either side of the shell. It is a front end for driving tmux and Claude Code on your own Mac, and it puts network speed and typing feel first.</p>
+<ul><li><strong>Devices</strong>: iPhone and iPad on iOS / iPadOS 17 or later. Landscape only</li><li><strong>Price</strong>: ¥0 (free). No paid Apple Developer Program membership needed</li><li><strong>Distribution</strong>: not on the App Store or TestFlight. You build it from source with Xcode on a Mac and install it with a free Apple ID</li><li><strong>Settings</strong>: one config file (like Ghostty). There is no settings screen</li></ul>
+<p>The primary language of this site is Japanese. The English pages cover the overview and Get Started; the other pages (<a href="/config">config</a>, <a href="/mcp">MCP</a>, <a href="/media">media</a>, <a href="/faq">FAQ</a>) are in Japanese.</p>
+<h2 id="one-line">The one line to give your agent</h2>
+<p>Give this line to an agent on your Mac (Claude Code or similar). It reads the runbook, runs the commands, and asks you only for the steps that need a human.</p>
+<pre tabindex="0"><code class="language-text">Read https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started.md and install and set up Mobile-SSH-Client---Split-Keyboard on this Mac and iPhone.</code></pre>
+<p>Five steps need a human: signing in to Xcode with an Apple ID, connecting the device by USB and tapping &quot;Trust&quot;, turning on Developer Mode, trusting the developer profile on the device, and comparing key fingerprints with what the app shows.</p>
+<h2 id="flow">How it goes</h2>
+<ol><li>Give the line above to the agent on your Mac</li><li>The agent clones the repository, checks the tools, builds the app and installs it on the device</li><li>You do only the steps it asks you to do</li><li>The agent writes your host into the config, sends it to the device, registers the app&#x27;s public key on the Mac, and schedules the automatic re-install</li><li>Open the app, check the host key fingerprint, and connect</li></ol>
+<h2 id="features">What it does</h2>
+<ul><li><strong>Split keyboard</strong>: a US layout (Mac-style, split) and Japanese kana flick input (with kana-kanji conversion) on the left and right, with the shell in the middle</li><li><strong>iPad hardware keyboards</strong>: connect one and the on-screen keyboard disappears; the shell fills the screen</li><li><strong>Survives disconnects</strong>: reconnects automatically when the app returns to the foreground, the network changes, or the connection drops, and re-attaches to your tmux session</li><li><strong>Touch</strong>: drag vertically to scroll back, long-press to select, pinch to zoom. When vim, tmux or htop ask for the mouse, touches are sent as mouse events</li><li><strong>Send media</strong> (in development): send photos, videos and audio to an inbox on your Mac and put the paths on the command line. Videos become one image (a contact sheet) plus a transcript to save tokens. See <a href="/media">media (Japanese)</a></li><li><strong>Agent-driven setup</strong>: a <code>splitterm</code> command and MCP server on the Mac let an agent check, edit and push the config, register the public key and re-install the app. See <a href="/mcp">MCP (Japanese)</a></li></ul>
+<h2 id="who">Who it is for</h2>
+<ul><li>People who want to drive the shell or Claude Code on their own Mac from an iPhone or iPad</li><li>People who can use a Mac with Xcode. Building and re-installing happen on the Mac (an agent can do the steps)</li></ul>
+<h2 id="requirements">Requirements</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: Item・Requirement"><table><thead><tr><th scope="col">Item</th><th scope="col">Requirement</th></tr></thead><tbody><tr><td>iPhone / iPad</td><td>iOS / iPadOS 17 or later: iPhone XS, XR, SE (2nd generation) or later; iPad (6th generation) or later</td></tr><tr><td>Mac</td><td>Xcode (signed in with a free Apple ID) and jq</td></tr><tr><td>Host</td><td>SSH (Remote Login on macOS) and tmux. Usually the same Mac</td></tr><tr><td>Network</td><td>The device must reach the host&#x27;s SSH (same Wi-Fi, or Tailscale or similar)</td></tr><tr><td>First time only</td><td>A USB cable between the device and the Mac</td></tr></tbody></table></div>
+<h2 id="cost">Cost</h2>
+<p>¥0. The app is free and is signed with a free Apple ID. This site is served from the Cloudflare Pages free tier. Whatever you run on the host (for example Claude Code) is billed by its own plan.</p>
+<h2 id="distribution">Distribution and the 7-day limit</h2>
+<p>It is not on the App Store or TestFlight. You build it from source with Xcode on your Mac and sign it with a free Apple ID (Personal Team).</p>
+<ul><li>Apps signed with a free Apple ID stop launching after 7 days. A launchd job on the Mac checks the expiry every hour and re-installs the app automatically when less than 48 hours are left</li><li>Re-installing keeps your config, keys and saved host keys</li><li>Free signing limits: up to 3 such apps per device, and up to 10 App IDs per 7 days</li></ul>
+<h2 id="privacy">Security and privacy</h2>
+<ul><li>No telemetry, no cloud sync, no AI features. Terminal content is never written to disk or sent anywhere</li><li>The SSH key is created in the Secure Enclave and never leaves the device. Passwords are never stored</li><li>The first connection shows the host key fingerprint; if it later changes, the connection is stopped</li><li>Face ID (or passcode) on launch and on return; the app switcher shows a blurred view</li><li>Text copied from the app is cleared from the clipboard after 60 seconds by default</li></ul>
+<h2 id="status">Status</h2>
+<p>In development (as of 2026-10-30). The implementation follows the design but has not been verified on a real device yet. Media sending is in development.</p>
+<h2 id="next">Read next</h2>
+<ul><li><a href="/en/get-started">Get Started</a>: the runbook an agent can execute</li><li><a href="/en/llms.txt">llms.txt</a>: the index for agents</li><li><a href="/">日本語のトップ</a> (Japanese, primary)</li><li>Source code: <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard</a></li></ul>
+</main>
+<footer><p>This page in Markdown: <a href="/en/index.md" type="text/markdown">/en/index.md</a> · <a href="/en/llms.txt" type="text/plain">en/llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">Source code (GitHub)</a></p><p>Updated: <time datetime="2026-10-30">2026-10-30</time></p></footer>
+</body>
+</html>

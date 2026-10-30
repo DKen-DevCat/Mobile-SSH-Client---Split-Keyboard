@@ -1,0 +1,22 @@
+# Mobile-SSH-Client---Split-Keyboard
+
+> iPhone と iPad を横持ちにして、左右に分けたキーボードでシェルを挟む SSH ターミナル。自分の Mac の tmux と Claude Code を操作する。iOS / iPadOS {{min_ios}} 以上、料金 0 円（¥0）。App Store・TestFlight では配らず、Mac の Xcode でソースからビルドし、無料の Apple ID の署名で入れる（7 日ごとの入れ直しは Mac の launchd が自動で行う）。
+
+エージェントへ: この Mac と iPhone・iPad に入れて設定する手順は get-started.md にある。各段に実行するコマンドと成功の確かめ方があり、「人の手が要る（HUMAN-ONLY）」の段は人に頼む。鍵の指紋は推測せず、人がアプリの画面から読んだものを使う。config の項目は config.md、設定用の MCP サーバー（splitterm）は mcp.md にある。
+
+## 手順
+
+- [はじめる（Get Started）]({{base}}/get-started.md): エージェントが実行できる準備の手順（コマンド・成功の確かめ方・人の手が要る所）
+- [config]({{base}}/config.md): 設定ファイルの置き場所・書き方・全項目・既定値（config.example から自動で作る）
+- [MCP]({{base}}/mcp.md): splitterm コマンドの MCP サーバーの作り方・登録・道具の一覧
+
+## 説明
+
+- [概要]({{base}}/index.md): 何か・誰向けか・必要なもの・費用・配布・安全とプライバシー
+- [メディアを送る]({{base}}/media.md): 写真・動画・音声の送り方、動画のコンタクトシート、トークンの目安
+- [よくある質問]({{base}}/faq.md): 最低 iOS・料金・App Store・7 日の署名・プライバシー・対応するエージェント・できないこと
+
+## Optional
+
+- [全ページ（1 ファイル）]({{base}}/llms-full.txt): 上の日本語の全ページの Markdown をつないだもの
+- [English]({{base}}/en/llms.txt): 英語の概要と Get Started

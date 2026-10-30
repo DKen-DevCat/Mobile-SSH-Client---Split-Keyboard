@@ -1,0 +1,22 @@
+# Mobile-SSH-Client---Split-Keyboard
+
+> An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell, for driving tmux and Claude Code on your own Mac. iOS / iPadOS {{min_ios}} or later, free (¥0). Not on the App Store or TestFlight: you build it from source with Xcode on a Mac and install it with a free Apple ID (a launchd job on the Mac re-installs it automatically before the 7-day signature expires).
+
+For agents: the steps to install and set it up on this Mac and an iPhone or iPad are in get-started.md. Each step has the command to run and how to verify success; steps marked HUMAN-ONLY must be done by the human. Never guess a key fingerprint; use the one the human reads from the app. The Japanese pages are the primary source; config keys and the MCP server (splitterm) are documented only in Japanese.
+
+## Runbook
+
+- [Get Started]({{base}}/en/get-started.md): the runbook an agent can execute (commands, verification, HUMAN-ONLY steps)
+- [Overview]({{base}}/en/index.md): what it is, who it is for, requirements, cost, distribution, security and privacy
+
+## Japanese pages
+
+- [config (Japanese)]({{base}}/config.md): where the config file lives, its syntax, every key and default (generated from config.example)
+- [MCP (Japanese)]({{base}}/mcp.md): building the splitterm command, registering its MCP server, and the list of tools
+- [Media (Japanese)]({{base}}/media.md): sending photos, video and audio; video contact sheets; token estimates
+- [FAQ (Japanese)]({{base}}/faq.md): minimum iOS, price, App Store, 7-day signing, privacy, supported agents, limitations
+
+## Optional
+
+- [All Japanese pages in one file]({{base}}/llms-full.txt): every Japanese page concatenated as Markdown
+- [日本語の llms.txt]({{base}}/llms.txt): the primary (Japanese) index
