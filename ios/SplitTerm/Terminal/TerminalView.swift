@@ -121,7 +121,12 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
             link = nil
         } else {
             setNeedsLayout()
-            requestRender()
+            // ウィンドウに載る前の描画の頼み（起動時のフォントの設定など）は、印だけ立って描画のループが動いていない。
+            // requestRender は「もう頼んである」と見て何もしないので、ここで必ず描画のループを動かす
+            flagLock.lock()
+            renderRequested = true
+            flagLock.unlock()
+            startLink()
         }
     }
 
@@ -141,6 +146,7 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         }
     }
 
+    /// 描画のループを動かす。ウィンドウに載っていなければ何もしない（載ったときに didMoveToWindow が動かす）
     private func startLink() {
         guard window != nil else { return }
         if link == nil {
