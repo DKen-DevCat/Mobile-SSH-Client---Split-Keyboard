@@ -2,6 +2,7 @@
 title: Mobile-SSH-Client---Split-Keyboard — a landscape split-keyboard SSH terminal for iPhone and iPad
 description: An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell. Built to drive tmux and Claude Code on your own Mac. iOS / iPadOS {{min_ios}} or later, free (¥0). Not on the App Store; you build it from source on a Mac and install it with a free Apple ID.
 updated: 2026-10-30
+hero: en/hero.html
 ---
 
 # Mobile-SSH-Client---Split-Keyboard

@@ -157,6 +157,21 @@ def test_hero_goes_between_header_and_main():
     html = build.page_html(page, meta, "<h1>t</h1>", site, {}, hero='<section class="hero">大きな区画</section>')
     assert re.search(r"</header>\n<section class=\"hero\">大きな区画</section>\n<main id=\"main\">", html)
     assert "hero" not in build.page_html(page, meta, "<h1>t</h1>", site, {})
+    # メインビジュアルが上の帯を兼ねるので、そのページの印を付ける（CSS で共通のヘッダーを隠す）
+    assert '<body class="has-hero">' in html
+
+
+def test_head_has_icons_font_and_og_image(built: Path):
+    html = (built / "index.html").read_text(encoding="utf-8")
+    for tag in ('<link rel="icon" href="/favicon.ico" sizes="32x32">',
+                '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
+                '<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
+                f'<link rel="preload" href="{build.FONT}" as="font" type="font/woff2" crossorigin>',
+                '<meta name="twitter:card" content="summary_large_image">'):
+        assert tag in html
+    assert re.search(r'<meta property="og:image" content="https://[^"]+/assets/og\.png">', html)
+    for f in ("favicon.ico", "apple-touch-icon.png", "assets/og.png", build.FONT.lstrip("/"), "assets/fonts/OFL.txt"):
+        assert (built / f).is_file(), f
 
 
 def test_config_example_parser_groups_descriptions():

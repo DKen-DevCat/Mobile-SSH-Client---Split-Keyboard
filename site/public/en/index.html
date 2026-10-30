@@ -3,11 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0b">
 <title>Mobile-SSH-Client---Split-Keyboard — a landscape split-keyboard SSH terminal for iPhone and iPad</title>
 <meta name="description" content="An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell. Built to drive tmux and Claude Code on your own Mac. iOS / iPadOS 17 or later, free (¥0). Not on the App Store; you build it from source on a Mac and install it with a free Apple ID.">
+<link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="canonical" href="https://mobile-ssh-client---split-keyboard.pages.dev/en/">
 <link rel="alternate" hreflang="en" href="https://mobile-ssh-client---split-keyboard.pages.dev/en/">
 <link rel="alternate" hreflang="ja" href="https://mobile-ssh-client---split-keyboard.pages.dev/">
@@ -21,7 +25,11 @@
 <meta property="og:url" content="https://mobile-ssh-client---split-keyboard.pages.dev/en/">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="ja_JP">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://mobile-ssh-client---split-keyboard.pages.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mobile-SSH-Client---Split-Keyboard">
+<meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
 {
  "@context": "https://schema.org",
@@ -47,9 +55,28 @@
 }
 </script>
 </head>
-<body>
+<body class="has-hero">
 <a class="skip" href="#main">Skip to content</a>
 <header><p class="brand"><a href="/en/">Mobile-SSH-Client---Split-Keyboard</a></p><nav aria-label="Site"><ul><li><a href="/en/" aria-current="page">Home</a></li><li><a href="/en/get-started">Get Started</a></li><li><a href="/" hreflang="ja" lang="ja">日本語</a></li></ul></nav></header>
+<!-- トップのメインビジュアル（利用者のデザイン 1600×900 が土台。寸法は style.css の .hero）。名前の見出し（h1）は本文の側にあり、ここの大きな名前は飾り -->
+<section class="hero" aria-label="Main visual">
+<div class="stage">
+<nav class="bar" aria-label="Site">
+<a class="brand" href="/en/"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x=".5" y=".5" width="31" height="31" rx="6.5" fill="#0b0b0b" stroke="#3a3a38"/><g fill="#f2f2ee" fill-opacity=".55"><rect x="2.5" y="10" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="17" width="4.5" height="4.5" rx="1"/><rect x="25" y="10" width="4.5" height="4.5" rx="1"/><rect x="25" y="17" width="4.5" height="4.5" rx="1"/></g><rect x="9" y="6" width="14" height="20" rx="2.5" fill="#f2f2ee"/><polyline points="12,12.5 15,15.5 12,18.5" fill="none" stroke="#0b0b0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="16.5" y="19" width="4.5" height="1.8" rx=".5" fill="#0b0b0b"/></svg>MSC-SK</a>
+<div class="links"><a href="/" hreflang="ja" lang="ja">日本語</a><a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">GitHub</a></div>
+</nav>
+<div class="lead">
+<p class="title" aria-hidden="true"><span>Mobile-SSH-Client</span><span><span class="dim">---</span>Split-Keyboard</span></p>
+<p class="tag">A landscape split keyboard, straight into tmux on your Mac.</p>
+<div class="cta"><a class="btn p" href="/en/get-started">Get started<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h13M11 4l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></a><a class="btn g" href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">View on GitHub</a></div>
+</div>
+<div class="dev" aria-hidden="true">
+<div class="kg"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="scr"><div>$ ssh mac</div><div>$ tmux attach -t main</div><div class="c">[main] 0:claude* 1:zsh</div><div>&gt; <span class="cur"></span></div></div>
+<div class="kg"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</div>
+</div>
+</section>
 <main id="main">
 <h1 id="mobile-ssh-client-split-keyboard">Mobile-SSH-Client---Split-Keyboard</h1>
 <p>An SSH terminal for iPhone and iPad that you hold in landscape, with the keyboard split into two halves on either side of the shell. It is a front end for driving tmux and Claude Code on your own Mac, and it puts network speed and typing feel first.</p>

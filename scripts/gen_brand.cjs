@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // アイコン・favicon・OGP の画像を brand/ の SVG から作る（Chromium で描く。Playwright が要る）。
 // 使い方: node scripts/gen_brand.cjs          アイコンと favicon
-//         node scripts/gen_brand.cjs --og     加えて site/public/index.html のメインビジュアルから OGP 画像（先に python3 site/build.py）
+//         node scripts/gen_brand.cjs --og     加えてトップのメインビジュアルから OGP 画像（先に python3 site/build.py、後でもう一度）
 // 元の絵は brand/app-icon.svg と brand/favicon.svg（利用者のデザイン。アイコンの文字は輪郭にしてある）
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
@@ -35,6 +35,24 @@ function dropAlpha(file) {
     } catch {}
   }
   return false;
+}
+
+// site/public を 127.0.0.1 で配る（/ → index.html、/a → a.html）
+function serve(dir) {
+  const http = require('http');
+  const types = { '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = http.createServer((req, res) => {
+    let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p.endsWith('/')) p += 'index.html';
+    let file = path.join(dir, path.normalize(p));
+    if (!file.startsWith(dir)) return res.writeHead(403).end();
+    if (!path.extname(file)) file += '.html';
+    fs.readFile(file, (err, data) => {
+      if (err) return res.writeHead(404).end();
+      res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' }).end(data);
+    });
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
 // PNG をそのまま入れた ICO（16・32・48）
@@ -76,16 +94,19 @@ function ico(pngs) {
   console.log('site/src/favicon.svg, favicon.ico, apple-touch-icon.png');
 
   if (og) {
-    // メインビジュアルを 1200×675 で描き、上から 630 を切り出す（OGP の 1.91:1）
-    const index = path.join(ROOT, 'site/public/index.html');
+    // メインビジュアルを 1200×675 で描き、上から 630 を切り出す（OGP の 1.91:1）。site/public を手元で配って開く
+    const server = await serve(path.join(ROOT, 'site/public'));
+    const out = path.join(OUT.site, 'assets/og.png');
+    fs.mkdirSync(path.dirname(out), { recursive: true });
     await page.setViewportSize({ width: 1200, height: 675 });
-    await page.goto('file://' + index);
+    await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(() => document.fonts.ready);
     // 点滅するカーソルを点けたまま止める
     await page.addStyleTag({ content: '.hero .cur{animation:none!important}' });
-    await page.screenshot({ path: path.join(OUT.site, 'og.png'), clip: { x: 0, y: 0, width: 1200, height: 630 } });
-    dropAlpha(path.join(OUT.site, 'og.png'));
-    console.log('site/src/og.png');
+    await page.screenshot({ path: out, clip: { x: 0, y: 0, width: 1200, height: 630 } });
+    dropAlpha(out);
+    server.close();
+    console.log('site/src/assets/og.png（python3 site/build.py でもう一度作る）');
   }
   await browser.close();
 })().catch((e) => {

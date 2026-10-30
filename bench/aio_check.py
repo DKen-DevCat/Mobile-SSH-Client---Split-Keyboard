@@ -601,7 +601,8 @@ def check_mcp(s: Site) -> list[str]:
 def check_names(s: Site, name: str) -> list[str]:
     bad = []
     for f in s.files:
-        if f.endswith((".svg", ".css")) or f == "_headers":
+        # 人とエージェントが読む文書だけ（画像・フォント・CSS・ヘッダーは見ない）
+        if not f.endswith((".html", ".md", ".txt", ".xml")):
             continue
         text = s.read(f)
         for old in OLD_NAMES:

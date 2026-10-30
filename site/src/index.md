@@ -2,6 +2,7 @@
 title: Mobile-SSH-Client---Split-Keyboard — iPhone・iPad を横持ちで使う、分割キーボードの SSH ターミナル
 description: iPhone と iPad を横持ちにして、左右に分けたキーボードでシェルを挟む SSH ターミナル。自分の Mac の tmux と Claude Code を操作する。iOS / iPadOS {{min_ios}} 以上、料金 0 円。App Store ではなく、Mac でソースからビルドして無料の Apple ID で入れる。
 updated: 2026-10-30
+hero: hero.html
 ---
 
 # Mobile-SSH-Client---Split-Keyboard

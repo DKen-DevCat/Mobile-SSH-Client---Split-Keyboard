@@ -35,6 +35,9 @@ AI_BOTS = (
     "PerplexityBot", "Google-Extended", "Applebot-Extended",
 )
 
+# サイトのフォント（JetBrains Mono、OFL。site/src/assets/fonts/）と OGP の画像
+FONT = "/assets/fonts/jetbrains-mono-latin.woff2"
+OG_IMAGE = "/assets/og.png"
 CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; "
        "frame-ancestors 'none'")
 
@@ -531,11 +534,15 @@ def head_common(title: str, description: str) -> list[str]:
     return [
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        '<meta name="color-scheme" content="light dark">',
+        '<meta name="color-scheme" content="dark">',
+        '<meta name="theme-color" content="#0b0b0b">',
         f"<title>{esc(title)}</title>",
         f'<meta name="description" content="{esc(description)}">',
+        f'<link rel="preload" href="{FONT}" as="font" type="font/woff2" crossorigin>',
         '<link rel="stylesheet" href="/style.css">',
+        '<link rel="icon" href="/favicon.ico" sizes="32x32">',
         '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
+        '<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
     ]
 
 
@@ -566,8 +573,12 @@ def page_html(page: Page, meta: dict, main: str, site: dict, ld: dict, hero: str
     ]
     if page.alt:
         og.append(("og:locale:alternate", UI[PAGE_BY_PATH[page.alt].lang]["locale"]))
+    if (SRC / OG_IMAGE.lstrip("/")).is_file():  # scripts/gen_brand.cjs --og が作る
+        og += [("og:image", base + OG_IMAGE), ("og:image:width", "1200"), ("og:image:height", "630"),
+               ("og:image:alt", meta["h1"])]
     head += [f'<meta property="{k}" content="{esc(v)}">' for k, v in og]
-    head.append('<meta name="twitter:card" content="summary">')
+    card = "summary_large_image" if (SRC / OG_IMAGE.lstrip("/")).is_file() else "summary"
+    head.append(f'<meta name="twitter:card" content="{card}">')
     ld_text = json.dumps(ld, ensure_ascii=False, indent=1).replace("</", "<\\/")
     head.append(f'<script type="application/ld+json">\n{ld_text}\n</script>')
     md = "/" + page.file("md")
@@ -579,7 +590,7 @@ def page_html(page: Page, meta: dict, main: str, site: dict, ld: dict, hero: str
         "<!doctype html>",
         f'<html lang="{page.lang}">',
         "<head>", *head, "</head>",
-        "<body>",
+        '<body class="has-hero">' if hero.strip() else "<body>",
         f'<a class="skip" href="#main">{ui["skip"]}</a>',
         f'<header><p class="brand"><a href="{NAV[page.lang][0]}">{esc(site["name"])}</a></p>'
         f'<nav aria-label="{ui["nav"]}">{nav_html(page)}</nav></header>',
@@ -696,6 +707,9 @@ def build(site: dict | None = None) -> dict[str, bytes]:
     files["_headers"] = headers()
     for name in ("style.css", "favicon.svg"):
         files[name] = (SRC / name).read_text(encoding="utf-8")
+    # 決まった場所で探されるアイコン（scripts/gen_brand.cjs が作る）
+    for name in ("favicon.ico", "apple-touch-icon.png"):
+        files[name] = (SRC / name).read_bytes()
     # 画像などはそのまま配る（site/src/assets/ → /assets/）。CSP で同じサイトの画像だけが読める
     assets = SRC / "assets"
     if assets.is_dir():

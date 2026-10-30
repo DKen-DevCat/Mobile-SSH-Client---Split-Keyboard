@@ -16,7 +16,10 @@
 | `site/site.json` | ベースの URL・アプリの名前・リポジトリの URL。URL はここ 1 か所だけ |
 | `site/src/*.md`・`site/src/en/*.md` | ページ。先頭に front matter（下） |
 | `site/src/llms.txt`・`site/src/en/llms.txt` | llms.txt（llmstxt.org の形） |
-| `site/src/style.css`・`favicon.svg` | 見た目（仮。差し替えてよい） |
+| `site/src/style.css` | 見た目（利用者のデザイン「05-A Mono Landscape」。トップのメインビジュアル `.hero` もここ） |
+| `site/src/hero.html`・`site/src/en/hero.html` | トップのメインビジュアル（デザイン 1600×900 が土台。寸法は `style.css` の `calc(N * var(--u))`） |
+| `site/src/favicon.svg`・`favicon.ico`・`apple-touch-icon.png`・`assets/og.png` | `node scripts/gen_brand.cjs --og` が `brand/` から作る（手で直さない） |
+| `site/src/assets/fonts/` | JetBrains Mono（OFL、ラテン文字だけ）と `OFL.txt` |
 | `site/src/assets/` | 画像など。そのまま `/assets/` に配る（無ければ何もしない） |
 | `site/build.py` | 生成 |
 | `site/public/` | 生成物（手で直さない） |
