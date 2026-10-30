@@ -4,31 +4,43 @@ import UIKit
 /// キーボードが入力ルータへ渡すもの
 enum KeyboardEmit {
     case key(TermKey, KeyModifiers)
-    case flick(keyID: String, set: FlickSet, direction: FlickDirection)
+    /// フリック。upper は英字を大文字にする（a/A が入のとき）
+    case flick(keyID: String, set: FlickSet, direction: FlickDirection, upper: Bool)
     case kanaBreak
     case kanaModify
+    /// 前のキーボードへ（🌐 のタップ）
     case switchKeyboard
+    /// そのキーボードへ（ABC・あいう）
+    case setKeyboard(KeyboardKind)
+    /// キーボードを選ぶ吹き出しを出す（🌐 の長押し）。anchor はウィンドウの座標
+    case keyboardMenu(anchor: CGRect)
+    /// Touch ID の位置のキー。アプリをすぐロックする
+    case lockApp
 }
 
+@MainActor
 protocol KeyboardOutput: AnyObject {
     func keyboard(_ emit: KeyboardEmit)
 }
 
-/// 左右の面で共有する状態（修飾キー）。docs/design.md「同時入力」:
-/// 修飾キーは押している間だけ効くのに加え、タップでワンショット（次の 1 キーにだけ掛かる）にもなる
+/// 左右の面で共有する状態（修飾キー・caps lock・ポインタ）。docs/design.md「同時入力」:
+/// 修飾キーは Mac のキーボードと同じく、押している間だけ効く（離すと外れる。長押ししても 1 回）
+@MainActor
 final class KeyboardModel {
     weak var output: KeyboardOutput?
     /// 修飾キーの見た目が変わった（両面を描き直す）
     var onChange: (() -> Void)?
+    /// スペースの横の赤い丸（左右で 1 つを共有する）
+    let pointer = PointerStick()
 
     /// 押している指の数
     private var held: [ModifierKey: Int] = [:]
-    /// 押している間に、ほかのキーを確定したか（したなら離してもワンショットにしない）
+    /// 押している間に、ほかのキーを確定したか（fn をほかのキーに使わずに離したら、キーボードを切り替える）
     private var usedWhileHeld: Set<ModifierKey> = []
-    private(set) var oneShot: Set<ModifierKey> = []
+    private(set) var capsLock = false
 
     var active: Set<ModifierKey> {
-        oneShot.union(held.filter { $0.value > 0 }.map(\.key))
+        Set(held.filter { $0.value > 0 }.map(\.key))
     }
 
     func modifierDown(_ m: ModifierKey) {
@@ -41,18 +53,29 @@ final class KeyboardModel {
         held[m, default: 1] -= 1
         if held[m]! <= 0 {
             held[m] = nil
-            if !cancelled && !usedWhileHeld.contains(m) {
-                // タップ: ワンショットを入れる。もう一度タップで外す
-                if oneShot.contains(m) { oneShot.remove(m) } else { oneShot.insert(m) }
-            }
+            // 🌐: ほかのキーに使わずに離したら、英語とかなを切り替える（Mac の fn と同じ）
+            if m == .fn && !cancelled && !usedWhileHeld.contains(.fn) { output?.keyboard(.switchKeyboard) }
         }
+        onChange?()
+    }
+
+    /// 🌐 を長押しした。離してもキーボードは切り替えず、選ぶ吹き出しを出す
+    func globeLongPressed(anchor: CGRect) {
+        // fn として矢印などに使っている間は出さない
+        guard !usedWhileHeld.contains(.fn) else { return }
+        usedWhileHeld.insert(.fn)
+        output?.keyboard(.keyboardMenu(anchor: anchor))
+    }
+
+    func toggleCapsLock() {
+        capsLock.toggle()
         onChange?()
     }
 
     func reset() {
         held.removeAll()
-        oneShot.removeAll()
         usedWhileHeld.removeAll()
+        pointer.reset()
         onChange?()
     }
 
@@ -66,6 +89,11 @@ final class KeyboardModel {
         return m
     }
 
+    /// 英字 1 文字（caps lock が効く）
+    private static func isLetter(_ c: String) -> Bool {
+        c.count == 1 && c.unicodeScalars.allSatisfy { ("a"..."z").contains($0) }
+    }
+
     /// キーを確定する（指を離した時）
     func commit(_ spec: KeySpec, direction: FlickDirection = .center) {
         let a = active
@@ -76,34 +104,43 @@ final class KeyboardModel {
         case .character(let c, let shifted, let fnKey):
             if fn, let fnKey {
                 emit = .key(fnKey, mods)
+            } else if mods.contains(.option), !mods.contains(.command), let o = spec.option {
+                // キーに刷ってある option の文字（2 の €、3 の #）。option-as-meta より先に効く
+                mods.remove(.option)
+                mods.remove(.shift)
+                emit = .key(.text(o), mods)
             } else {
-                let text = mods.contains(.shift) ? (shifted ?? c.uppercased()) : c
+                // caps lock は英字だけ大文字にする（Mac と同じく、shift と重ねても大文字のまま）
+                let upper = mods.contains(.shift) || (capsLock && Self.isLetter(c))
+                let text = upper ? (shifted ?? c.uppercased()) : c
                 mods.remove(.shift)
                 emit = .key(.text(text), mods)
             }
         case .key(let k, let fnKey, _):
             emit = .key(fn ? (fnKey ?? k) : k, mods)
         case .send:
-            emit = .key(.enter, mods)
+            // shift＋return は改行（Claude Code などで、送らずに次の行へ）
+            emit = mods.contains(.shift) ? .key(.newline, []) : .key(.enter, mods)
         case .newline:
             emit = .key(.newline, [])
         case .switchKeyboard:
             emit = .switchKeyboard
+        case .setKeyboard(let kind):
+            emit = .setKeyboard(kind)
+        case .lockApp:
+            emit = .lockApp
         case .flick(let set):
-            emit = .flick(keyID: spec.id, set: set, direction: direction)
+            emit = .flick(keyID: spec.id, set: set, direction: direction, upper: capsLock || mods.contains(.shift))
         case .kanaBreak:
             emit = .kanaBreak
         case .kanaModify:
             emit = .kanaModify
-        case .modifier:
+        case .modifier, .capsLock, .pointer:
             return
         }
-        // 使った修飾キーを記録し、ワンショットを外す
+        // 押している修飾キーを、ほかのキーに使ったと記録する
         usedWhileHeld.formUnion(held.keys)
-        let hadOneShot = !oneShot.isEmpty
-        oneShot.removeAll()
         if let emit { output?.keyboard(emit) }
-        if hadOneShot { onChange?() }
     }
 }
 

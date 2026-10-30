@@ -15,8 +15,10 @@ final class RootViewController: UIViewController {
 
     private let terminalView = TerminalView(frame: .zero)
     private let model = KeyboardModel()
-    private lazy var leftKeyboard = SplitKeyboardView(face: KeyboardLayouts.usLeft, model: model, colors: colors)
-    private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.usRight, model: model, colors: colors)
+    private lazy var leftKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisLeft, model: model, colors: colors)
+    private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisRight, model: model, colors: colors)
+    /// 📎（写真・動画・音声・ファイルを送る）。シェルの左下に置く
+    private let clipButton = UIButton(type: .system)
     private let envBar = EnvironmentBar()
     private let candidateBar = CandidateBar()
     private let notice = UILabel()
@@ -26,7 +28,13 @@ final class RootViewController: UIViewController {
     private var activeIndex = 0
     private var active: TerminalSession? { sessions.indices.contains(activeIndex) ? sessions[activeIndex] : nil }
 
-    private var keyboardKind: KeyboardKind = .us
+    private var keyboardKind: KeyboardKind = .english
+    /// 🌐 のタップで戻る、前のキーボード
+    private var previousKeyboard: KeyboardKind = .romaji
+    /// ローマ字入力のまだかなにならない英字（docs/design.md「ローマ字入力」）
+    private var romaji = RomajiConverter()
+    /// 最後に出した候補と、その読み（空白の変換に使う）
+    private var lastCandidates: (reading: String, candidates: [KanaCandidate]) = ("", [])
     private var zoom = ZoomSteps(steps: [85, 100])
     private var composer = KanaComposer()
     /// かな漢字変換（AzooKey）。裏のキューで変換し、最新の結果だけを候補バーに出す
@@ -37,6 +45,9 @@ final class RootViewController: UIViewController {
 
     // 安全（ロックと画面の保護は SecurityGate。ロック中は入力をすべて捨てる）
     private lazy var gate = SecurityGate(colors: colors)
+    // メディアを送る（docs/design.md「メディアを送る」）
+    private let picker = MediaPicker()
+    private let sender = MediaSender()
     /// 起動時の自動接続を、最初にロックを解くまで待たせる
     private var autoConnectPending = true
     private let pathMonitor = NWPathMonitor()
@@ -62,6 +73,7 @@ final class RootViewController: UIViewController {
 
         terminalView.delegate = self
         model.output = self
+        model.pointer.output = self
         model.onChange = { [weak self] in
             self?.leftKeyboard.setNeedsDisplay()
             self?.rightKeyboard.setNeedsDisplay()
@@ -69,9 +81,12 @@ final class RootViewController: UIViewController {
         envBar.onSelectTab = { [weak self] i in self?.selectTab(i) }
         envBar.onCloseTab = { [weak self] i in self?.closeTab(i) }
         envBar.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
-        envBar.onKeyboard = { [weak self] in self?.switchKeyboard() }
+        envBar.setKeyboardMenu(UIMenu(title: "キーボード", children: [UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.keyboardMenuElements() ?? [])
+        }]))
         envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
         candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
+        setUpMedia()
 
         gate.scene = { [weak self] in self?.view.window?.windowScene }
         gate.onResume = { [weak self] in self?.resume() }
@@ -87,9 +102,13 @@ final class RootViewController: UIViewController {
         nc.addObserver(self, selector: #selector(didActivate), name: UIScene.didActivateNotification, object: nil)
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）
-            guard path.status == .satisfied, let type = path.availableInterfaces.first?.type else { return }
-            DispatchQueue.main.async { [weak self] in self?.pathChanged(type) }
+            // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）。
+            // 環境バーの通信の印には、つながっていないことも出す
+            let type = path.status == .satisfied ? path.availableInterfaces.first?.type : nil
+            DispatchQueue.main.async { [weak self] in
+                self?.envBar.setNetwork(type)
+                if let type { self?.pathChanged(type) }
+            }
         }
         pathMonitor.start(queue: DispatchQueue(label: "splitterm.path"))
 
@@ -98,7 +117,8 @@ final class RootViewController: UIViewController {
         // 自動接続は、ロックを解いてから（resume）
     }
 
-    override var prefersStatusBarHidden: Bool { true }
+    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は環境バーに出す）
+    override var prefersStatusBarHidden: Bool { false }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     /// キーボードは画面の下端と左右の端に触れるので、システムのジェスチャを後回しにする
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
@@ -119,6 +139,7 @@ final class RootViewController: UIViewController {
         leftKeyboard.colors = colors
         rightKeyboard.colors = colors
         envBar.apply(colors: colors)
+        clipButton.tintColor = colors.text.withAlphaComponent(0.85)
         candidateBar.apply(colors: colors)
         notice.textColor = colors.subText
         emptyLabel.textColor = colors.subText
@@ -132,11 +153,15 @@ final class RootViewController: UIViewController {
         terminalView.cursorBlink = c.cursorBlink
         terminalView.setColorSpace(c.colorSpace)
         gate.colors = colors
-        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur)
+        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur, stripLocation: c.mediaStripLocation,
+                     lockAfter: c.appLockAfter)
         if initial || zoom.steps != c.zoomSteps {
             zoom = ZoomSteps(steps: c.zoomSteps, current: initial ? nil : zoom.percent)
         }
-        if initial { keyboardKind = c.keyboard }
+        if initial {
+            keyboardKind = c.keyboard
+            previousKeyboard = c.keyboard == .english ? .romaji : .english
+        }
         for s in sessions { s.config = c }
         envBar.plus.menu = makeMenu()
         updateEnvBar()
@@ -182,6 +207,8 @@ final class RootViewController: UIViewController {
         notice.text = "窓が狭いので画面のキーボードを隠しています"
         notice.frame = CGRect(x: r.shell.minX, y: r.environmentBar.minY - 18, width: r.shell.width, height: 16)
         emptyLabel.frame = r.shell.insetBy(dx: 16, dy: 16)
+        clipButton.frame = CGRect(x: r.shell.minX + 6, y: r.shell.maxY - 42, width: 36, height: 36)
+        view.bringSubviewToFront(clipButton)
         updateEnvBar()
         regrid()
     }
@@ -285,12 +312,40 @@ final class RootViewController: UIViewController {
         updateEnvBar()
     }
 
+    /// 🌐 のタップ: 前のキーボードへ
     private func switchKeyboard() {
-        if composer.isComposing { commitComposition(nil) }
-        keyboardKind = keyboardKind == .us ? .kana : .us
+        setKeyboard(previousKeyboard)
+    }
+
+    private func setKeyboard(_ kind: KeyboardKind) {
+        guard kind != keyboardKind else { return }
+        if composer.isComposing || !romaji.isEmpty { commitComposition(nil) }
+        previousKeyboard = keyboardKind
+        keyboardKind = kind
         model.reset()
         view.setNeedsLayout()
         updateEnvBar()
+    }
+
+    /// キーボードを選ぶメニューの中身（環境バーのボタン・🌐 の長押しの吹き出し）
+    private func keyboardMenuElements() -> [UIMenuElement] {
+        KeyboardKind.menuOrder.map { kind in
+            UIAction(title: kind.title, state: kind == keyboardKind ? .on : .off) { [weak self] _ in self?.setKeyboard(kind) }
+        }
+    }
+
+    /// 🌐 の長押し: iOS の吹き出し（ポップオーバー）でキーボードを選ぶ
+    private func presentKeyboardMenu(anchor: CGRect) {
+        guard !gate.isLocked, presentedViewController == nil else { return }
+        let vc = KeyboardMenuController(current: keyboardKind) { [weak self] kind in self?.setKeyboard(kind) }
+        vc.modalPresentationStyle = .popover
+        if let pop = vc.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = view.convert(anchor, from: nil)
+            pop.permittedArrowDirections = [.down, .up, .left, .right]
+            pop.delegate = self
+        }
+        present(vc, animated: true)
     }
 
     @objc private func hardwareKeyboardChanged() {
@@ -300,8 +355,10 @@ final class RootViewController: UIViewController {
 
     // MARK: 入力ルータ（docs/design.md「入力設計」）
 
-    private var encodingContext: EncodingContext {
-        let m = active?.engine.modes() ?? TerminalModes()
+    private var encodingContext: EncodingContext { encodingContext(for: active) }
+
+    private func encodingContext(for session: TerminalSession?) -> EncodingContext {
+        let m = session?.engine.modes() ?? TerminalModes()
         return EncodingContext(applicationCursor: m.applicationCursor, bracketedPaste: m.bracketedPaste,
                                optionAsMeta: config.optionAsMeta, newline: config.newline)
     }
@@ -309,18 +366,21 @@ final class RootViewController: UIViewController {
     /// キーを接続先へ。command はアプリ内の操作に使う
     private func route(_ key: TermKey, _ mods: KeyModifiers) {
         guard !gate.isLocked else { return }
+        // 文字を打ったらポインタを隠す（Mac と同じ）
+        terminalView.hidePointer()
         if mods.contains(.command) {
             handleCommand(key)
             return
         }
-        if composer.isComposing {
+        if composer.isComposing || !romaji.isEmpty {
             switch key {
             case .enter, .newline:
                 // 変換中の ⏎ は確定だけで、接続先には何も送らない
                 commitComposition(nil)
                 return
             case .backspace:
-                _ = composer.deleteBackward()
+                // まだかなにならない英字から消す
+                if !romaji.deleteBackward() { _ = composer.deleteBackward() }
                 updateCandidates()
                 return
             default:
@@ -338,6 +398,7 @@ final class RootViewController: UIViewController {
         s.send(KeyEncoder.encode(key, mods, encodingContext))
     }
 
+    /// ⌘ の操作（Mac のターミナルと同じ。接続先には送らない）
     private func handleCommand(_ key: TermKey) {
         guard case .text(let t) = key else { return }
         switch t.lowercased() {
@@ -345,11 +406,23 @@ final class RootViewController: UIViewController {
         case "v": pasteClipboard()
         case "-": changeZoom { $0.zoom(in: false) }
         case "=", "+": changeZoom { $0.zoom(in: true) }
+        case "t":
+            // 新しいタブ（今のタブと同じ接続先）
+            if let host = active?.host { openSession(host) }
+        case "w":
+            if sessions.indices.contains(activeIndex) { closeTab(activeIndex) }
+        case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+            // ⌘1〜⌘8 はその番号のタブ、⌘9 は最後のタブ
+            guard let n = Int(t), !sessions.isEmpty else { return }
+            selectTab(n == 9 ? sessions.count - 1 : n - 1)
         default: break
         }
     }
 
     private func commitComposition(_ text: String?) {
+        // まだかなにならない英字も入れてから（n は「ん」）
+        let rest = romaji.flush()
+        if !rest.isEmpty { composer.append(rest) }
         let out = composer.commit(text)
         kana.reset()
         updateCandidates()
@@ -370,8 +443,22 @@ final class RootViewController: UIViewController {
     }
 
     private func updateCandidates() {
-        kana.request(composer.reading) { [weak self] candidates in
-            self?.candidateBar.update(candidates: candidates)
+        let reading = composer.reading
+        let pending = romaji.pending
+        kana.request(reading) { [weak self] candidates in
+            self?.lastCandidates = (reading, candidates)
+            self?.candidateBar.update(candidates: candidates, pending: pending)
+        }
+    }
+
+    /// ローマ字の空白: いちばん上の候補で確定する（候補がまだ無ければ読みのまま）
+    private func convertComposition() {
+        let rest = romaji.flush()
+        if !rest.isEmpty { composer.append(rest) }
+        if lastCandidates.reading == composer.reading, let top = lastCandidates.candidates.first {
+            pickCandidate(top)
+        } else {
+            commitComposition(nil)
         }
     }
 
@@ -412,6 +499,95 @@ final class RootViewController: UIViewController {
         guard let s = active else { return }
         s.scrollTop = nil
         s.send(KeyEncoder.paste(text, ctx))
+    }
+
+    // MARK: メディアを送る
+
+    private func setUpMedia() {
+        picker.presenter = self
+        picker.onPicked = { [weak self] items in self?.sendMedia(items) }
+        picker.onError = { [weak self] message in self?.alert("メディア", message) }
+        sender.onStatus = { [weak self] text in self?.envBar.setProgress(text) }
+        sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
+        sender.onInsert = { [weak self] text, session in self?.insertMediaPaths(text, into: session) }
+        // 開くたびに作る（送っている途中なら「やめる」を出す）
+        // 📎 はシェルの左下（環境バーのものは使わない）
+        envBar.attach.isHidden = true
+        clipButton.setImage(UIImage(systemName: "paperclip.circle.fill",
+                                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 26)), for: .normal)
+        clipButton.showsMenuAsPrimaryAction = true
+        clipButton.accessibilityLabel = "メディアを送る"
+        view.addSubview(clipButton)
+        clipButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.mediaMenu() ?? [])
+        }])
+    }
+
+    private func mediaMenu() -> [UIMenuElement] {
+        if sender.busy {
+            return [UIAction(title: "送るのをやめる", image: UIImage(systemName: "xmark.circle"), attributes: .destructive) {
+                [weak self] _ in self?.sender.cancel()
+            }]
+        }
+        return [
+            UIAction(title: "写真・動画を選ぶ", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+                self?.startPicking { $0.pickLibrary() }
+            },
+            UIAction(title: "撮る", image: UIImage(systemName: "camera")) { [weak self] _ in
+                self?.startPicking { $0.capture() }
+            },
+            UIAction(title: "録音する", image: UIImage(systemName: "mic")) { [weak self] _ in
+                self?.startPicking { $0.record() }
+            },
+            UIAction(title: "ファイルを選ぶ", image: UIImage(systemName: "doc")) { [weak self] _ in
+                self?.startPicking { $0.pickFile() }
+            },
+        ]
+    }
+
+    /// 繋がっているタブがあるときだけ選ばせる（選んだのに送れない、を避ける）
+    private func startPicking(_ open: (MediaPicker) -> Void) {
+        guard !gate.isLocked else { return }
+        guard let s = active, s.isConnected else {
+            alert("メディア", "繋がっているタブがありません。接続してから送ってください")
+            return
+        }
+        guard !sender.busy else {
+            alert("メディア", "前のメディアを送っている途中です")
+            return
+        }
+        open(picker)
+    }
+
+    private func sendMedia(_ items: [PickedMedia]) {
+        guard let s = active else { return }
+        // 位置情報を外すかは、本人が確かめた値（config の値ではなく。SecurityGate）
+        var c = config
+        c.mediaStripLocation = gate.stripLocation
+        sender.send(items, config: c, session: s)
+    }
+
+    /// ロック中に送り終わったパス（ロックを解いたら入れる）
+    private var pendingMediaInsert: (text: String, session: TerminalSession)?
+
+    /// 送ったファイルのパスを、送った元のタブの入力行に入れる（Enter は押さない。貼り付けと同じく制御文字は除く）
+    private func insertMediaPaths(_ text: String, into session: TerminalSession) {
+        guard sessions.contains(where: { $0 === session }) else { return }  // タブを閉じた
+        guard !gate.isLocked else {
+            pendingMediaInsert = (text, session)
+            return
+        }
+        // 改行は入れない（config の media-insert に何が書かれていても、コマンドを実行しない）
+        let line = text.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
+        if session === active, composer.isComposing { commitComposition(nil) }
+        session.scrollTop = nil
+        session.send(KeyEncoder.paste(line, encodingContext(for: session)))
+    }
+
+    private func flushPendingMediaInsert() {
+        guard let p = pendingMediaInsert else { return }
+        pendingMediaInsert = nil
+        insertMediaPaths(p.text, into: p.session)
     }
 
     private func copyPublicKey() {
@@ -475,6 +651,7 @@ final class RootViewController: UIViewController {
             if let host = config.autoConnectHost { openSession(host) }
         }
         for s in sessions { s.becameActive() }
+        flushPendingMediaInsert()
         terminalView.becomeFirstResponder()
         terminalView.requestRender()
     }
@@ -493,14 +670,40 @@ extension RootViewController: KeyboardOutput {
         guard !gate.isLocked else { return }
         switch emit {
         case .key(let k, let mods):
-            if keyboardKind == .kana, composer.isComposing, case .text(" ") = k, mods.isEmpty {
-                // 空白: 変換中なら確定してから空白を送る
+            // ローマ字: 英字と句読点（、。ー「」）はかなにして読みに足す
+            if keyboardKind.usesRomaji, mods.subtracting(.shift).isEmpty, case .text(let t) = k, t.count == 1,
+               let c = t.first, let kana = romaji.input(c) {
+                terminalView.hidePointer()
+                if !kana.isEmpty { composer.append(kana) }
+                updateCandidates()
+                return
+            }
+            if keyboardKind.isJapanese, composer.isComposing || !romaji.isEmpty, case .text(" ") = k, mods.isEmpty {
+                if keyboardKind.usesRomaji {
+                    // 空白は変換（いちばん上の候補で確定）
+                    convertComposition()
+                    return
+                }
+                // かな: 読みのまま確定してから空白を送る
                 commitComposition(nil)
             }
             route(k, mods)
-        case .flick(let id, let set, let d):
-            composer.input(keyID: id, set: set, direction: d, now: CACurrentMediaTime())
-            updateCandidates()
+        case .flick(let id, let set, let d, let upper):
+            let c = set.character(d)
+            switch keyboardKind {
+            case .flickEnglish:
+                route(.text(upper ? c.uppercased() : c), [])
+            case .flickRomaji:
+                if c.count == 1, let first = c.first, let kana = romaji.input(first) {
+                    if !kana.isEmpty { composer.append(kana) }
+                    updateCandidates()
+                } else {
+                    route(.text(c), [])
+                }
+            default:
+                composer.input(keyID: id, set: set, direction: d, now: CACurrentMediaTime())
+                updateCandidates()
+            }
         case .kanaBreak:
             composer.breakToggle()
         case .kanaModify:
@@ -508,7 +711,27 @@ extension RootViewController: KeyboardOutput {
             updateCandidates()
         case .switchKeyboard:
             switchKeyboard()
+        case .setKeyboard(let kind):
+            setKeyboard(kind)
+        case .keyboardMenu(let anchor):
+            presentKeyboardMenu(anchor: anchor)
+        case .lockApp:
+            gate.lockNow()
         }
+    }
+}
+
+// MARK: - スペースの横の赤い丸 → シェルのポインタ
+
+extension RootViewController: PointerOutput {
+    func pointerMove(dx: CGFloat, dy: CGFloat) {
+        guard !gate.isLocked else { return }
+        terminalView.movePointer(dx: dx, dy: dy)
+    }
+
+    func pointerClick(right: Bool) {
+        guard !gate.isLocked else { return }
+        terminalView.pointerClick(right: right)
     }
 }
 
@@ -699,5 +922,14 @@ extension RootViewController: SessionPresenter {
                 self.topPresenter.present(a, animated: true)
             }
         }
+    }
+}
+
+// MARK: - 🌐 の吹き出し（iPhone でもポップオーバーのまま出す）
+
+extension RootViewController: UIPopoverPresentationControllerDelegate {
+    func adaptivePresentationStyle(for controller: UIPresentationController,
+                                   traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+        .none
     }
 }

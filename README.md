@@ -9,11 +9,15 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | 場所 | 中身 |
 |---|---|
 | `ios/SplitTerm/` | アプリ（UIKit）。Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） |
-| `ios/TermKit/` | Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など、Mac で `swift test`）、`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
+| `ios/TermCore/` | 依存の無い Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など）と、Mac で動く `splitterm` コマンド・MCP サーバー |
+| `ios/TermKit/` | 外の依存を持つ Swift パッケージ。`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
 | `ios/SplitTerm/Resources/config.example` | config の見本（全項目の説明付き。値はすべて既定値） |
 | `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`） |
 | `launchd/com.dken.splitterm-ios.plist` | 1 時間ごとに期限を見て入れ直す |
 | `tests/` | スクリプトとプロジェクトの設定のテスト（pytest） |
+| `site/` | 公開サイト（Get Started・llms.txt）。`site/src` の Markdown から `site/build.py` で `site/public` を作り、Cloudflare Pages が配る（`site/README.md`・`docs/site.md`） |
+| `bench/` | AIO のベンチマーク。静的な検査（`aio_check.py`、CI）、エージェントの課題（`agent_bench.py`、手元の `claude -p`）、AI 検索の見え方（`visibility.md`） |
+| `.github/workflows/ci.yml` | push のたびに、Linux でサイトの検査とテスト、Mac で `TermCore`・`splitterm` のテストとアプリ全体のビルド（Release、シミュレータ向け）。公開リポジトリなので無料 |
 
 ## 準備（1 回だけ）
 
@@ -43,7 +47,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
    scripts/ios_pubkey.sh
    ```
 
-6. 自動の入れ直しを登録する（リポジトリを `~/Mobile-SSH-Client---Split-Keyboard` 以外に置いたら、plist の 3 か所のパスを直す）
+6. 自動の入れ直しを登録する（リポジトリを `~/Mobile-SSH-Client---Split-Keyboard` 以外に置いたら、plist の 4 か所のパスを直す）
 
    ```bash
    cp launchd/com.dken.splitterm-ios.plist ~/Library/LaunchAgents/
@@ -66,10 +70,14 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | コードを変えたので入れ直す | `scripts/ios_reinstall.sh` |
 | 設定を変える（Mac で） | `~/.config/splitterm/config` を直して `scripts/ios_push_config.sh`。開いているアプリにもすぐ効く |
 | 設定を変える（端末で） | ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
-| 画面に頼らない部分のテスト（Mac） | `(cd ios/TermKit && swift test)` |
+| 画面に頼らない部分のテスト（Mac） | `(cd ios/TermCore && swift test)` |
+| `splitterm` を作る（Mac） | `swift build -c release --package-path ios/TermCore`（できるのは `ios/TermCore/.build/release/splitterm`） |
+| エージェントに MCP を足す | `claude mcp add splitterm -- "$PWD/ios/TermCore/.build/release/splitterm" mcp` |
 | スクリプトのテスト | `python3 -m pytest tests` |
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
-| アイコンを作り直す | `python3 scripts/gen_icon.py`（Pillow が要る） |
+| アイコン・favicon を作り直す | `node scripts/gen_brand.cjs`（Playwright が要る。元の絵は `brand/`。`--og` で OGP 画像も） |
+| 公開サイトを作り直す・確かめる | `python3 site/build.py` と `python3 bench/aio_check.py`（`site/src` と `site/public` を一緒に入れる） |
+| 公開サイトを手元で見る | `python3 site/serve.py` → http://127.0.0.1:8788/（英語は /en/。作り直してから配る） |
 
 ### 環境変数
 
@@ -86,8 +94,9 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 ## 使い方の要点
 
-- **キーボード**: US（Mac 配列の分割。caps lock の位置が control、esc は左下）とかなフリック（12 キー × 左右、AzooKey でかな漢字変換）。環境バーの「US / かな」で切り替え
-- **修飾キー**: 押しながらでも、タップしてワンショットでも効く。command はアプリ内（⌘C コピー、⌘V ペースト、⌘− / ⌘= 倍率）
+- **キーボード**: 5 つ（分割ローマ字・分割英語・日本語フリック・英語フリックのローマ字・英語）。分割は Mac の JIS 配列（日本語の刻印なし、6・Y・H・N は左右の両方）。🌐 のタップで前のキーボード、長押しで選ぶ（環境バーのボタンからも）
+- **修飾キー**: Mac と同じく押している間だけ効く。command はアプリ内（⌘C コピー、⌘V ペースト、⌘− / ⌘= 倍率、⌘T・⌘W・⌘1〜9 タブ）
+- **ポインタ**: スペースの横の赤い丸。動かした分だけ動き、大きくずらすと進み続ける。片方のタップでクリック、両方で右クリック
 - **シェル**: 縦ドラッグでスクロールバック、長押し→ドラッグで選択、ダブルタップで単語、2 本指タップでメニュー、ピンチで倍率（85% / 100%）。vim・tmux・htop がマウスを求めたらマウスとして送る
 - **切れたら**: 前面に戻った・回線が変わった・通信が切れたときに自動で繋ぎ直し、tmux のセッションに戻る。シェルを exit したタブは、タップで繋ぎ直す
 - **iPad**: ハードウェアキーボードをつなぐと画面のキーボードが消え、シェルが全面になる

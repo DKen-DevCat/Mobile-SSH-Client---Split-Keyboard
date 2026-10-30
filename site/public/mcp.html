@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0b">
+<title>MCP（splitterm コマンド） | Mobile-SSH-Client---Split-Keyboard</title>
+<meta name="description" content="Mac で動く splitterm コマンドの MCP サーバーの作り方・Claude Code への登録・道具の一覧（doctor・config_check・config_push・pubkey_install・app_install・inbox_list など）。stdio だけで動き、ネットに出ない。">
+<link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="canonical" href="https://mobile-ssh-client---split-keyboard.pages.dev/mcp">
+<link rel="alternate" hreflang="ja" href="https://mobile-ssh-client---split-keyboard.pages.dev/mcp">
+<link rel="alternate" hreflang="x-default" href="https://mobile-ssh-client---split-keyboard.pages.dev/mcp">
+<link rel="alternate" type="text/markdown" href="/mcp.md" title="Markdown">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:title" content="MCP（splitterm コマンド） | Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:description" content="Mac で動く splitterm コマンドの MCP サーバーの作り方・Claude Code への登録・道具の一覧（doctor・config_check・config_push・pubkey_install・app_install・inbox_list など）。stdio だけで動き、ネットに出ない。">
+<meta property="og:url" content="https://mobile-ssh-client---split-keyboard.pages.dev/mcp">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:image" content="https://mobile-ssh-client---split-keyboard.pages.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="MCP（splitterm コマンド）">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "MCP（splitterm コマンド）",
+ "description": "Mac で動く splitterm コマンドの MCP サーバーの作り方・Claude Code への登録・道具の一覧（doctor・config_check・config_push・pubkey_install・app_install・inbox_list など）。stdio だけで動き、ネットに出ない。",
+ "inLanguage": "ja",
+ "url": "https://mobile-ssh-client---split-keyboard.pages.dev/mcp",
+ "dateModified": "2026-10-30",
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "Mobile-SSH-Client---Split-Keyboard",
+  "url": "https://mobile-ssh-client---split-keyboard.pages.dev/"
+ }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">本文へ</a>
+<header><p class="brand"><a href="/">Mobile-SSH-Client---Split-Keyboard</a></p><nav aria-label="サイト"><ul><li><a href="/">ホーム</a></li><li><a href="/get-started">はじめる</a></li><li><a href="/config">config</a></li><li><a href="/mcp" aria-current="page">MCP</a></li><li><a href="/media">メディア</a></li><li><a href="/faq">よくある質問</a></li><li><a href="/en/" hreflang="en" lang="en">English</a></li></ul></nav></header>
+<main id="main">
+<h1 id="mcp-splitterm">MCP（splitterm コマンド）</h1>
+<p>Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動く <code>splitterm</code> コマンドがある。MCP サーバー（stdio）にもなる。Claude Code に登録すると、エージェントが config の検査・変更・送信、公開鍵の登録、アプリの入れ直し、受け取り箱の片付けを実行できる。ネットには出ない。</p>
+<ul><li>config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない</li><li>端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く</li><li>状態: 実装済み（Mac の CI でビルドとテストを通している）。<code>ios/TermCore</code> が無い版では、<a href="/get-started">Get Started</a> の <code>scripts/</code> の手順で同じことができる</li></ul>
+<h2 id="build">作る</h2>
+<p>リポジトリの最上位で実行する。要るのは Mac の Xcode（Swift）だけで、外の依存は無い。</p>
+<pre tabindex="0"><code class="language-bash">swift build -c release --package-path ios/TermCore</code></pre>
+<p>成功の確かめ方: <code>ios/TermCore/.build/release/splitterm</code> ができ、<code>ios/TermCore/.build/release/splitterm doctor</code> が結果を出す。</p>
+<h2 id="register">Claude Code に登録する</h2>
+<pre tabindex="0"><code class="language-bash">claude mcp add splitterm -- &lt;repo&gt;/ios/TermCore/.build/release/splitterm mcp</code></pre>
+<p><code>&lt;repo&gt;</code> はリポジトリの絶対パス。リポジトリの最上位にいるなら次でよい:</p>
+<pre tabindex="0"><code class="language-bash">claude mcp add splitterm -- &quot;$PWD/ios/TermCore/.build/release/splitterm&quot; mcp</code></pre>
+<p>成功の確かめ方: <code>claude mcp list</code> に <code>splitterm</code> が出る。</p>
+<p>Claude Code 以外の MCP クライアントも、同じ stdio のサーバーとして登録できる（設定の形はクライアントによる）:</p>
+<pre tabindex="0"><code class="language-json">{&quot;mcpServers&quot;: {&quot;splitterm&quot;: {&quot;command&quot;: &quot;/絶対パス/ios/TermCore/.build/release/splitterm&quot;, &quot;args&quot;: [&quot;mcp&quot;]}}}</code></pre>
+<h2 id="tools">道具</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 道具・すること・人の手"><table><thead><tr><th scope="col">道具</th><th scope="col">すること</th><th scope="col">人の手</th></tr></thead><tbody><tr><td><code>doctor</code></td><td>Xcode・無料の Team・jq・tmux・リモートログイン・端末の対・アプリの期限を調べ、足りないものと直し方を返す</td><td>–</td></tr><tr><td><code>config_show</code></td><td>config を見せる</td><td>–</td></tr><tr><td><code>config_check</code></td><td>config を検査し、読めない行を行番号付きで返す</td><td>–</td></tr><tr><td><code>config_set</code></td><td>1 項目を書き換える。コメントと並びを残し、書いた後に検査して、だめなら元に戻す</td><td>–</td></tr><tr><td><code>host_add</code></td><td>接続先（<code>host</code>）を足す</td><td>–</td></tr><tr><td><code>host_remove</code></td><td>接続先を消す</td><td>–</td></tr><tr><td><code>config_push</code></td><td>config を端末へ送る（<code>scripts/ios_push_config.sh</code>）</td><td>–</td></tr><tr><td><code>pubkey_install</code></td><td>端末の公開鍵を Mac の <code>~/.ssh/authorized_keys</code> に足す（<code>scripts/ios_pubkey.sh</code>）。アプリに出た指紋が要る</td><td>指紋を人がアプリの画面から読む</td></tr><tr><td><code>app_install</code></td><td>アプリを作り直して端末に入れる（<code>scripts/ios_reinstall.sh</code>）</td><td>初回だけ、端末で開発元を信頼</td></tr><tr><td><code>app_status</code></td><td>入れたアプリの期限とビルドを見る</td><td>–</td></tr><tr><td><code>inbox_list</code></td><td>端末から届いたメディアの一覧（新しい順、種類、元の動画との対応）</td><td>–</td></tr><tr><td><code>inbox_clean</code></td><td>受け取り箱の古いもの（アプリが付けた名前のものだけ）を消す</td><td>–</td></tr></tbody></table></div>
+<p>道具が触る config は決まった 1 つ（<code>SPLITTERM_CONFIG</code>、無ければ <code>~/.config/splitterm/config</code>）だけで、ファイルの場所は受け取らない。守りを弱める変更（<code>app-lock</code>・<code>privacy-blur</code>・<code>media-strip-location</code> を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。</p>
+<h2 id="needs-human">人の手が要る所</h2>
+<p>人の手が要る段に来ると、道具は <code>needs_human</code> と手順を返す。エージェントはそれを人に頼み、終わったと言われてから続ける。</p>
+<ul><li>Xcode に Apple ID でサインインする</li><li>端末を USB でつないで「信頼」し、デベロッパモードをオンにする</li><li>端末の「設定 &gt; 一般 &gt; VPN とデバイス管理」で開発元を信頼する</li><li>アプリの ＋ →「公開鍵をコピー」に出た指紋を読み、<code>pubkey_install</code> に渡す</li></ul>
+<h2 id="pubkey">pubkey_install と指紋</h2>
+<ul><li>端末の公開鍵のファイル（<code>splitterm.pub</code>）は「ファイル」アプリから書き換えられる。だから、アプリの画面に出た指紋と一致したときだけ足す</li><li>エージェントは指紋を推測しない。ファイルから計算した指紋を渡さない（それでは確かめにならない）</li><li>指紋が違えば、足さずに止まる</li><li>足す行には <code>restrict,pty</code> が付く。端末だけを許し、ポート転送・エージェント転送などを止める</li></ul>
+<h2 id="safety">安全</h2>
+<ul><li>stdio だけで動き、ネットに出ない</li><li>実行するのは決まったスクリプトだけ。引数は検査してから渡し、シェルを通さない</li><li>秘密（鍵・パスワード）を返さない</li></ul>
+<h2 id="cli">コマンドとして使う</h2>
+<p>MCP と同じことを、コマンドでも実行できる。</p>
+<div class="scroll" role="region" tabindex="0" aria-label="表: コマンド・すること"><table><thead><tr><th scope="col">コマンド</th><th scope="col">すること</th></tr></thead><tbody><tr><td><code>splitterm config path</code></td><td>config の場所を出す（既定 <code>~/.config/splitterm/config</code>。<code>SPLITTERM_CONFIG</code> で変わる）</td></tr><tr><td><code>splitterm config init</code></td><td>見本から config を作る</td></tr><tr><td><code>splitterm config check [--file F]</code></td><td>検査する。読めない行は <code>N 行目: 理由</code> で出て、終了コードは 1</td></tr><tr><td><code>splitterm config show [--file F]</code></td><td>config を見せる</td></tr><tr><td><code>splitterm config set KEY VALUE [--file F]</code></td><td>1 項目を書き換える</td></tr><tr><td><code>splitterm host add NAME USER@ADDR[:PORT] [--tmux NAME|none] [--auth key|password]</code></td><td>接続先を足す</td></tr><tr><td><code>splitterm host remove NAME</code></td><td>接続先を消す</td></tr><tr><td><code>splitterm push</code></td><td>config を端末へ送る</td></tr><tr><td><code>splitterm pubkey --fingerprint SHA256:...</code></td><td>指紋が一致したら、公開鍵を authorized_keys に足す</td></tr><tr><td><code>splitterm install [--force]</code></td><td>アプリを作り直して入れる</td></tr><tr><td><code>splitterm status</code></td><td>入れたアプリの期限とビルドを見る</td></tr><tr><td><code>splitterm doctor</code></td><td>足りないものと直し方を出す</td></tr><tr><td><code>splitterm inbox list</code></td><td>受け取り箱の一覧</td></tr><tr><td><code>splitterm inbox clean [--days N]</code></td><td>受け取り箱の古いものを消す</td></tr><tr><td><code>splitterm mcp</code></td><td>MCP サーバー（stdio）として動く</td></tr></tbody></table></div>
+</main>
+<footer><p>このページの Markdown: <a href="/mcp.md" type="text/markdown">/mcp.md</a> · <a href="/llms.txt" type="text/plain">llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">ソースコード（GitHub）</a></p><p>更新: <time datetime="2026-10-30">2026-10-30</time></p></footer>
+</body>
+</html>

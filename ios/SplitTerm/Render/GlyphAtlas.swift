@@ -152,7 +152,7 @@ final class GlyphAtlas {
             ctx.setAllowsFontSmoothing(false)
             ctx.setShouldAntialias(true)
             ctx.setAllowsFontSubpixelPositioning(false)
-            ctx.setGrayFillColor(1, alpha: 1)
+            ctx.setFillColor(gray: 1, alpha: 1)
             ctx.textMatrix = .identity
             // セルより狭い文字（全角のフォールバックなど）は中央に置く
             let x = advance < CGFloat(w) ? ((CGFloat(w) - advance) / 2).rounded(.down) : 0

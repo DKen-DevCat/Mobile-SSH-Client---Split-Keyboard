@@ -19,7 +19,7 @@
 # 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]
 #   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）
 #   tmux=none なら素のシェル
-# host = mac dken@s-macbook-air.tail65f907.ts.net tmux=main
+# host = mac me@my-mac.example.ts.net tmux=main
 # host = pi pi@192.168.1.20:2222 tmux=none
 
 # 起動時につなぐ host の名前。空なら最初の host、none ならつながない
@@ -81,14 +81,18 @@
 
 # カーソル: block / bar / underline
 # cursor-style = block
+
+# カーソルを点滅させる
 # cursor-blink = false
 
 # スクロールバックの行数（メモリの上だけに置く）
 # scrollback-limit = 10000
 
 # ─── キーボード ─────────────────────────────────────────
-# 起動時のキーボード: us / kana
-# keyboard = us
+# 起動時のキーボード（🌐 の長押しでも選べる）:
+#   romaji（分割・ローマ字）/ english（分割・英語。Mac の JIS 配列）/ kana（日本語フリック分割）/
+#   flick-romaji（英語フリック分割・ローマ字）/ flick-english（英語フリック分割・英語）
+# keyboard = english
 
 # キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50）
 # keyboard-pitch = auto
@@ -97,7 +101,7 @@
 # key-repeat-delay = 400ms
 # key-repeat-interval = 50ms
 
-# option を meta（ESC を前に付ける）として送る
+# option を meta（ESC を前に付ける）として送る（キーに刷ってある option の文字 € と # は、こちらより先に効く）
 # option-as-meta = true
 
 # キーに触れたときの振動
@@ -117,9 +121,52 @@
 # vim・tmux・htop などがマウスを求めたら、タップやスクロールをマウスとして送る
 # mouse-reporting = true
 
+# ─── メディア（写真・動画・音声を送る） ─────────────────────────
+# 📎 で選んだり撮ったりしたものを、SSH の同じ接続で接続先の受け取り箱へ原本のまま送り、パスを入力行に入れる。
+# エージェントが読めない形式のときだけ変換する（HEIC → JPEG、動画 → コンタクトシート、音声 → 文字起こし）
+
+# 送り先のエージェント: claude-code / codex / generic（画像は png・jpeg まで）
+# agent = claude-code
+
+# エージェントが読める種類を上書きする（動画や音声を読めるエージェント用）。例: image,video,audio
+# agent-media =
+
+# 接続先の受け取り箱（~/ か / で始まる専用のフォルダ。英数と . _ - / だけ。ホームや / そのものは不可）
+# 古いものとして消すのは、アプリが付けた名前のファイルだけ。自分の持ち物でないフォルダには送らない
+# media-dir = ~/.splitterm/inbox
+
+# 受け取り箱に残す期間（7d・12h。0 で消さない）
+# media-retention = 7d
+
+# 写真・動画の位置情報を外す（再圧縮はしない。外せなければ送らない）
+# false にする変更は、端末で本人の確認（Face ID かパスコード）の後で効く
+# media-strip-location = true
+
+# 送った後に入力行へ入れる文字（{paths} が送ったファイルのパス。Enter は押さない）
+# media-insert = "{paths} "
+
+# 動画の送り方
+#   auto    エージェントが動画を読めれば原本、読めなければコンタクトシート（＋文字起こし）
+#   file    いつも原本 / frames  いつもコンタクトシート / both  両方
+# video-mode = auto
+
+# コンタクトシートに並べる枚数（1〜24）と、シートの長い辺（px）
+# video-frames = 12
+# video-sheet-size = 1568
+
+# 動画の音声を、端末の中で文字にして添える（端末にモデルが無ければ外へ送らずに飛ばす）
+# video-transcribe = true
+
+# 音声の送り方: auto（読めれば原本、だめなら文字起こし）/ file / transcript / both
+# audio-mode = auto
+
 # ─── 安全 ───────────────────────────────────────────────
-# 起動時と、バックグラウンドからの復帰時に Face ID（かパスコード）を求める
+# アプリを開くときに Face ID（かパスコード）を求める（いつ求めるかは app-lock-after）
 # app-lock = true
+
+# アプリを開いていない時間がこれを超えたら、次に開くときに Face ID を求める（15m・1h・90s。0 で毎回）
+# 長くする変更は、端末で本人の確認（Face ID かパスコード）の後で効く
+# app-lock-after = 15m
 
 # アプリスイッチャーでターミナルの内容をぼかす
 # privacy-blur = true

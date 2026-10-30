@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0b">
+<title>config（設定ファイルの全項目） | Mobile-SSH-Client---Split-Keyboard</title>
+<meta name="description" content="Mobile-SSH-Client---Split-Keyboard の設定ファイル（config）の置き場所・書き方・全項目・既定値・説明。リポジトリの config.example から自動で作っている。">
+<link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="canonical" href="https://mobile-ssh-client---split-keyboard.pages.dev/config">
+<link rel="alternate" hreflang="ja" href="https://mobile-ssh-client---split-keyboard.pages.dev/config">
+<link rel="alternate" hreflang="x-default" href="https://mobile-ssh-client---split-keyboard.pages.dev/config">
+<link rel="alternate" type="text/markdown" href="/config.md" title="Markdown">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:title" content="config（設定ファイルの全項目） | Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:description" content="Mobile-SSH-Client---Split-Keyboard の設定ファイル（config）の置き場所・書き方・全項目・既定値・説明。リポジトリの config.example から自動で作っている。">
+<meta property="og:url" content="https://mobile-ssh-client---split-keyboard.pages.dev/config">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:image" content="https://mobile-ssh-client---split-keyboard.pages.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="config（設定ファイルの全項目）">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "config（設定ファイルの全項目）",
+ "description": "Mobile-SSH-Client---Split-Keyboard の設定ファイル（config）の置き場所・書き方・全項目・既定値・説明。リポジトリの config.example から自動で作っている。",
+ "inLanguage": "ja",
+ "url": "https://mobile-ssh-client---split-keyboard.pages.dev/config",
+ "dateModified": "2026-10-30",
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "Mobile-SSH-Client---Split-Keyboard",
+  "url": "https://mobile-ssh-client---split-keyboard.pages.dev/"
+ }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">本文へ</a>
+<header><p class="brand"><a href="/">Mobile-SSH-Client---Split-Keyboard</a></p><nav aria-label="サイト"><ul><li><a href="/">ホーム</a></li><li><a href="/get-started">はじめる</a></li><li><a href="/config" aria-current="page">config</a></li><li><a href="/mcp">MCP</a></li><li><a href="/media">メディア</a></li><li><a href="/faq">よくある質問</a></li><li><a href="/en/" hreflang="en" lang="en">English</a></li></ul></nav></header>
+<main id="main">
+<h1 id="config">config（設定ファイルの全項目）</h1>
+<p>設定は config ファイル 1 枚で決める（Ghostty と同じ形）。設定画面は無い。このページの項目の表は、リポジトリの見本 <code>config.example</code> から自動で作っている（手で写していない）。</p>
+<h2 id="location">置き場所</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: どこ・場所・使い方"><table><thead><tr><th scope="col">どこ</th><th scope="col">場所</th><th scope="col">使い方</th></tr></thead><tbody><tr><td>Mac</td><td><code>~/.config/splitterm/config</code>（環境変数 <code>SPLITTERM_CONFIG</code> で変えられる）</td><td>直してから <code>scripts/ios_push_config.sh</code>（または <code>splitterm push</code>）で端末へ送る。開いているアプリにもすぐ効く</td></tr><tr><td>iPhone・iPad</td><td>「ファイル」アプリ &gt; この iPhone 内 &gt; Mobile-SSH-Client---Split-Keyboard &gt; config</td><td>アプリの ＋ →「設定を編集」でも直せる。保存した瞬間に読み直して効く</td></tr></tbody></table></div>
+<p>Mac で初めて作るときは、見本から作る: <code>splitterm config init</code>（または <code>scripts/ios_push_config.sh --init</code>）。</p>
+<h2 id="syntax">書き方</h2>
+<ul><li>1 行に <code>key = value</code>。<code>#</code> で始まる行と空行は読み飛ばす</li><li>値の前後の空白は除く。空白を残したい値は <code>&quot;...&quot;</code> で囲む</li><li>値を空にする（<code>key =</code>）と既定値に戻る</li><li><code>palette</code> と <code>host</code> は何度でも書ける。<code>palette</code> は番号ごとに上書きし、<code>host</code> は書いた順に足す</li><li>読めない行は飛ばし、ほかの行は使う。読めなかった行は画面の ⚠ と、編集画面の下に行番号付きで出る</li><li>鍵やパスワードは書かない。鍵は Secure Enclave、ホスト鍵はキーチェーンに置き、パスワードは毎回聞く</li><li>書かなかった項目は既定値になる。下の表の「既定値」がそれ</li></ul>
+<p>例:</p>
+<pre tabindex="0"><code class="language-text">host = mac me@mac.example.ts.net tmux=main
+host = pi pi@192.168.1.20:2222 tmux=none
+font-size = 12
+keyboard = kana
+clipboard-clear = 30s</code></pre>
+<p><code>host</code> の形は <code>host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]</code>。<code>tmux</code> を書かなければ、接続時に <code>main</code> のセッションへ戻る。</p>
+<h2 id="check">確かめ方</h2>
+<pre tabindex="0"><code class="language-bash">splitterm config check
+splitterm config check --file path/to/config</code></pre>
+<p>読めない行があれば <code>N 行目: 理由</code> の形で出て、終了コードが 1 になる。読み取りの規則はアプリと同じコード（TermCore）なので、ここで通ればアプリでも通る。<code>splitterm</code> の作り方は <a href="/mcp">MCP</a> にある。</p>
+<h2 id="connection">接続</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 項目・既定値・説明"><table><thead><tr><th scope="col">項目</th><th scope="col">既定値</th><th scope="col">説明</th></tr></thead><tbody><tr><td><code>host</code></td><td>なし（何度でも書ける）</td><td>形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password] tmux を指定すると、接続時に <code>tmux new-session -A -s &lt;名前&gt;</code> で続きに戻る（既定 main） tmux=none なら素のシェル</td></tr><tr><td><code>auto-connect</code></td><td>空</td><td>起動時につなぐ host の名前。空なら最初の host、none ならつながない</td></tr><tr><td><code>term</code></td><td><code>xterm-256color</code></td><td>接続先に伝える端末の種類</td></tr><tr><td><code>keepalive</code></td><td><code>15s</code></td><td>TCP の keepalive の間隔（切れた接続を早く見つける）。0 で使わない</td></tr><tr><td><code>reconnect</code></td><td><code>true</code></td><td>切れたら自動で繋ぎ直す（バックグラウンドからの復帰・回線の切り替え）</td></tr><tr><td><code>password-auth</code></td><td><code>false</code></td><td>パスワード認証を許す（既定は公開鍵だけ。パスワードは毎回聞き、保存しない）</td></tr></tbody></table></div>
+<h2 id="display">表示</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 項目・既定値・説明"><table><thead><tr><th scope="col">項目</th><th scope="col">既定値</th><th scope="col">説明</th></tr></thead><tbody><tr><td><code>font-family</code></td><td><code>system-mono</code></td><td>等幅の英字フォント。system-mono は iOS の SF Mono。Menlo・Courier New なども使える</td></tr><tr><td><code>font-family-cjk</code></td><td><code>Hiragino Sans</code></td><td>日本語のフォールバック</td></tr><tr><td><code>font-size</code></td><td><code>10</code></td><td>100% 表示のときの文字の大きさ（pt）</td></tr><tr><td><code>zoom-steps</code></td><td><code>85, 100</code></td><td>表示倍率の段（%）。ピンチ・倍率ボタン・command + − / = はこの段で止まる。先頭が起動時</td></tr><tr><td><code>color-space</code></td><td><code>display-p3</code></td><td>色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）</td></tr><tr><td><code>background</code></td><td><code>#07090D</code></td><td>色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）</td></tr><tr><td><code>foreground</code></td><td><code>#E6EDF3</code></td><td>色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）</td></tr><tr><td><code>cursor-color</code></td><td><code>#2F81F7</code></td><td>色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）</td></tr><tr><td><code>accent</code></td><td><code>#2F81F7</code></td><td>色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）</td></tr><tr><td><code>selection-background</code></td><td><code>#264F78</code></td><td>色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）</td></tr><tr><td><code>palette</code></td><td><code>0=#1C2128</code> <code>1=#FF5F6D</code> <code>2=#3FE08A</code> <code>3=#FFB454</code> <code>4=#2F81F7</code> <code>5=#FF6AC1</code> <code>6=#5CE1E6</code> <code>7=#C9D1D9</code> <code>8=#545D68</code> <code>9=#FF8A94</code> <code>10=#7BF0B0</code> <code>11=#FFCC85</code> <code>12=#6CA6FF</code> <code>13=#FF9AD6</code> <code>14=#8EEFF2</code> <code>15=#FFFFFF</code>（番号ごとに上書きできる）</td><td>16 色のパレット（番号=色）</td></tr><tr><td><code>minimum-contrast</code></td><td><code>4.5</code></td><td>文字と背景のコントラスト比がこれを下回ると、文字色の明るさを補正する。1 で補正しない</td></tr><tr><td><code>cursor-style</code></td><td><code>block</code></td><td>カーソル: block / bar / underline</td></tr><tr><td><code>cursor-blink</code></td><td><code>false</code></td><td>カーソルを点滅させる</td></tr><tr><td><code>scrollback-limit</code></td><td><code>10000</code></td><td>スクロールバックの行数（メモリの上だけに置く）</td></tr></tbody></table></div>
+<h2 id="keyboard">キーボード</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 項目・既定値・説明"><table><thead><tr><th scope="col">項目</th><th scope="col">既定値</th><th scope="col">説明</th></tr></thead><tbody><tr><td><code>keyboard</code></td><td><code>english</code></td><td>起動時のキーボード（🌐 の長押しでも選べる）: romaji（分割・ローマ字）/ english（分割・英語。Mac の JIS 配列）/ kana（日本語フリック分割）/ flick-romaji（英語フリック分割・ローマ字）/ flick-english（英語フリック分割・英語）</td></tr><tr><td><code>keyboard-pitch</code></td><td><code>auto</code></td><td>キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50）</td></tr><tr><td><code>key-repeat-delay</code></td><td><code>400ms</code></td><td>⌫ と矢印の長押しリピート</td></tr><tr><td><code>key-repeat-interval</code></td><td><code>50ms</code></td><td>⌫ と矢印の長押しリピート</td></tr><tr><td><code>option-as-meta</code></td><td><code>true</code></td><td>option を meta（ESC を前に付ける）として送る（キーに刷ってある option の文字 € と # は、こちらより先に効く）</td></tr><tr><td><code>haptics</code></td><td><code>true</code></td><td>キーに触れたときの振動</td></tr><tr><td><code>newline</code></td><td><code>auto</code></td><td>改行キーが送るもの ・<code>auto</code>: 接続先が括弧付きペーストを有効にしていれば改行を貼り付けとして、無効なら ESC+CR ・<code>paste</code>: auto と同じ ・<code>esc-cr</code>: いつも ESC+CR（zsh・Claude Code の Option+Enter と同じ） ・<code>ctrl-j</code>: LF。bash・zsh では実行と同じ扱いになるので注意</td></tr><tr><td><code>soft-keyboard-with-hardware</code></td><td><code>false</code></td><td>ハードウェアキーボードがつながっていても、画面のキーボードを出し続ける（iPad）</td></tr></tbody></table></div>
+<h2 id="touch">操作</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 項目・既定値・説明"><table><thead><tr><th scope="col">項目</th><th scope="col">既定値</th><th scope="col">説明</th></tr></thead><tbody><tr><td><code>mouse-reporting</code></td><td><code>true</code></td><td>vim・tmux・htop などがマウスを求めたら、タップやスクロールをマウスとして送る</td></tr></tbody></table></div>
+<h2 id="media">メディア（写真・動画・音声を送る）</h2>
+<p>📎 で選んだり撮ったりしたものを、SSH の同じ接続で接続先の受け取り箱へ原本のまま送り、パスを入力行に入れる。 エージェントが読めない形式のときだけ変換する（HEIC → JPEG、動画 → コンタクトシート、音声 → 文字起こし）</p>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 項目・既定値・説明"><table><thead><tr><th scope="col">項目</th><th scope="col">既定値</th><th scope="col">説明</th></tr></thead><tbody><tr><td><code>agent</code></td><td><code>claude-code</code></td><td>送り先のエージェント: claude-code / codex / generic（画像は png・jpeg まで）</td></tr><tr><td><code>agent-media</code></td><td>空</td><td>エージェントが読める種類を上書きする（動画や音声を読めるエージェント用）。例: image,video,audio</td></tr><tr><td><code>media-dir</code></td><td><code>~/.splitterm/inbox</code></td><td>接続先の受け取り箱（~/ か / で始まる専用のフォルダ。英数と . _ - / だけ。ホームや / そのものは不可） 古いものとして消すのは、アプリが付けた名前のファイルだけ。自分の持ち物でないフォルダには送らない</td></tr><tr><td><code>media-retention</code></td><td><code>7d</code></td><td>受け取り箱に残す期間（7d・12h。0 で消さない）</td></tr><tr><td><code>media-strip-location</code></td><td><code>true</code></td><td>写真・動画の位置情報を外す（再圧縮はしない。外せなければ送らない） false にする変更は、端末で本人の確認（Face ID かパスコード）の後で効く</td></tr><tr><td><code>media-insert</code></td><td><code>&quot;{paths} &quot;</code></td><td>送った後に入力行へ入れる文字（{paths} が送ったファイルのパス。Enter は押さない）</td></tr><tr><td><code>video-mode</code></td><td><code>auto</code></td><td>動画の送り方 ・<code>auto</code>: エージェントが動画を読めれば原本、読めなければコンタクトシート（＋文字起こし） ・<code>file</code>: いつも原本 / frames  いつもコンタクトシート / both  両方</td></tr><tr><td><code>video-frames</code></td><td><code>12</code></td><td>コンタクトシートに並べる枚数（1〜24）と、シートの長い辺（px）</td></tr><tr><td><code>video-sheet-size</code></td><td><code>1568</code></td><td>コンタクトシートに並べる枚数（1〜24）と、シートの長い辺（px）</td></tr><tr><td><code>video-transcribe</code></td><td><code>true</code></td><td>動画の音声を、端末の中で文字にして添える（端末にモデルが無ければ外へ送らずに飛ばす）</td></tr><tr><td><code>audio-mode</code></td><td><code>auto</code></td><td>音声の送り方: auto（読めれば原本、だめなら文字起こし）/ file / transcript / both</td></tr></tbody></table></div>
+<h2 id="security">安全</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 項目・既定値・説明"><table><thead><tr><th scope="col">項目</th><th scope="col">既定値</th><th scope="col">説明</th></tr></thead><tbody><tr><td><code>app-lock</code></td><td><code>true</code></td><td>アプリを開くときに Face ID（かパスコード）を求める（いつ求めるかは app-lock-after）</td></tr><tr><td><code>app-lock-after</code></td><td><code>15m</code></td><td>アプリを開いていない時間がこれを超えたら、次に開くときに Face ID を求める（15m・1h・90s。0 で毎回） 長くする変更は、端末で本人の確認（Face ID かパスコード）の後で効く</td></tr><tr><td><code>privacy-blur</code></td><td><code>true</code></td><td>アプリスイッチャーでターミナルの内容をぼかす</td></tr><tr><td><code>clipboard-clear</code></td><td><code>60s</code></td><td>アプリからコピーした内容を消すまでの時間。0 で消さない</td></tr></tbody></table></div>
+</main>
+<footer><p>このページの Markdown: <a href="/config.md" type="text/markdown">/config.md</a> · <a href="/llms.txt" type="text/plain">llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">ソースコード（GitHub）</a></p><p>更新: <time datetime="2026-10-30">2026-10-30</time></p></footer>
+</body>
+</html>

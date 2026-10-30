@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0b">
+<title>メディアを送る（写真・動画・音声） | Mobile-SSH-Client---Split-Keyboard</title>
+<meta name="description" content="iPhone・iPad から写真・動画・音声を Mac の受け取り箱へ送り、パスを入力行に入れる。動画を読めないエージェント（Claude Code など）には、12 枚を 1 枚の画像（コンタクトシート）にして文字起こしを添える。1 分の動画が約 1,400 トークンの画像 1 枚になる。">
+<link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="canonical" href="https://mobile-ssh-client---split-keyboard.pages.dev/media">
+<link rel="alternate" hreflang="ja" href="https://mobile-ssh-client---split-keyboard.pages.dev/media">
+<link rel="alternate" hreflang="x-default" href="https://mobile-ssh-client---split-keyboard.pages.dev/media">
+<link rel="alternate" type="text/markdown" href="/media.md" title="Markdown">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:title" content="メディアを送る（写真・動画・音声） | Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:description" content="iPhone・iPad から写真・動画・音声を Mac の受け取り箱へ送り、パスを入力行に入れる。動画を読めないエージェント（Claude Code など）には、12 枚を 1 枚の画像（コンタクトシート）にして文字起こしを添える。1 分の動画が約 1,400 トークンの画像 1 枚になる。">
+<meta property="og:url" content="https://mobile-ssh-client---split-keyboard.pages.dev/media">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:image" content="https://mobile-ssh-client---split-keyboard.pages.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="メディアを送る（写真・動画・音声）">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "メディアを送る（写真・動画・音声）",
+ "description": "iPhone・iPad から写真・動画・音声を Mac の受け取り箱へ送り、パスを入力行に入れる。動画を読めないエージェント（Claude Code など）には、12 枚を 1 枚の画像（コンタクトシート）にして文字起こしを添える。1 分の動画が約 1,400 トークンの画像 1 枚になる。",
+ "inLanguage": "ja",
+ "url": "https://mobile-ssh-client---split-keyboard.pages.dev/media",
+ "dateModified": "2026-10-30",
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "Mobile-SSH-Client---Split-Keyboard",
+  "url": "https://mobile-ssh-client---split-keyboard.pages.dev/"
+ }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">本文へ</a>
+<header><p class="brand"><a href="/">Mobile-SSH-Client---Split-Keyboard</a></p><nav aria-label="サイト"><ul><li><a href="/">ホーム</a></li><li><a href="/get-started">はじめる</a></li><li><a href="/config">config</a></li><li><a href="/mcp">MCP</a></li><li><a href="/media" aria-current="page">メディア</a></li><li><a href="/faq">よくある質問</a></li><li><a href="/en/" hreflang="en" lang="en">English</a></li></ul></nav></header>
+<main id="main">
+<h1 id="h1">メディアを送る（写真・動画・音声）</h1>
+<p>Mobile-SSH-Client---Split-Keyboard で選んだり撮ったりした写真・動画・音声を、同じ SSH の接続で Mac の受け取り箱（<code>~/.splitterm/inbox</code>）へ原本のまま送り、ファイルのパスを入力行に入れる（Enter は押さない）。エージェントが読めない形式のときだけ変換する。動画は、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声は端末の中で文字にして添える。</p>
+<blockquote>
+<p>状態: 実装済み（環境バーの 📎）。Mac の CI でビルドを通しているが、実機での確認はまだ（2026-10-30 時点）。</p>
+</blockquote>
+<h2 id="flow">流れ</h2>
+<ol><li>環境バーの 📎 で、写真・動画を選ぶ／撮る／録音する／ファイルを選ぶ</li><li>送り先のエージェント（config の <code>agent</code>）が読める形式かを見て、そのまま送るか変換するかを決める</li><li>同じ SSH の接続で、接続先の受け取り箱へ送る</li><li>届いたら、ファイルの絶対パスを入力行に入れる（Enter は押さない）</li><li>続けて頼みごとを打ち、エージェント（Claude Code など）がパスからファイルを読む</li></ol>
+<h2 id="sources">入口</h2>
+<p>iOS が勝手に縮めたり変換したりする道を避ける。</p>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 入口・使うもの・落とさないための設定"><table><thead><tr><th scope="col">入口</th><th scope="col">使うもの</th><th scope="col">落とさないための設定</th></tr></thead><tbody><tr><td>写真・動画を選ぶ</td><td>写真の選択画面（<code>PHPickerViewController</code>。写真への許可は要らない）</td><td>元の形式のまま受け取る（HEIC・HEVC・ProRAW を変換しない）。複数選べる</td></tr><tr><td>撮る</td><td>カメラ（<code>UIImagePickerController</code>）</td><td>高画質（<code>.typeHigh</code>）。長さの上限を外す（既定は 10 分）</td></tr><tr><td>録音</td><td><code>AVAudioRecorder</code></td><td>AAC 48kHz。時間の上限なし</td></tr><tr><td>ファイル</td><td>「ファイル」の選択画面</td><td>どの形式でも</td></tr></tbody></table></div>
+<h2 id="transfer">送り方の約束</h2>
+<ul><li>新しいサービスやポートを使わない。確かめたホスト鍵の同じ SSH の接続の中で送る（SFTP は使わない）</li><li>ファイルの名前はアプリが作る（日時と乱数）。人が入れた文字は、接続先のシェルに渡らない</li><li>切れたら、繋ぎ直した後に続きから送る。最後に SHA-256 を比べてから完成させる</li><li>位置情報は既定で外す（<code>media-strip-location = true</code>）。写真はメタデータだけを書き換えて再圧縮しない。動画は再エンコードせずに書き出し直す。外せなければ送らない（原本をそのまま送らない）</li><li>受け取り箱は、送るたびに古いもの（既定 7 日、<code>media-retention</code>）を消す。消すのはアプリが付けた名前のファイルだけで、人が置いたものは残す</li><li>アプリが裏に回っても、区切りまでは送り続ける</li><li>入力行に入れる文字は <code>media-insert</code>（既定 <code>&quot;{paths} &quot;</code>）で変えられる</li></ul>
+<h2 id="formats">エージェントが読める形式</h2>
+<p>config の <code>agent</code> で送り先のエージェントを選ぶ。読める形式はそのまま、読めない形式だけを変換する。</p>
+<div class="scroll" role="region" tabindex="0" aria-label="表: agent・画像・動画・音声"><table><thead><tr><th scope="col"><code>agent</code></th><th scope="col">画像</th><th scope="col">動画</th><th scope="col">音声</th></tr></thead><tbody><tr><td><code>claude-code</code>（既定）</td><td>png・jpeg・gif・webp</td><td>コンタクトシート＋文字起こし</td><td>文字起こし</td></tr><tr><td><code>codex</code></td><td>png・jpeg・gif・webp</td><td>コンタクトシート＋文字起こし</td><td>文字起こし</td></tr><tr><td><code>generic</code></td><td>png・jpeg</td><td>コンタクトシート＋文字起こし</td><td>文字起こし</td></tr><tr><td>上に <code>agent-media = image,video,audio</code> を足す</td><td>原本</td><td>原本</td><td>原本</td></tr></tbody></table></div>
+<ul><li>読めない画像（HEIC など）は JPEG（品質 0.92）にする。大きさは変えない（縮めるのはエージェントに任せる）</li><li><code>agent-media</code> は、動画や音声をそのまま読めるエージェント用</li><li>Gemini CLI: 動画・音声を読めるかをまだ確かめていない。確かめるまでは画像だけのエージェントとして扱う（例 <code>agent = generic</code>。<code>agent-media</code> は書かない）</li></ul>
+<h2 id="contact-sheet">動画をコンタクトシートにする</h2>
+<p>動画を読めないエージェントには、動画を 1 枚の画像と短い文字にして送る。処理はすべて端末の中で、裏のキューで行う（取り消せる）。外のサービスへは送らない。</p>
+<ol><li>下見: 64px の小さな縮図を 0.5 秒ごと（最大 240 枚）に取り、場面の変わり目を点数にする。全解像度では読まない</li><li>選ぶ: 変わり目の大きい所を優先し、時間の偏りを避けて 12 枚（<code>video-frames</code>）。10 秒未満の動画は 6 枚</li><li>並べる: 選んだ時刻だけをタイルの大きさで取り、1 枚に並べる。横長の動画は 4×3、縦長の動画は 6×2。長い辺は 1,568px（<code>video-sheet-size</code>）。各タイルの角に「mm:ss」の時刻を入れる。JPEG の品質は 0.8</li><li>文字起こし（<code>video-transcribe</code>）: 音声を端末の中の認識（オンデバイス）で日本語の文字にする。端末にモデルが無ければ、外に送らずに飛ばす</li><li>添え書き: 長さ・解像度・各タイルの時刻・文字起こしを Markdown 1 枚にまとめる。シートと添え書きのパスを入力行に入れる</li></ol>
+<ul><li>1 タイルは 392×220px。細かい文字は読めないので、シートの時刻を指定して 1 枚を大きく送り直せるようにする</li><li>軽さの目標: iPad 第 6 世代（A10）で、1 分の 1080p の動画を 3 秒以内（文字起こしを除く）。メモリは 50MB 以内</li></ul>
+<h2 id="tokens">トークンの目安</h2>
+<p>Claude の画像のトークンは、およそ 幅 × 高さ ÷ 750。</p>
+<div class="scroll" role="region" tabindex="0" aria-label="表: 送り方・画像の数・目安のトークン"><table><thead><tr><th scope="col">送り方</th><th scope="col">画像の数</th><th scope="col">目安のトークン</th></tr></thead><tbody><tr><td>12 枚を 1,568×882 で別々に</td><td>12</td><td>約 22,100</td></tr><tr><td>12 枚を 1,092×614 で別々に</td><td>12</td><td>約 10,700</td></tr><tr><td>コンタクトシート 1 枚（4×3、1,568×660）</td><td>1</td><td>約 1,400</td></tr><tr><td>＋ 1 分の文字起こし</td><td>–</td><td>約 300〜500</td></tr></tbody></table></div>
+<p>1 分の動画が、画像 1 枚（約 1,400 トークン）と短い文字になる。文字起こしを足しても約 1,700〜1,900 トークン。12 枚を 1,568px で別々に送るのと比べて、約 16 分の 1。</p>
+<p>計算: 1,568 × 660 ÷ 750 ≈ 1,380。1,568 × 882 ÷ 750 × 12 ≈ 22,130。</p>
+<h2 id="claude-code">Claude Code に動画を見せる</h2>
+<ol><li>config は既定のまま（<code>agent = claude-code</code>、<code>video-mode = auto</code>、<code>video-transcribe = true</code>）</li><li>Claude Code が動いている tmux の画面で 📎 を押し、動画を選ぶ（または撮る）</li><li>入力行に、コンタクトシートと添え書きの 2 つの絶対パスが入る</li><li>続けて「この動画で何が起きているか説明して」などと打ち、送る</li></ol>
+<p>動画の原本も Mac に残したいときは <code>video-mode = both</code>。</p>
+<h2 id="inbox">受け取り箱を見る・片付ける</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: すること・コマンド・MCP の道具"><table><thead><tr><th scope="col">すること</th><th scope="col">コマンド</th><th scope="col">MCP の道具</th></tr></thead><tbody><tr><td>届いたものの一覧（新しい順）</td><td><code>splitterm inbox list</code></td><td><code>inbox_list</code></td></tr><tr><td>古いものを消す</td><td><code>splitterm inbox clean --days 7</code></td><td><code>inbox_clean</code></td></tr></tbody></table></div>
+<p>関係する config の項目（<code>agent</code>・<code>agent-media</code>・<code>media-dir</code>・<code>media-retention</code>・<code>media-strip-location</code>・<code>media-insert</code>・<code>video-mode</code>・<code>video-frames</code>・<code>video-sheet-size</code>・<code>video-transcribe</code>・<code>audio-mode</code>）の既定値と説明は、<a href="/config#media">config のメディアの節</a>にある。</p>
+</main>
+<footer><p>このページの Markdown: <a href="/media.md" type="text/markdown">/media.md</a> · <a href="/llms.txt" type="text/plain">llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">ソースコード（GitHub）</a></p><p>更新: <time datetime="2026-10-30">2026-10-30</time></p></footer>
+</body>
+</html>

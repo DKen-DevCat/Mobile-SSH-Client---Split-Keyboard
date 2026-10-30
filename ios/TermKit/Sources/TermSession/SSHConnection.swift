@@ -285,6 +285,14 @@ public final class SSHConnection: @unchecked Sendable {
         }
     }
 
+    /// 端末を開き終えた接続の根のチャンネル（別のチャンネルでコマンドを走らせるのに使う）
+    var currentRoot: Channel? {
+        lock.withLock { handshakeDone && !reported ? root : nil }
+    }
+
+    /// 端末を開き終えて、まだ切れていないか
+    public var isOpen: Bool { currentRoot?.isActive ?? false }
+
     /// 送信。どのスレッドからでもよい
     public func send(_ bytes: [UInt8]) {
         guard !bytes.isEmpty, let s = lock.withLock({ session }) else { return }

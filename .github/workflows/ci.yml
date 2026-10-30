@@ -1,0 +1,68 @@
+# サイトの生成物が古くないか、AIO の静的な検査（ベンチマーク A）、Linux で流せるテスト（docs/site.md）。
+# LLM は呼ばない（ベンチマーク B は手元の claude -p で回す）。tests/test_ios.py は macOS の道具に頼るので Mac で流す
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# 同じブランチに新しく push したら、古い実行は止める（Mac のランナーを待たせない）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site-and-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: site/public が site/src と合っているか
+        run: python3 site/build.py --check
+      - name: AIO の静的な検査
+        run: python3 bench/aio_check.py
+      - name: pytest を入れる
+        run: python3 -m pip install --disable-pip-version-check pytest==9.2.0
+      - name: テスト
+        run: python3 -m pytest tests/test_site.py tests/test_tools.py tests/test_bench.py
+
+  # Swift を Mac で実際にビルドしてテストする（公開リポジトリの macOS ランナーは無料）。
+  # TermCore と splitterm のテスト、アプリ全体のビルド（シミュレータ向け、署名なし）
+  swift:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Xcode を選ぶ（Swift 6.2 が要る）
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+          swift --version
+      - name: TermCore と splitterm のテスト
+        run: swift test --package-path ios/TermCore
+      - name: アプリをビルドする（入れ直しと同じ Release、シミュレータ向け、arm64 だけ、署名なし）
+        run: |
+          set +e
+          xcodebuild -quiet -project ios/SplitTerm.xcodeproj -scheme SplitTerm \
+            -destination 'generic/platform=iOS Simulator' -configuration Release \
+            -skipPackagePluginValidation -skipMacroValidation \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1
+          code=$?
+          # エラーの行だけを先に出す（ログ全体は長い）。このリポジトリのコードの警告も（依存のものは除く）
+          grep -nE "error:|\*\* BUILD" "$RUNNER_TEMP/build.log" | head -120
+          echo "--- 警告（このリポジトリ）"
+          grep -E "warning:" "$RUNNER_TEMP/build.log" | grep -v "SourcePackages" | sed "s#$GITHUB_WORKSPACE/##" | sort -u | head -60
+          echo "xcodebuild の終了コード: $code"
+          [ $code -eq 0 ] || tail -40 "$RUNNER_TEMP/build.log"
+          exit $code
