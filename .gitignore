@@ -9,3 +9,6 @@ ios/Config/Local.xcconfig
 xcuserdata/
 ios/TermKit/.build/
 ios/TermKit/.swiftpm/
+
+# エージェントの作業用の木（ローカルだけ）
+.claude/worktrees/
