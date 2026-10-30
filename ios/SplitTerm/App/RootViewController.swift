@@ -19,7 +19,13 @@ final class RootViewController: UIViewController {
     private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisRight, model: model, colors: colors)
     /// 📎（写真・動画・音声・ファイルを送る）。シェルの左下に置く
     private let clipButton = UIButton(type: .system)
-    private let envBar = EnvironmentBar()
+    /// キーボード選択（今のキーボードの短い名前を出す丸いボタン）。シェルの右下に置く。分割のときだけ出す
+    private let keyboardButton = UIButton(type: .system)
+    /// 上の 2 行（シェルの上に前面で重なる）: 1 行目は時計と状態・倍率、2 行目はタブと＋
+    private let statusRow = StatusRow()
+    private let tabRow = TabRow()
+    /// ポインタ（矢印）の層。画面いっぱい・最前面でタッチは受けない
+    private let pointerOverlay = PointerOverlayView()
     private let candidateBar = CandidateBar()
     private let notice = UILabel()
     private let emptyLabel = UILabel()
@@ -37,6 +43,13 @@ final class RootViewController: UIViewController {
     private var lastCandidates: (reading: String, candidates: [KanaCandidate]) = ("", [])
     private var zoom = ZoomSteps(steps: [85, 100])
     private var composer = KanaComposer()
+    /// 先行表示（直接送る文字を、返事を待たずにカーソルの位置へ薄く出す。docs/design.md「先行表示」）
+    private var echo = EchoPredictor()
+    /// 予測を持っているタブ（予測はタブごとには持たない。替わったら捨てる）
+    private weak var echoOwner: TerminalSession?
+    /// 最後に描いた画面でカーソルが隠れていたか
+    private var echoCursorHidden = false
+    private var echoExpiryScheduled = false
     /// かな漢字変換（AzooKey）。裏のキューで変換し、最新の結果だけを候補バーに出す
     private let kana = KanaConversionQueue()
     private var hardwareKeyboard = GCKeyboard.coalesced != nil
@@ -61,15 +74,19 @@ final class RootViewController: UIViewController {
         view.addSubview(leftKeyboard)
         view.addSubview(rightKeyboard)
         view.addSubview(candidateBar)
-        view.addSubview(envBar)
         notice.font = .systemFont(ofSize: 12, weight: .medium)
         notice.textAlignment = .center
+        notice.adjustsFontSizeToFitWidth = true
+        notice.minimumScaleFactor = 0.7
         notice.isHidden = true
         view.addSubview(notice)
         emptyLabel.numberOfLines = 0
         emptyLabel.textAlignment = .center
         emptyLabel.font = .systemFont(ofSize: 13)
         view.addSubview(emptyLabel)
+        // 上の 2 行はシェルとキーボードより前面（レイアウトのたびに前へ出し直す）
+        view.addSubview(statusRow)
+        view.addSubview(tabRow)
 
         terminalView.delegate = self
         model.output = self
@@ -78,15 +95,15 @@ final class RootViewController: UIViewController {
             self?.leftKeyboard.setNeedsDisplay()
             self?.rightKeyboard.setNeedsDisplay()
         }
-        envBar.onSelectTab = { [weak self] i in self?.selectTab(i) }
-        envBar.onCloseTab = { [weak self] i in self?.closeTab(i) }
-        envBar.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
-        envBar.setKeyboardMenu(UIMenu(title: "キーボード", children: [UIDeferredMenuElement.uncached { [weak self] completion in
-            completion(self?.keyboardMenuElements() ?? [])
-        }]))
-        envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
+        tabRow.onSelectTab = { [weak self] i in self?.selectTab(i) }
+        tabRow.onCloseTab = { [weak self] i in self?.closeTab(i) }
+        tabRow.onNewTab = { [weak self] in self?.newTab() }
+        statusRow.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
+        statusRow.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
         candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
         setUpMedia()
+        setUpKeyboardButton()
+        view.addSubview(pointerOverlay)
 
         gate.scene = { [weak self] in self?.view.window?.windowScene }
         gate.onResume = { [weak self] in self?.resume() }
@@ -99,14 +116,15 @@ final class RootViewController: UIViewController {
         nc.addObserver(self, selector: #selector(hardwareKeyboardChanged), name: .GCKeyboardDidDisconnect, object: nil)
         nc.addObserver(self, selector: #selector(willDeactivate), name: UIScene.willDeactivateNotification, object: nil)
         nc.addObserver(self, selector: #selector(didEnterBackground), name: UIScene.didEnterBackgroundNotification, object: nil)
+        nc.addObserver(self, selector: #selector(willEnterForeground), name: UIScene.willEnterForegroundNotification, object: nil)
         nc.addObserver(self, selector: #selector(didActivate), name: UIScene.didActivateNotification, object: nil)
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
             // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）。
-            // 環境バーの通信の印には、つながっていないことも出す
+            // 上の 1 行目の通信の印には、つながっていないことも出す
             let type = path.status == .satisfied ? path.availableInterfaces.first?.type : nil
             DispatchQueue.main.async { [weak self] in
-                self?.envBar.setNetwork(type)
+                self?.statusRow.setNetwork(type)
                 if let type { self?.pathChanged(type) }
             }
         }
@@ -117,7 +135,7 @@ final class RootViewController: UIViewController {
         // 自動接続は、ロックを解いてから（resume）
     }
 
-    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は環境バーに出す）
+    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は上の 1 行目に出す）
     override var prefersStatusBarHidden: Bool { false }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     /// キーボードは画面の下端と左右の端に触れるので、システムのジェスチャを後回しにする
@@ -128,6 +146,13 @@ final class RootViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         terminalView.becomeFirstResponder()
+        releaseEdgeTouchDelay()
+    }
+
+    /// 画面の端のタッチは、システムのジェスチャ（ホームバーの上スワイプなど）の判定が終わるまで届かず、端のキーが遅れる。
+    /// ウィンドウのジェスチャの delaysTouchesBegan を切る（公開の API。ウィンドウに載った後に、毎回かけ直す）
+    private func releaseEdgeTouchDelay() {
+        view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false }
     }
 
     // MARK: 設定
@@ -138,7 +163,9 @@ final class RootViewController: UIViewController {
         view.backgroundColor = colors.background
         leftKeyboard.colors = colors
         rightKeyboard.colors = colors
-        envBar.apply(colors: colors)
+        statusRow.apply(colors: colors)
+        tabRow.apply(colors: colors)
+        applyKeyboardButtonColors()
         clipButton.tintColor = colors.text.withAlphaComponent(0.85)
         candidateBar.apply(colors: colors)
         notice.textColor = colors.subText
@@ -152,6 +179,7 @@ final class RootViewController: UIViewController {
         terminalView.keyRepeatInterval = c.keyRepeatInterval
         terminalView.cursorBlink = c.cursorBlink
         terminalView.setColorSpace(c.colorSpace)
+        terminalView.setInlineColors(text: colors.text, background: colors.background, accent: colors.accent)
         gate.colors = colors
         gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur, stripLocation: c.mediaStripLocation,
                      lockAfter: c.appLockAfter)
@@ -163,7 +191,7 @@ final class RootViewController: UIViewController {
             previousKeyboard = c.keyboard == .english ? .romaji : .english
         }
         for s in sessions { s.config = c }
-        envBar.plus.menu = makeMenu()
+        tabRow.plus.menu = makeMenu()
         updateEnvBar()
         configureFont()
         view.setNeedsLayout()
@@ -190,14 +218,14 @@ final class RootViewController: UIViewController {
         let r = LayoutEngine.compute(input)
         layout = r
         terminalView.frame = r.shell
-        envBar.frame = r.environmentBar
+        statusRow.frame = r.statusRow
+        tabRow.frame = r.tabRow
         let faces = KeyboardLayouts.faces(for: keyboardKind)
         for (kb, frame, face) in [(leftKeyboard, r.leftKeyboard, faces.left), (rightKeyboard, r.rightKeyboard, faces.right)] {
             kb.isHidden = frame == nil
             if let frame {
                 kb.frame = frame
                 kb.rowHeight = r.rowHeight
-                kb.flickThreshold = max(10, r.pitch * 0.45)
                 if kb.face.rows != face.rows { kb.face = face }
             }
         }
@@ -205,12 +233,24 @@ final class RootViewController: UIViewController {
         if let c = r.candidateBar { candidateBar.frame = c }
         notice.isHidden = r.mode != .tooNarrow
         notice.text = "窓が狭いので画面のキーボードを隠しています"
-        notice.frame = CGRect(x: r.shell.minX, y: r.environmentBar.minY - 18, width: r.shell.width, height: 16)
+        // シェルの下端の上。左下の 📎・右下の ⌨ を避けて、間に置く
+        let side = LayoutEngine.cornerButtonMargin + LayoutEngine.cornerButtonSize + 4
+        notice.frame = CGRect(x: r.shell.minX + side, y: r.shell.maxY - 22,
+                              width: max(0, r.shell.width - 2 * side), height: 16)
         emptyLabel.frame = r.shell.insetBy(dx: 16, dy: 16)
-        clipButton.frame = CGRect(x: r.shell.minX + 6, y: r.shell.maxY - 42, width: 36, height: 36)
-        view.bringSubviewToFront(clipButton)
+        // 角の丸いボタン: 左下が 📎、右下がキーボード選択（分割のときだけ）
+        let inset = LayoutEngine.cornerButtonMargin, size = LayoutEngine.cornerButtonSize
+        clipButton.frame = CGRect(x: r.shell.minX + inset, y: r.shell.maxY - inset - size, width: size, height: size)
+        keyboardButton.isHidden = r.keyboardButton == nil
+        if let b = r.keyboardButton { keyboardButton.frame = b }
+        pointerOverlay.frame = view.bounds
+        // 上の 2 行・📎・キーボード選択はシェルとキーボードより前面、ポインタはその上
+        for v in [statusRow, tabRow, clipButton, keyboardButton, pointerOverlay] as [UIView] {
+            view.bringSubviewToFront(v)
+        }
         updateEnvBar()
         regrid()
+        releaseEdgeTouchDelay()
     }
 
     /// シェルの大きさから桁数と行数を出し、端末と接続先へ知らせる（SSH の window-change）
@@ -227,7 +267,10 @@ final class RootViewController: UIViewController {
     // MARK: タブ
 
     private func openSession(_ host: HostEntry) {
-        let s = TerminalSession(host: host, config: config, cols: grid.cols, rows: grid.rows)
+        // 同じ接続先で開いているタブが使っていない、いちばん小さい番号（tmux のセッションが main・main-2…と分かれる）。
+        // ⌘T も＋もここを通る
+        let slot = TabSlots.next(used: sessions.filter { $0.host.name == host.name }.map { $0.slot })
+        let s = TerminalSession(host: host, config: config, cols: grid.cols, rows: grid.rows, slot: slot)
         s.presenter = self
         let tv = terminalView
         s.onDisplayNeeded = { [weak tv] in tv?.requestRender() }
@@ -255,6 +298,8 @@ final class RootViewController: UIViewController {
 
     private func closeTab(_ i: Int) {
         guard sessions.indices.contains(i) else { return }
+        // 接続を閉じるだけで、tmux は残す。次に開いたタブが同じ番号なら、そのセッションに戻る
+        // （止まるのは、シェルでプロセスを終わらせたとき）
         sessions[i].close()
         sessions.remove(at: i)
         activeIndex = min(activeIndex, max(0, sessions.count - 1))
@@ -262,16 +307,29 @@ final class RootViewController: UIViewController {
         terminalView.requestRender()
     }
 
+    /// ＋のタップ: 新しいタブを開く。接続先は 今のタブの host、無ければ auto-connect の host、無ければ最初の host。
+    /// どれも無ければ設定を編集する（番号に応じた tmux のセッションは openSession が決める）
+    private func newTab() {
+        if let host = active?.host ?? config.autoConnectHost ?? config.hosts.first {
+            openSession(host)
+        } else {
+            editConfig()
+        }
+    }
+
+    /// 上の 2 行（時計と状態・倍率、タブ）とキーボード選択を、今の状態に合わせる（名前は「環境バー」の頃のまま）
     private func updateEnvBar() {
         let tabs = sessions.enumerated().map { i, s in
-            EnvironmentBar.Tab(title: s.title, state: s.state, selected: i == activeIndex)
+            TabRow.Tab(title: s.title, state: s.state, selected: i == activeIndex)
         }
-        envBar.update(tabs: tabs, zoomPercent: zoom.percent, keyboard: keyboardKind,
-                      showKeyboardButton: layout?.mode == .split, diagnostics: store.diagnostics.count)
+        tabRow.update(tabs: tabs)
+        statusRow.update(zoomPercent: zoom.percent, diagnostics: store.diagnostics.count)
+        keyboardButton.setTitle(keyboardKind.shortTitle, for: .normal)
+        keyboardButton.isHidden = layout?.keyboardButton == nil
         emptyLabel.isHidden = !sessions.isEmpty
         emptyLabel.text = config.hosts.isEmpty
-            ? "接続先がありません。\n＋ →「設定を編集」で host を書いてください。\n例: host = mac you@your-mac.tailnet.ts.net"
-            : "＋ から接続先を選んでください"
+            ? "接続先がありません。\n＋ を長押し →「設定を編集」で host を書いてください。\n例: host = mac you@your-mac.tailnet.ts.net"
+            : "＋ をタップで接続します（長押しで接続先を選べます）"
         if let s = active, case .failed(let reason) = s.state {
             notice.isHidden = false
             notice.text = reason
@@ -327,11 +385,37 @@ final class RootViewController: UIViewController {
         updateEnvBar()
     }
 
-    /// キーボードを選ぶメニューの中身（環境バーのボタン・🌐 の長押しの吹き出し）
+    /// キーボードを選ぶメニューの中身（シェルの右下のボタン・🌐 の長押しの吹き出し）
     private func keyboardMenuElements() -> [UIMenuElement] {
         KeyboardKind.menuOrder.map { kind in
             UIAction(title: kind.title, state: kind == keyboardKind ? .on : .off) { [weak self] _ in self?.setKeyboard(kind) }
         }
+    }
+
+    /// キーボード選択のボタン（シェルの右下の角の丸いボタン）。📎 と同じ作りで、タップでメニューを出す
+    private func setUpKeyboardButton() {
+        if let label = keyboardButton.titleLabel {
+            // 「abcローマ字」のような長い名前は、丸の中に収まるよう縮める
+            label.font = .systemFont(ofSize: 11, weight: .bold)
+            label.adjustsFontSizeToFitWidth = true
+            label.minimumScaleFactor = 0.5
+            label.lineBreakMode = .byClipping
+        }
+        keyboardButton.layer.cornerRadius = LayoutEngine.cornerButtonSize / 2
+        keyboardButton.showsMenuAsPrimaryAction = true
+        keyboardButton.accessibilityLabel = "キーボードを選ぶ"
+        keyboardButton.menu = UIMenu(title: "キーボード", children: [UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.keyboardMenuElements() ?? [])
+        }])
+        keyboardButton.isHidden = true
+        view.addSubview(keyboardButton)
+        applyKeyboardButtonColors()
+    }
+
+    /// 📎 と同じ見た目: 地は文字色の丸（少し透ける）、字は背景色
+    private func applyKeyboardButtonColors() {
+        keyboardButton.backgroundColor = colors.text.withAlphaComponent(0.85)
+        keyboardButton.setTitleColor(colors.background, for: .normal)
     }
 
     /// 🌐 の長押し: iOS の吹き出し（ポップオーバー）でキーボードを選ぶ
@@ -367,7 +451,7 @@ final class RootViewController: UIViewController {
     private func route(_ key: TermKey, _ mods: KeyModifiers) {
         guard !gate.isLocked else { return }
         // 文字を打ったらポインタを隠す（Mac と同じ）
-        terminalView.hidePointer()
+        hidePointer()
         if mods.contains(.command) {
             handleCommand(key)
             return
@@ -388,6 +472,8 @@ final class RootViewController: UIViewController {
             }
         }
         guard let s = active else { return }
+        // 先行表示は、スクロールバックや選択を戻す前の状態で見る（戻すと画面が飛ぶので、その 1 打は予測しない）
+        let echoState = echoContext(s)
         // スクロールバック中にキーを押したら、最下部（入力位置）へ戻る
         if s.scrollTop != nil || s.selection != nil {
             s.scrollTop = nil
@@ -395,7 +481,98 @@ final class RootViewController: UIViewController {
             terminalView.stopInertia()
             terminalView.requestRender()
         }
+        noteEcho(key, mods, session: s, context: echoState)
         s.send(KeyEncoder.encode(key, mods, encodingContext))
+    }
+
+    // MARK: 読み・先行表示（カーソルの位置に重ねる。docs/design.md「ローマ字入力」「先行表示」）
+
+    /// 予測してはいけない場面（カーソルが隠れている、スクロールバック・選択・変換中）。
+    /// 代替画面・マウス報告では止めない（tmux の中でも効かせる。vim などは確かめが通らず出ない）
+    private func echoContext(_ s: TerminalSession) -> EchoPredictor.Context {
+        EchoPredictor.Context(cursorHidden: echoCursorHidden, scrolledBack: s.scrollTop != nil,
+                              composing: composer.isComposing || !romaji.isEmpty, selecting: s.selection != nil)
+    }
+
+    /// 送ったキーを予測に知らせる。修飾なしの文字は、返事を待たずにカーソルの位置へ薄く出す
+    private func noteEcho(_ key: TermKey, _ mods: KeyModifiers, session s: TerminalSession,
+                          context: EchoPredictor.Context) {
+        resetEchoIfSessionChanged(s)
+        if !mods.isDisjoint(with: [.control, .option]) {
+            echo.key(.modified)
+        } else {
+            switch key {
+            case .text(let t):
+                echo.typed(t, cursor: s.engine.cursorPosition(), now: CACurrentMediaTime(), context: context)
+            case .enter, .newline: echo.key(.enter)
+            case .escape: echo.key(.escape)
+            case .tab: echo.key(.tab)
+            case .backspace, .delete: echo.key(.backspace)
+            case .up, .down, .left, .right, .home, .end, .pageUp, .pageDown: echo.key(.arrow)
+            case .function: echo.key(.modified)
+            }
+        }
+        refreshInline()
+    }
+
+    /// 貼り付け・メディアのパスの挿入。返ってくる画面は予測できない
+    private func noteEchoPaste() {
+        echo.key(.paste)
+        refreshInline()
+    }
+
+    /// タブが替わったら予測を捨てる（予測はタブごとには持たない）
+    private func resetEchoIfSessionChanged(_ s: TerminalSession?) {
+        guard s !== echoOwner else { return }
+        echoOwner = s
+        echo.reset()
+        refreshInline()
+    }
+
+    /// 変換中の読み（無ければ先行表示の文字）をカーソルの位置に重ねる。
+    /// キーを確定した瞬間に同期で呼ぶ（変換の結果は待たない）。重ねる文字が無ければ隠す
+    private func refreshInline() {
+        let reading = composer.reading + romaji.pending
+        if !reading.isEmpty {
+            terminalView.setInlineText(reading, style: .composing)
+        } else if let d = echo.display {
+            // 行の終わりを越える分は出さない（折り返しは返事で決まる）
+            let text = String(d.text.prefix(max(0, grid.cols - d.at.col)))
+            terminalView.setInlineText(text, style: .predicted, at: d.at)
+            if echo.hasPending { scheduleEchoExpiry() }
+        } else {
+            terminalView.setInlineText("", style: .predicted)
+            if echo.hasPending { scheduleEchoExpiry() }
+        }
+    }
+
+    /// 返事が来なくても（接続が切れた・遅い）、予測は 1 秒で消える。描画のついでに突き合わせるので、描画を頼む
+    private func scheduleEchoExpiry() {
+        guard !echoExpiryScheduled else { return }
+        echoExpiryScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + EchoPredictor.timeout + 0.05) { [weak self] in
+            guard let self else { return }
+            self.echoExpiryScheduled = false
+            guard self.echo.hasPending else { return }
+            self.terminalView.requestRender()
+            self.scheduleEchoExpiry()
+        }
+    }
+
+    /// 描いた画面を予測と突き合わせる（返ってきた文字は本物に置き換わり、外れたら予測を消す）
+    private func reconcileEcho(_ frame: ScreenFrame, session s: TerminalSession) {
+        resetEchoIfSessionChanged(s)
+        echoCursorHidden = frame.cursor == nil
+        guard echo.hasPending else { return }
+        if let c = frame.cursor, frame.atBottom {
+            echo.reconcile(cellText: { col, row in
+                guard col >= 0, col < frame.cols, row >= 0, row < frame.rows else { return nil }
+                return frame.cell(col: col, row: row).text
+            }, cursor: (col: c.col, row: c.row), now: CACurrentMediaTime())
+        } else {
+            echo.reset()
+        }
+        refreshInline()
     }
 
     /// ⌘ の操作（Mac のターミナルと同じ。接続先には送らない）
@@ -439,12 +616,16 @@ final class RootViewController: UIViewController {
 
     private func sendCommitted(_ text: String) {
         guard !text.isEmpty else { return }
+        // 確定した文字は変換の結果。先行表示の予測（ASCII の直接入力）とは別なので、予測は捨てる
+        noteEchoPaste()
         active?.send(KeyEncoder.encode(.text(text), [], encodingContext))
     }
 
     private func updateCandidates() {
         let reading = composer.reading
         let pending = romaji.pending
+        // 読みはキーを確定した瞬間に、カーソルの位置へ出す（候補の変換は待たない。候補バーの更新は裏の結果で）
+        refreshInline()
         kana.request(reading) { [weak self] candidates in
             self?.lastCandidates = (reading, candidates)
             self?.candidateBar.update(candidates: candidates, pending: pending)
@@ -498,6 +679,7 @@ final class RootViewController: UIViewController {
     private func sendPaste(_ text: String, _ ctx: EncodingContext) {
         guard let s = active else { return }
         s.scrollTop = nil
+        noteEchoPaste()
         s.send(KeyEncoder.paste(text, ctx))
     }
 
@@ -507,12 +689,11 @@ final class RootViewController: UIViewController {
         picker.presenter = self
         picker.onPicked = { [weak self] items in self?.sendMedia(items) }
         picker.onError = { [weak self] message in self?.alert("メディア", message) }
-        sender.onStatus = { [weak self] text in self?.envBar.setProgress(text) }
+        sender.onStatus = { [weak self] text in self?.statusRow.setProgress(text) }
         sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
         sender.onInsert = { [weak self] text, session in self?.insertMediaPaths(text, into: session) }
         // 開くたびに作る（送っている途中なら「やめる」を出す）
-        // 📎 はシェルの左下（環境バーのものは使わない）
-        envBar.attach.isHidden = true
+        // 📎 はシェルの左下
         clipButton.setImage(UIImage(systemName: "paperclip.circle.fill",
                                     withConfiguration: UIImage.SymbolConfiguration(pointSize: 26)), for: .normal)
         clipButton.showsMenuAsPrimaryAction = true
@@ -581,6 +762,7 @@ final class RootViewController: UIViewController {
         let line = text.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
         if session === active, composer.isComposing { commitComposition(nil) }
         session.scrollTop = nil
+        noteEchoPaste()
         session.send(KeyEncoder.paste(line, encodingContext(for: session)))
     }
 
@@ -634,9 +816,46 @@ final class RootViewController: UIViewController {
         gate.willDeactivate()
     }
 
+    /// 裏に回ってもしばらく繋いでおくための、iOS のバックグラウンドの猶予（約 30 秒）。全タブで 1 つ
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+
     @objc private func didEnterBackground() {
         gate.didEnterBackground()
         for s in sessions { s.resignedActive() }
+        keepConnectionsForAWhile()
+    }
+
+    /// 裏に回ったら、繋がっている（繋いでいる途中を含む）タブが 1 つでもあるとき猶予を 1 つ取る。期限が来たら自分で閉じ、
+    /// 期限の前に前面へ戻れば、接続はそのまま続く（docs/design.md「接続の安定性」）
+    private func keepConnectionsForAWhile() {
+        guard backgroundTask == .invalid, sessions.contains(where: { $0.isLive }) else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "keep-ssh") { [weak self] in
+            self?.backgroundTimeExpired()
+        }
+        // 猶予をもらえなかった。止められる前に、自分で閉じる
+        if backgroundTask == .invalid { suspendAllForBackground() }
+    }
+
+    /// 猶予の期限（メインで呼ばれる）。iOS に止められる前に、全タブの接続を閉じてから猶予を返す。
+    /// 返さないと、アプリごと終了させられる
+    private func backgroundTimeExpired() {
+        suspendAllForBackground()
+        endBackgroundTask()
+    }
+
+    private func suspendAllForBackground() {
+        for s in sessions { s.suspendForBackground() }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
+    }
+
+    /// 前面に戻り始めた。期限の前なら、接続はそのまま続ける（猶予を返すだけ）
+    @objc private func willEnterForeground() {
+        endBackgroundTask()
     }
 
     @objc private func didActivate() {
@@ -645,6 +864,7 @@ final class RootViewController: UIViewController {
 
     /// ロックを解いた、またはロックの無いまま前面に戻った
     private func resume() {
+        endBackgroundTask()
         store.reload()
         if autoConnectPending {
             autoConnectPending = false
@@ -673,7 +893,7 @@ extension RootViewController: KeyboardOutput {
             // ローマ字: 英字と句読点（、。ー「」）はかなにして読みに足す
             if keyboardKind.usesRomaji, mods.subtracting(.shift).isEmpty, case .text(let t) = k, t.count == 1,
                let c = t.first, let kana = romaji.input(c) {
-                terminalView.hidePointer()
+                hidePointer()
                 if !kana.isEmpty { composer.append(kana) }
                 updateCandidates()
                 return
@@ -721,17 +941,66 @@ extension RootViewController: KeyboardOutput {
     }
 }
 
-// MARK: - スペースの横の赤い丸 → シェルのポインタ
+// MARK: - スペースの横の赤い丸 → ポインタ（docs/design.md「ポインタ」。シェルと上の 2 行を動き、クリックできる）
 
 extension RootViewController: PointerOutput {
+    /// ポインタが動ける範囲: シェルの枠と、上の 2 行（左右いっぱい）の和
+    private var pointerRects: [CGRect] { [terminalView.frame, statusRow.frame.union(tabRow.frame)] }
+
+    /// ポインタの今の位置。まだ動かしていなければシェルの中央
+    private var pointerHome: CGPoint {
+        pointerOverlay.location ?? CGPoint(x: terminalView.frame.midX, y: terminalView.frame.midY)
+    }
+
     func pointerMove(dx: CGFloat, dy: CGFloat) {
         guard !gate.isLocked else { return }
-        terminalView.movePointer(dx: dx, dy: dy)
+        let from = pointerHome
+        // 範囲の外へ出る動きは、範囲の中で最も近い点に寄せる
+        pointerOverlay.show(at: PointerArea.clamp(CGPoint(x: from.x + dx, y: from.y + dy), toUnionOf: pointerRects))
+    }
+
+    /// 文字を打ったらポインタを隠す（Mac と同じ。位置は覚えておく）
+    func hidePointer() {
+        pointerOverlay.hide()
     }
 
     func pointerClick(right: Bool) {
-        guard !gate.isLocked else { return }
-        terminalView.pointerClick(right: right)
+        guard !gate.isLocked, presentedViewController == nil else { return }
+        let p = PointerArea.clamp(pointerHome, toUnionOf: pointerRects)
+        pointerOverlay.show(at: p)
+        // 上の 2 行の上: その下のボタン（タブ・＋・倍率・⚠）を押す。右クリックは何もしない
+        if statusRow.frame.union(tabRow.frame).contains(p), let button = buttonUnderPointer(at: p) {
+            if !right { button.sendActions(for: .touchUpInside) }
+            return
+        }
+        // キーボード選択のボタンの上: 吹き出しでキーボードを選ぶ。📎 の上は何もしない
+        if !keyboardButton.isHidden, keyboardButton.frame.contains(p) {
+            presentKeyboardMenu(anchor: keyboardButton.convert(keyboardButton.bounds, to: nil))
+            return
+        }
+        if clipButton.frame.contains(p) { return }
+        // シェルの上: シェルの座標に直して、タップ（左）・2 本指のタップ（右）と同じ扱い
+        // （マウス報告・入力行のカーソル移動・編集メニュー）
+        guard terminalView.frame.contains(p) else { return }
+        let local = view.convert(p, to: terminalView)
+        let cell = terminalView.cell(at: local)
+        // terminalView プロパティと名前が同じなので、デリゲートとして呼ぶ
+        let delegate: TerminalViewDelegate = self
+        if right {
+            delegate.terminalView(terminalView, twoFingerTappedAt: cell, location: local)
+        } else {
+            delegate.terminalView(terminalView, tappedAt: cell, location: local)
+        }
+    }
+
+    /// 点の下のビューから上へたどって見つけたボタン（UIControl）
+    private func buttonUnderPointer(at p: CGPoint) -> UIControl? {
+        var v = view.hitTest(p, with: nil)
+        while let x = v, x !== view {
+            if let c = x as? UIControl, c.isEnabled { return c }
+            v = x.superview
+        }
+        return nil
     }
 }
 
@@ -739,11 +1008,23 @@ extension RootViewController: PointerOutput {
 
 extension RootViewController: TerminalViewDelegate {
     func terminalViewFrame(_ view: TerminalView) -> (frame: ScreenFrame, theme: Theme, selection: TextSelection?)? {
-        guard let s = active else { return nil }
+        guard let s = active else {
+            // タブが無い。出していた予測は捨てる
+            if echo.hasPending || echo.confirmed { echo.reset(); refreshInline() }
+            return nil
+        }
         let frame = s.engine.readScreen(theme: theme, scrollTop: s.scrollTop, cursorShape: config.cursorStyle)
         // 最下部に追いついたら、追従に戻す
         if s.scrollTop != nil && frame.atBottom { s.scrollTop = nil }
+        // 描く画面を、先行表示の予測と突き合わせる（本物が出たら予測は消える）
+        reconcileEcho(frame, session: s)
         return (frame, theme, s.selection)
+    }
+
+    func terminalViewCursorCell(_ view: TerminalView) -> (col: Int, row: Int)? {
+        // スクロールバックを見ている間は重ねない。カーソルが隠れていても、端末の持つ位置に出す
+        guard let s = active, s.scrollTop == nil else { return nil }
+        return s.engine.cursorPosition()
     }
 
     private var gestureMode: GestureMode {
@@ -897,7 +1178,7 @@ extension RootViewController: SessionPresenter {
                 case .changed(let expected, let actual):
                     a = UIAlertController(
                         title: "ホスト鍵が変わっています",
-                        message: "\(host.name) の鍵が、保存したものと違います。なりすましの恐れがあるので接続を止めました。\n\n保存: \(expected)\n今回: \(actual)\n\n接続先の鍵を作り直したのが確かなときだけ、＋ →「このタブのホスト鍵を忘れる」で消してから繋ぎ直してください。",
+                        message: "\(host.name) の鍵が、保存したものと違います。なりすましの恐れがあるので接続を止めました。\n\n保存: \(expected)\n今回: \(actual)\n\n接続先の鍵を作り直したのが確かなときだけ、＋ を長押し →「このタブのホスト鍵を忘れる」で消してから繋ぎ直してください。",
                         preferredStyle: .alert)
                     a.addAction(UIAlertAction(title: "OK", style: .cancel) { _ in cont.resume(returning: false) })
                 }

@@ -1,8 +1,7 @@
-import QuartzCore
 import TermCore
 import UIKit
 
-/// ポインタの動きとクリックを受け取る（シェルの中だけで効かせるのは受け手）
+/// ポインタの動きとクリックを受け取る（動ける範囲・クリックの行き先は受け手が決める）
 @MainActor
 protocol PointerOutput: AnyObject {
     /// ポインタを動かす（pt）
@@ -11,10 +10,11 @@ protocol PointerOutput: AnyObject {
     func pointerClick(right: Bool)
 }
 
-/// スペースの横の赤い丸（docs/design.md「ポインタ」）。指を動かした分だけすぐに動き（細かい動きに付いてくる）、
-/// 大きくずらしたままにすると、ThinkPad の TrackPoint のようにずれの向きと大きさで進み続ける（`PointerCurve`）。
+/// スペースの横の赤い丸（docs/design.md「ポインタ」）。ノートパソコンのトラックパッドのように、指の動いた分だけポインタが動き、
+/// 速く動かすほど遠くへ届く（指の速さに応じた倍率 `PointerCurve.gain`）。止めれば止まる。指は丸の外まで滑らせてよい
 /// - 左右どちらでも、先に触れた方がポインタを動かす
 /// - 片方だけを軽くタップするとクリック、両方を同時に押すと右クリック
+/// - 空白の長押しでトラックパッドにした間の、別の指のタップは左クリック（`click(right:)`。ノートパソコンのトラックパッドと同じ）
 /// - クリックには、押し込んだ手応えの振動を返す（3D Touch のような感触）
 @MainActor
 final class PointerStick {
@@ -30,6 +30,9 @@ final class PointerStick {
         let start: CGPoint
         var current: CGPoint
         let began: TimeInterval
+        /// 前の動きの時刻と、そこでの指の速さ（pt/秒）
+        var lastTime: TimeInterval
+        var speed: CGFloat = 0
         /// ずれがタップの範囲を超えた（離してもクリックにしない）
         var moved = false
     }
@@ -38,44 +41,57 @@ final class PointerStick {
     private var secondary: ObjectIdentifier?
     /// 両方を押して右クリックにした（そのあと離しても左クリックにしない）
     private var suppressClick = false
-    private var link: CADisplayLink?
-    private var lastTick: CFTimeInterval = 0
-    private let click = UIImpactFeedbackGenerator(style: .rigid)
-    private let deep = UIImpactFeedbackGenerator(style: .heavy)
+    private let clickHaptic = UIImpactFeedbackGenerator(style: .rigid)
+    private let deepHaptic = UIImpactFeedbackGenerator(style: .heavy)
 
     /// 触れているか（キーの見た目に使う）
     var isActive: Bool { primary != nil }
 
     func down(_ id: ObjectIdentifier, at p: CGPoint, time: TimeInterval) {
         if primary == nil {
-            primary = Touch(id: id, start: p, current: p, began: time)
+            primary = Touch(id: id, start: p, current: p, began: time, lastTime: time)
             suppressClick = false
-            if haptics { click.prepare() }
-            startLink()
+            if haptics { clickHaptic.prepare() }
         } else if secondary == nil, primary?.id != id {
             // 両方を同時に押した → 右クリック（1 回）
             secondary = id
             suppressClick = true
-            if haptics {
-                deep.impactOccurred(intensity: 1)
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 70_000_000)
-                    self?.click.impactOccurred(intensity: 0.7)
-                }
-            }
-            output?.pointerClick(right: true)
+            click(right: true)
         }
     }
 
-    func moved(_ id: ObjectIdentifier, to p: CGPoint) {
+    /// クリック（手応えの振動つき）。right なら右クリック。タップの判定は呼び手がする
+    /// （この中の `down`・`up` と、トラックパッドの間の別の指のタップ）
+    func click(right: Bool) {
+        if haptics {
+            if right {
+                deepHaptic.impactOccurred(intensity: 1)
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 70_000_000)
+                    self?.clickHaptic.impactOccurred(intensity: 0.7)
+                }
+            } else {
+                clickHaptic.impactOccurred(intensity: 1)
+            }
+        }
+        output?.pointerClick(right: right)
+    }
+
+    /// 指が動いた。前の点と時刻から指の速さを出し、その速さの倍率を掛けた分だけポインタを動かす
+    func moved(_ id: ObjectIdentifier, to p: CGPoint, time: TimeInterval) {
         guard var t = primary, t.id == id else { return }
-        // 指を動かした分だけ、すぐに動かす（細かい動きにそのまま付いてくる）
         let dx = p.x - t.current.x, dy = p.y - t.current.y
+        let distance = hypot(dx, dy)
+        // 時刻が進んでいないとき（dt が 0）は、前の速さのまま
+        let dt = time - t.lastTime
+        if dt > 0 { t.speed = distance / CGFloat(dt) }
         t.current = p
+        t.lastTime = max(t.lastTime, time)
         if hypot(p.x - t.start.x, p.y - t.start.y) > Self.tapSlop { t.moved = true }
         primary = t
-        if dx != 0 || dy != 0 {
-            output?.pointerMove(dx: dx * PointerCurve.directGain, dy: dy * PointerCurve.directGain)
+        if distance > 0 {
+            let gain = PointerCurve.gain(speed: t.speed)
+            output?.pointerMove(dx: dx * gain, dy: dy * gain)
         }
     }
 
@@ -86,63 +102,21 @@ final class PointerStick {
         }
         guard let t = primary, t.id == id else { return }
         primary = nil
-        stopLink()
         let distance = hypot(p.x - t.start.x, p.y - t.start.y)
         if !suppressClick && !t.moved && distance <= Self.tapSlop && time - t.began <= Self.tapTime {
-            if haptics { click.impactOccurred(intensity: 1) }
-            output?.pointerClick(right: false)
+            click(right: false)
         }
         if secondary == nil { suppressClick = false }
     }
 
     func cancel(_ id: ObjectIdentifier) {
         if secondary == id { secondary = nil }
-        if primary?.id == id {
-            primary = nil
-            stopLink()
-        }
+        if primary?.id == id { primary = nil }
     }
 
     func reset() {
         primary = nil
         secondary = nil
         suppressClick = false
-        stopLink()
-    }
-
-    // MARK: 動かす（画面の更新ごとに、ずれの向きへ速さ × 時間だけ進める）
-
-    private final class LinkTarget: NSObject {
-        weak var stick: PointerStick?
-        @objc func tick(_ link: CADisplayLink) {
-            MainActor.assumeIsolated { stick?.tick(link) }
-        }
-    }
-
-    private func startLink() {
-        stopLink()
-        let target = LinkTarget()
-        target.stick = self
-        let l = CADisplayLink(target: target, selector: #selector(LinkTarget.tick(_:)))
-        l.add(to: .main, forMode: .common)
-        link = l
-        lastTick = CACurrentMediaTime()
-    }
-
-    private func stopLink() {
-        link?.invalidate()
-        link = nil
-    }
-
-    private func tick(_ link: CADisplayLink) {
-        guard let t = primary else { return }
-        let now = link.timestamp
-        let dt = min(0.05, max(0, now - lastTick))
-        lastTick = now
-        let dx = t.current.x - t.start.x, dy = t.current.y - t.start.y
-        let d = hypot(dx, dy)
-        let v = PointerCurve.speed(for: d)
-        guard v > 0, d > 0, dt > 0 else { return }
-        output?.pointerMove(dx: dx / d * v * dt, dy: dy / d * v * dt)
     }
 }

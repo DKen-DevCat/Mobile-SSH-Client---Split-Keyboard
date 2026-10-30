@@ -81,7 +81,7 @@ enum CLI {
             case ("push", _): return c.push()
             case ("pubkey", _):
                 guard let fp = try option("--fingerprint", in: &args) else {
-                    throw ArgError(message: "--fingerprint にアプリの ＋ →「公開鍵をコピー」に出た指紋を渡してください")
+                    throw ArgError(message: "--fingerprint にアプリの ＋ を長押し →「公開鍵をコピー」に出た指紋を渡してください")
                 }
                 return c.pubkey(fingerprint: fp)
             case ("install", _): return c.install(force: flag("--force", in: &args))

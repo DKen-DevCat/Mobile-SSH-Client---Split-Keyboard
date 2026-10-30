@@ -175,7 +175,7 @@ public enum KeyboardKind: String, Sendable, CaseIterable {
         }
     }
 
-    /// 環境バーに出す短い名前
+    /// シェルの右下のキーボード選択のボタンに出す短い名前
     public var shortTitle: String {
         switch self {
         case .romaji: return "ローマ字"
@@ -186,7 +186,7 @@ public enum KeyboardKind: String, Sendable, CaseIterable {
         }
     }
 
-    /// フリックの面（上に寄せて置く）
+    /// フリックの面
     public var isFlick: Bool { self == .kana || self == .flickRomaji || self == .flickEnglish }
     /// 英字をローマ字としてかなにする
     public var usesRomaji: Bool { self == .romaji || self == .flickRomaji }
@@ -209,7 +209,7 @@ public struct HostEntry: Equatable, Sendable, Hashable {
     public var user: String
     public var address: String
     public var port: Int = 22
-    /// 接続時に `tmux new -A -s <名前>` を実行する。nil なら素のシェル
+    /// 接続時に `tmux new -A -s <名前>` を実行する（タブの 2 番からは `<名前>-2`…）。nil なら素のシェル
     public var tmuxSession: String? = "main"
     public var auth: AuthKind = .key
 
@@ -227,14 +227,43 @@ public struct HostEntry: Equatable, Sendable, Hashable {
         case key, password
     }
 
-    /// 接続後に実行するコマンド。nil なら shell を要求する。
-    /// SSH の exec はログインシェルを通らず、Homebrew の PATH（.zprofile）が効かないので、ログインシェルで包む。
-    /// tmux が無ければ、知らせて素のシェルを開く
-    public var startupCommand: String? {
+    /// tmux を探す場所。上から順に試し、最初に実行できたものを使う（見つからなければ、ログインシェルの PATH）。
+    /// `$HOME` は接続先で展開する。アプリの起動コマンドと `splitterm doctor` が同じ一覧を使う
+    public static let tmuxSearchPaths: [String] = [
+        "/opt/homebrew/bin/tmux",
+        "/usr/local/bin/tmux",
+        "/opt/local/bin/tmux",
+        "$HOME/.nix-profile/bin/tmux",
+        "/run/current-system/sw/bin/tmux",
+        "/usr/bin/tmux",
+    ]
+
+    /// タブの番号（slot）に対応する tmux のセッション名。1 番は `tmux=` の名前のまま、2 番からは `-2` `-3` を付ける。
+    /// タブごとに別のセッションにするため。`tmux=none` なら nil
+    public func tmuxSessionName(slot: Int) -> String? {
         guard let s = tmuxSession else { return nil }
+        return slot <= 1 ? s : "\(s)-\(slot)"
+    }
+
+    /// 接続後に実行するコマンド（1 行）。nil なら shell を要求する。
+    /// SSH の exec はログインシェルを通らず、Homebrew の PATH（.zprofile）が効かない。
+    /// そこで外側は `/bin/sh` に任せ（ログインシェルが fish・tcsh でも壊れない）、`tmuxSearchPaths` を順に試し、
+    /// 無ければログインシェルの `command -v tmux` で探す。tmux 自体はログインシェル経由で起動し、
+    /// tmux のサーバーにログインの環境（PATH）を持たせる。見つからなければ、知らせて素のシェルを開く
+    public func startupCommand(slot: Int) -> String? {
         // 名前は parse で英数と - _ . に限っているので、引用符の中にそのまま入れてよい
-        return "exec \"$SHELL\" -lc 'if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s \(s); "
-            + "else echo \"tmux が見つかりません。素のシェルを開きます\"; exec \"$SHELL\" -l; fi'"
+        guard let name = tmuxSessionName(slot: slot) else { return nil }
+        // $HOME を含む候補だけ二重引用符で囲む（展開は接続先の sh）
+        let candidates = Self.tmuxSearchPaths.map { $0.contains("$") ? "\"" + $0 + "\"" : $0 }.joined(separator: " ")
+        // 外側の単一引用符の中に単一引用符を入れない（sshd がログインシェルの -c に渡す 1 行にするため）
+        let script = [
+            #"t=; for p in \#(candidates); do if [ -x "$p" ]; then t=$p; break; fi; done; "#,
+            #"if [ -z "$t" ]; then t=$("$SHELL" -lc "command -v tmux" 2>/dev/null | tail -n 1); [ -x "$t" ] || t=; fi; "#,
+            #"if [ -n "$t" ]; then exec "$SHELL" -lc "exec \"$t\" -u new-session -A -s \#(name)"; fi; "#,
+            #"echo "tmux が見つかりません（Mac で brew install tmux を入れると、切れても作業が残ります）。素のシェルを開きます"; "#,
+            #"exec "$SHELL" -l"#,
+        ].joined()
+        return "exec /bin/sh -c '" + script + "'"
     }
 
     /// 鍵の保存（ホスト鍵）に使う識別子

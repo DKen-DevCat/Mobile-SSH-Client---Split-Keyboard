@@ -8,7 +8,7 @@
 #
 # 置き場所
 #   iPhone / iPad: 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config
-#                  （アプリの ＋ →「設定を編集」でも直せる）
+#                  （アプリの ＋ を長押し →「設定を編集」でも直せる）
 #   Mac:           ~/.config/splitterm/config を scripts/ios_push_config.sh で送る
 # 保存した瞬間に読み直して効く。読めない行は飛ばし、画面の ⚠ に行番号を出す。
 # 鍵やパスワードはここに書かない（鍵は Secure Enclave、ホスト鍵はキーチェーン）。
@@ -17,7 +17,8 @@
 
 # ─── 接続 ───────────────────────────────────────────────
 # 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]
-#   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）
+#   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）。
+#   タブごとに別のセッションに入る（1 つ目は main、2 つ目から main-2、main-3…）。タブを閉じても tmux は残る
 #   tmux=none なら素のシェル
 # host = mac me@my-mac.example.ts.net tmux=main
 # host = pi pi@192.168.1.20:2222 tmux=none

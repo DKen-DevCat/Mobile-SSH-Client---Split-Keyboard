@@ -1,7 +1,7 @@
 #!/bin/bash
 # iPhone・iPad の Mobile-SSH-Client---Split-Keyboard の公開鍵（Secure Enclave の鍵）を取ってきて、この Mac の
 # authorized_keys に足す。秘密鍵は端末の外に出ない。取ってくるのは、アプリが書類フォルダに置いた公開鍵（splitterm.pub）だけ。
-# そのファイルは「ファイル」アプリから書き換えられるので、足す前に指紋をアプリの表示（＋ →「公開鍵をコピー」）と見比べる。
+# そのファイルは「ファイル」アプリから書き換えられるので、足す前に指紋をアプリの表示（＋ を長押し →「公開鍵をコピー」）と見比べる。
 # 足す行には restrict,pty を付ける（ポート転送・エージェント転送などを止め、端末だけを許す）。
 # 使い方: scripts/ios_pubkey.sh [--print] [--fingerprint SHA256:...]
 #   --print        表示するだけで、authorized_keys には足さない
@@ -53,7 +53,7 @@ echo "指紋: ${fp}"
 if [ -n "$EXPECT" ]; then
   [ "$EXPECT" = "$fp" ] || { echo "指紋がアプリの表示（${EXPECT}）と違います。足しません" >&2; exit 1; }
 elif [ -t 0 ]; then
-  read -r -p "アプリの ＋ →「公開鍵をコピー」に出た指紋と同じなら y: " answer
+  read -r -p "アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋と同じなら y: " answer
   [ "$answer" = y ] || { echo "足しませんでした"; exit 1; }
 else
   echo "指紋を確かめられないので足しません（--fingerprint でアプリに出た指紋を渡してください）" >&2

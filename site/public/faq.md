@@ -30,7 +30,7 @@ Mac のエージェントに「https://mobile-ssh-client---split-keyboard.pages.
 
 ## 設定（config）はどこにありますか？
 
-Mac では `~/.config/splitterm/config`（`scripts/ios_push_config.sh` か `splitterm push` で端末へ送る）。端末では「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config で、アプリの ＋ →「設定を編集」でも直せる。全項目は [config](https://mobile-ssh-client---split-keyboard.pages.dev/config.md)。
+Mac では `~/.config/splitterm/config`（`scripts/ios_push_config.sh` か `splitterm push` で端末へ送る）。端末では「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config で、アプリの ＋ を長押し →「設定を編集」でも直せる。全項目は [config](https://mobile-ssh-client---split-keyboard.pages.dev/config.md)。
 
 ## データはどこかへ送られますか？（プライバシー）
 

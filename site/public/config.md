@@ -7,7 +7,7 @@
 | どこ | 場所 | 使い方 |
 | --- | --- | --- |
 | Mac | `~/.config/splitterm/config`（環境変数 `SPLITTERM_CONFIG` で変えられる） | 直してから `scripts/ios_push_config.sh`（または `splitterm push`）で端末へ送る。開いているアプリにもすぐ効く |
-| iPhone・iPad | 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config | アプリの ＋ →「設定を編集」でも直せる。保存した瞬間に読み直して効く |
+| iPhone・iPad | 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config | アプリの ＋ を長押し →「設定を編集」でも直せる。保存した瞬間に読み直して効く |
 
 Mac で初めて作るときは、見本から作る: `splitterm config init`（または `scripts/ios_push_config.sh --init`）。
 
@@ -31,7 +31,7 @@ keyboard = kana
 clipboard-clear = 30s
 ```
 
-`host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。
+`host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。タブごとに別のセッションに入る（1 つ目は `main`、2 つ目から `main-2`・`main-3`…）。タブを閉じても tmux のセッションは残り、次に開いたタブが同じ番号なら戻る。tmux は `/opt/homebrew/bin` や `/usr/local/bin` などの決まった場所を順に探し、見つからなければ知らせて素のシェルを開く。`tmux=none` なら素のシェル。
 
 ## 確かめ方
 
@@ -46,7 +46,7 @@ splitterm config check --file path/to/config
 
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
-| `host` | なし（何度でも書ける） | 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名\|none] [auth=key\|password] tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main） tmux=none なら素のシェル |
+| `host` | なし（何度でも書ける） | 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名\|none] [auth=key\|password] tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）。 タブごとに別のセッションに入る（1 つ目は main、2 つ目から main-2、main-3…）。タブを閉じても tmux は残る tmux=none なら素のシェル |
 | `auto-connect` | 空 | 起動時につなぐ host の名前。空なら最初の host、none ならつながない |
 | `term` | `xterm-256color` | 接続先に伝える端末の種類 |
 | `keepalive` | `15s` | TCP の keepalive の間隔（切れた接続を早く見つける）。0 で使わない |

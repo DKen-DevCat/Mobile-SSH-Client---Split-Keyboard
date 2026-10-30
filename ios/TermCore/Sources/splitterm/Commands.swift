@@ -115,7 +115,7 @@ struct Commands {
     /// 公開鍵を authorized_keys に足す。アプリに出た指紋が要る（書き換えられた鍵を足さないため）
     func pubkey(fingerprint: String) -> CommandResult {
         guard fingerprint.hasPrefix("SHA256:"), fingerprint.count > 10, !fingerprint.contains(" ") else {
-            var r = CommandResult.fail("アプリの ＋ →「公開鍵をコピー」に出た指紋（SHA256:…）を渡してください")
+            var r = CommandResult.fail("アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋（SHA256:…）を渡してください")
             r.needsHuman = true
             return r
         }

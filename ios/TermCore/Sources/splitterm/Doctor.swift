@@ -63,9 +63,21 @@ struct Doctor {
     }
 
     func tmux() -> Check {
-        // ログインシェルで探す（接続時にアプリもログインシェルで tmux を起動する）
+        // アプリが接続時に探すのと同じ一覧（HostEntry.tmuxSearchPaths）を、上から順に。$HOME は展開する
+        let home = env.home.path
+        for candidate in HostEntry.tmuxSearchPaths {
+            let path = candidate.replacingOccurrences(of: "$HOME", with: home)
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return Check(id: "tmux", status: .ok, message: "tmux があります（\(path)）")
+            }
+        }
+        // 一覧に無い場所は、アプリと同じくログインシェルの PATH で探す
         let r = ok("/bin/zsh", ["-lc", "command -v tmux"])
-        if r.status == 0 { return Check(id: "tmux", status: .ok, message: "tmux があります") }
+        if r.status == 0 {
+            // ログインシェルが前置きの行を出すことがあるので、最後の行を取る
+            let path = r.stdout.split(whereSeparator: \.isNewline).last.map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
+            if path.hasPrefix("/") { return Check(id: "tmux", status: .ok, message: "tmux があります（\(path)）") }
+        }
         return Check(id: "tmux", status: .warn, message: "tmux がありません（切れたら作業が消えます）", fix: "brew install tmux")
     }
 
@@ -133,6 +145,6 @@ struct Doctor {
             return Check(id: "pubkey", status: .ok, message: "アプリの公開鍵が authorized_keys にあります")
         }
         return Check(id: "pubkey", status: .warn, message: "アプリの公開鍵が authorized_keys にありません",
-                     fix: "アプリの ＋ →「公開鍵をコピー」に出た指紋で splitterm pubkey --fingerprint SHA256:…", needsHuman: true)
+                     fix: "アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋で splitterm pubkey --fingerprint SHA256:…", needsHuman: true)
     }
 }

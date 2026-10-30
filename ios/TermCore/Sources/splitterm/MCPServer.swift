@@ -57,7 +57,7 @@ struct MCPServer {
             Tool(name: "config_push", description: "config を端末へ送る（読めない行があれば送らない）。アプリは開いていればすぐ読み直す",
                  properties: [:], required: []) { _ in c.push() },
             Tool(name: "pubkey_install",
-                 description: "端末のアプリの公開鍵を、この Mac の ~/.ssh/authorized_keys に足す（restrict,pty 付き）。アプリの ＋ →「公開鍵をコピー」に出た指紋を人から聞いて渡す。指紋が違えば足さない",
+                 description: "端末のアプリの公開鍵を、この Mac の ~/.ssh/authorized_keys に足す（restrict,pty 付き）。アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋を人から聞いて渡す。指紋が違えば足さない",
                  properties: ["fingerprint": ["type": "string", "description": "SHA256:… の形"]],
                  required: ["fingerprint"]) { a in c.pubkey(fingerprint: a["fingerprint"] as? String ?? "") },
             Tool(name: "app_install",

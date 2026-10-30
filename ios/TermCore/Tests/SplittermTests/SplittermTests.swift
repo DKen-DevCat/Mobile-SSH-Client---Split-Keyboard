@@ -236,3 +236,36 @@ final class MCPTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: other, encoding: .utf8), "registry = https://registry.npmjs.org/\n")
     }
 }
+
+final class DoctorTests: XCTestCase {
+    /// 一覧（HostEntry.tmuxSearchPaths）にある場所なら、ログインシェルに聞かずに見つける
+    func testTmuxIsFoundInTheSearchList() throws {
+        let rig = try Rig()
+        let bin = rig.home.appendingPathComponent(".nix-profile/bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let tmux = bin.appendingPathComponent("tmux")
+        try "#!/bin/sh\n".write(to: tmux, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmux.path)
+        let check = Doctor(env: rig.env).tmux()
+        XCTAssertEqual(check.status, .ok)
+        XCTAssertTrue(check.message.contains("tmux があります（/"), check.message)
+        XCTAssertTrue(rig.calls.isEmpty)
+    }
+
+    /// 一覧に無ければ、アプリと同じくログインシェルの PATH で探す。それでも無ければ警告
+    func testTmuxFallsBackToTheLoginShell() throws {
+        let rig = try Rig()
+        let fixed = HostEntry.tmuxSearchPaths.filter { !$0.contains("$") }
+        let exists = fixed.contains(where: { FileManager.default.isExecutableFile(atPath: $0) })
+        try XCTSkipIf(exists, "決まった場所に tmux があるので、見つからない場合を作れない")
+        rig.reply = ProcessResult(status: 0, stdout: "motd\n/opt/odd/bin/tmux\n", stderr: "")
+        let found = Doctor(env: rig.env).tmux()
+        XCTAssertEqual(found.status, .ok)
+        XCTAssertTrue(found.message.contains("/opt/odd/bin/tmux"), found.message)
+        XCTAssertEqual(rig.calls.first?.1, ["-lc", "command -v tmux"])
+        rig.reply = ProcessResult(status: 1, stdout: "", stderr: "")
+        let missing = Doctor(env: rig.env).tmux()
+        XCTAssertEqual(missing.status, .warn)
+        XCTAssertEqual(missing.fix, "brew install tmux")
+    }
+}

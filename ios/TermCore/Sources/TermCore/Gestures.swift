@@ -96,20 +96,44 @@ public struct ZoomSteps: Sendable, Equatable {
     }
 }
 
-/// スペースの横の赤い丸（ポインタ）の動き（docs/design.md「ポインタ」）。2 つを足し合わせる:
-/// - 指を動かした分だけ、すぐにポインタを動かす（細かい動きにそのまま付いてくる。`directGain` 倍）
-/// - 触れた点から `rateStart` より大きくずらしたままにすると、ずれに応じて進み続ける（TrackPoint のように。遠くへ速く）
+/// スペースの横の赤い丸（ポインタ）の動き（docs/design.md「ポインタ」）。ノートパソコンのトラックパッドと同じ加速:
+/// 指の動いた分だけ動き、速く動かすほど遠くへ届く。止めれば止まる
 public enum PointerCurve {
-    /// 指の動きに対するポインタの動きの倍率
-    public static let directGain: CGFloat = 2.5
-    /// これより大きくずらすと、進み続ける（pt）
-    public static let rateStart: CGFloat = 14
-    /// 進み続ける速さの上限（pt/秒）
-    public static let maxSpeed: CGFloat = 1600
+    /// これ以下の速さ（pt/秒）では、倍率は最小
+    public static let slowSpeed: CGFloat = 60
+    /// これ以上の速さ（pt/秒）では、倍率は最大
+    public static let fastSpeed: CGFloat = 900
+    /// ゆっくり動かしたときの倍率（指より少し細かく動く）
+    public static let minGain: CGFloat = 0.9
+    /// 速く動かしたときの倍率
+    public static let maxGain: CGFloat = 3.2
 
-    /// ずれ（pt）から、進み続ける速さ（pt/秒）
-    public static func speed(for offset: CGFloat) -> CGFloat {
-        let e = max(0, offset - rateStart)
-        return min(maxSpeed, 10 * e + 1.2 * e * e)
+    /// 指の速さ（pt/秒）から、指の動きに掛ける倍率。`slowSpeed` 以下で `minGain`、`fastSpeed` 以上で `maxGain`、
+    /// その間は滑らかに（smoothstep）増える。負・0・数でない値は最小
+    public static func gain(speed: CGFloat) -> CGFloat {
+        guard speed > slowSpeed else { return minGain }
+        let t = min(1, (speed - slowSpeed) / (fastSpeed - slowSpeed))
+        return minGain + (maxGain - minGain) * (t * t * (3 - 2 * t))
+    }
+}
+
+/// ポインタが動ける範囲（四角の和）。範囲の外へ出る動きは、和の中で最も近い点に寄せる
+public enum PointerArea {
+    /// 点を四角の中に寄せる。右端・下端は 1pt 内側（その点の下のビューを `hitTest` で引けるように）
+    public static func clamp(_ p: CGPoint, to rect: CGRect) -> CGPoint {
+        CGPoint(x: min(max(rect.minX, p.x), max(rect.minX, rect.maxX - 1)),
+                y: min(max(rect.minY, p.y), max(rect.minY, rect.maxY - 1)))
+    }
+
+    /// 点を、四角の和の中の最も近い点に寄せる（和の中ならそのまま）。空の四角は無いものとして扱う。四角が 1 つも無ければそのまま
+    public static func clamp(_ p: CGPoint, toUnionOf rects: [CGRect]) -> CGPoint {
+        var best: (point: CGPoint, distance: CGFloat)?
+        for rect in rects where rect.width > 0 && rect.height > 0 {
+            let q = clamp(p, to: rect)
+            let d = hypot(q.x - p.x, q.y - p.y)
+            if let b = best, b.distance <= d { continue }
+            best = (q, d)
+        }
+        return best?.point ?? p
     }
 }

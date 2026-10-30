@@ -18,6 +18,9 @@ protocol TerminalViewDelegate: AnyObject {
     /// ハードウェアキーボード。true を返したら処理済み
     func terminalView(_ view: TerminalView, hardwareKey key: TermKey, modifiers: KeyModifiers) -> Bool
     func terminalViewEditMenu(_ view: TerminalView) -> UIMenu?
+    /// 変換中の読みと先行表示を重ねるカーソルのセル（見えている画面の中の桁と行）。カーソルが隠れていても返す。
+    /// スクロールバックを見ている間などは nil（重ねない）
+    func terminalViewCursorCell(_ view: TerminalView) -> (col: Int, row: Int)?
 }
 
 /// CADisplayLink から自分を強く持たないための中継
@@ -75,7 +78,6 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         let menu = UIEditMenuInteraction(delegate: self)
         addInteraction(menu)
         editMenu = menu
-        setUpPointer()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -102,6 +104,7 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
                                        pixelSize: (pointSize * scale).rounded(), scale: scale)
         metrics = renderer?.configure(spec)
         if let m = metrics { accumulator = ScrollAccumulator(lineHeight: m.heightPt) }
+        setInlineFont(family: family, pointSize: pointSize)
         requestRender()
         return metrics
     }
@@ -191,13 +194,17 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         let blinkOn = !cursorBlink || Int((CACurrentMediaTime() - blinkPhaseStart) / 0.5) % 2 == 0
         let start = Perf.begin(.frame)
         defer { Perf.end(.frame, start) }
-        return renderer.draw(data.frame, theme: data.theme, selection: data.selection,
-                             cursorVisible: blinkOn, scrolledBack: !data.frame.atBottom, layer: metalLayer)
+        let drawn = renderer.draw(data.frame, theme: data.theme, selection: data.selection,
+                                  cursorVisible: blinkOn, scrolledBack: !data.frame.atBottom, layer: metalLayer)
+        // 出力でカーソルが動いたら、重ねた文字も合わせる（重ねる文字が無いときは何もしない）
+        if !inlineText.isEmpty { layoutInline() }
+        return drawn
     }
 
     // MARK: タッチ
 
-    private func cell(at p: CGPoint) -> GridPoint {
+    /// 点（このビューの左上を原点とする pt）の文字セル。範囲の外は端のセル。ポインタ（RootViewController）のクリックも使う
+    func cell(at p: CGPoint) -> GridPoint {
         guard let m = metrics, let d = delegate?.terminalViewFrame(self) else { return GridPoint(row: 0, col: 0) }
         let c = m.cell(at: p, cols: d.frame.cols, rows: d.frame.rows)
         return GridPoint(row: c.row, col: c.col)
@@ -284,66 +291,152 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         }
     }
 
-    // MARK: ポインタ（キーボードのスペースの横の赤い丸で動かす。シェルの中だけで効く。docs/design.md「ポインタ」）
+    // MARK: 読み・先行表示の重ね（docs/design.md「ローマ字入力」「先行表示」）
 
-    private let pointerLayer = CAShapeLayer()
-    /// ポインタの先の位置（シェルの左上を原点とする pt）。まだ動かしていなければ nil
-    private(set) var pointerLocation: CGPoint?
-
-    private func setUpPointer() {
-        // Mac の矢印の形（先が原点）
-        let arrow = UIBezierPath()
-        arrow.move(to: .zero)
-        for (x, y) in [(0.0, 17.0), (4.2, 13.2), (7.2, 19.8), (9.6, 18.8), (6.7, 12.3), (12.2, 12.3)] {
-            arrow.addLine(to: CGPoint(x: x, y: y))
-        }
-        arrow.close()
-        pointerLayer.path = arrow.cgPath
-        pointerLayer.fillColor = UIColor.white.cgColor
-        pointerLayer.strokeColor = UIColor.black.cgColor
-        pointerLayer.lineWidth = 1
-        pointerLayer.lineJoin = .round
-        pointerLayer.isHidden = true
-        pointerLayer.zPosition = 10
-        layer.addSublayer(pointerLayer)
+    /// 重ねる文字の種類
+    enum InlineStyle {
+        /// かな漢字変換の読み。端末の前景色の文字・端末の背景色・アクセント色の下線（iOS の変換中の文字と同じ）
+        case composing
+        /// 先行表示（返事を待たずに出した文字）。前景色を薄く、点線の下線
+        case predicted
     }
 
-    private func showPointer(at p: CGPoint) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        pointerLayer.position = p
-        pointerLayer.isHidden = false
-        CATransaction.commit()
+    /// 端末の上に重ねる 1 つのラベル（初めて使うときに足す）。タッチは受けない
+    private lazy var inlineLabel: UILabel = {
+        let l = UILabel()
+        l.isUserInteractionEnabled = false
+        l.numberOfLines = 1
+        l.lineBreakMode = .byClipping
+        l.isHidden = true
+        self.addSubview(l)
+        return l
+    }()
+    private var inlineText = ""
+    private var inlineStyle = InlineStyle.composing
+    /// nil なら端末のカーソルのセル。先行表示は先頭の文字のセルを渡す
+    private var inlineAnchor: GridPoint?
+    /// ラベルを出しているか（隠すときに、まだ作っていないラベルを作らないため）
+    private var inlineVisible = false
+    private var inlineFont = UIFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+    private var inlineAdvances: [Character: CGFloat] = [:]
+    private var inlineColors = (text: UIColor.white, background: UIColor.black, accent: UIColor.systemBlue)
+
+    /// 重ねる文字の色（テーマから）
+    func setInlineColors(text: UIColor, background: UIColor, accent: UIColor) {
+        inlineColors = (text, background, accent)
+        restyleInline()
     }
 
-    /// ポインタを動かす（シェルの外には出さない）。初めは画面の中央から
-    func movePointer(dx: CGFloat, dy: CGFloat) {
-        let from = pointerLocation ?? CGPoint(x: bounds.midX, y: bounds.midY)
-        let p = CGPoint(x: min(max(0, from.x + dx), max(0, bounds.width - 1)),
-                        y: min(max(0, from.y + dy), max(0, bounds.height - 1)))
-        pointerLocation = p
-        showPointer(at: p)
-    }
-
-    /// 文字を打ったら隠す（Mac と同じ。位置は覚えておく）
-    func hidePointer() {
-        guard !pointerLayer.isHidden else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        pointerLayer.isHidden = true
-        CATransaction.commit()
-    }
-
-    /// ポインタの位置でクリックする。左はタップ、右は 2 本指のタップと同じ扱い（マウス報告・カーソル移動・編集メニュー）
-    func pointerClick(right: Bool) {
-        let p = pointerLocation ?? CGPoint(x: bounds.midX, y: bounds.midY)
-        pointerLocation = p
-        showPointer(at: p)
-        if right {
-            delegate?.terminalView(self, twoFingerTappedAt: cell(at: p), location: p)
+    /// 端末と同じフォントと大きさ。日本語は iOS の代わりの字体に任せる
+    private func setInlineFont(family: String, pointSize: CGFloat) {
+        let mono = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+        if family == "system-mono" {
+            inlineFont = mono
         } else {
-            delegate?.terminalView(self, tappedAt: cell(at: p), location: p)
+            let f = UIFont(descriptor: UIFontDescriptor(fontAttributes: [.family: family]), size: pointSize)
+            inlineFont = f.familyName == family ? f : mono
         }
+        inlineAdvances.removeAll()
+        restyleInline()
+    }
+
+    /// 変換中の読み・先行表示の文字をカーソルの位置に重ねる。空文字で隠す。
+    /// at を渡せばそのセルから（先行表示）、無ければ端末のカーソルのセルから。変化が無ければ何もしない
+    func setInlineText(_ text: String, style: InlineStyle, at cell: (col: Int, row: Int)? = nil) {
+        let anchor = cell.map { GridPoint(row: $0.row, col: $0.col) }
+        guard text != inlineText || style != inlineStyle || anchor != inlineAnchor else { return }
+        inlineText = text
+        inlineStyle = style
+        inlineAnchor = anchor
+        restyleInline()
+    }
+
+    /// 文字・種類・フォント・色のどれかが変わった。ラベルの中身を作り直して置き直す
+    private func restyleInline() {
+        guard !inlineText.isEmpty, let attributed = makeInlineText() else {
+            hideInline()
+            return
+        }
+        // 変更はアニメーションさせない
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        inlineLabel.attributedText = attributed
+        inlineLabel.backgroundColor = inlineColors.background
+        CATransaction.commit()
+        layoutInline()
+    }
+
+    private func hideInline() {
+        guard inlineVisible else { return }
+        inlineVisible = false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        inlineLabel.isHidden = true
+        CATransaction.commit()
+    }
+
+    /// 重ねる文字を、端末のセルの幅にそろえた属性付き文字列にする（全角は 2 セル、半角は 1 セル。字送りは kern で合わせる）
+    private func makeInlineText() -> NSAttributedString? {
+        guard let m = metrics else { return nil }
+        let composing = inlineStyle == .composing
+        let foreground = composing ? inlineColors.text : inlineColors.text.withAlphaComponent(0.55)
+        let lineColor = composing ? inlineColors.accent : foreground
+        let underline = composing ? NSUnderlineStyle.single.rawValue
+                                  : NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue
+        let out = NSMutableAttributedString()
+        for ch in inlineText {
+            let advance = inlineAdvance(of: ch)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: inlineFont,
+                .foregroundColor: foreground,
+                .underlineStyle: underline,
+                .underlineColor: lineColor,
+                .kern: CGFloat(Self.cellCount(of: ch)) * m.widthPt - advance,
+            ]
+            out.append(NSAttributedString(string: String(ch), attributes: attrs))
+        }
+        return out
+    }
+
+    private func inlineAdvance(of ch: Character) -> CGFloat {
+        if let a = inlineAdvances[ch] { return a }
+        let a = (String(ch) as NSString).size(withAttributes: [.font: inlineFont]).width
+        inlineAdvances[ch] = a
+        return a
+    }
+
+    /// 端末のセルを何個使うか（全角は 2、それ以外は 1）
+    private static func cellCount(of ch: Character) -> Int {
+        guard let v = ch.unicodeScalars.first?.value else { return 1 }
+        switch v {
+        case 0x1100...0x115F, 0x2E80...0x303E, 0x3041...0x33FF, 0x3400...0x4DBF, 0x4E00...0x9FFF,
+             0xA000...0xA4CF, 0xAC00...0xD7A3, 0xF900...0xFAFF, 0xFE30...0xFE6F, 0xFF00...0xFF60,
+             0xFFE0...0xFFE6, 0x1F300...0x1F64F, 0x1F900...0x1F9FF, 0x20000...0x3FFFD:
+            return 2
+        default:
+            return 1
+        }
+    }
+
+    /// カーソル（または渡されたセル）の位置に置く。右端からはみ出すなら左へずらす。
+    /// スクロールバックを見ている間（カーソルのセルが nil）は隠す
+    private func layoutInline() {
+        guard !inlineText.isEmpty, let m = metrics, let cursor = delegate?.terminalViewCursorCell(self) else {
+            hideInline()
+            return
+        }
+        let cell = inlineAnchor.map { (col: $0.col, row: $0.row) } ?? cursor
+        let cells = inlineText.reduce(0) { $0 + Self.cellCount(of: $1) }
+        let width = CGFloat(cells) * m.widthPt
+        var x = CGFloat(cell.col) * m.widthPt
+        if x + width > bounds.width { x = max(0, bounds.width - width) }
+        let frame = CGRect(x: x, y: CGFloat(cell.row) * m.heightPt, width: width, height: m.heightPt)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if inlineLabel.frame != frame { inlineLabel.frame = frame }
+        inlineLabel.isHidden = false
+        CATransaction.commit()
+        inlineVisible = true
     }
 
     // MARK: 編集メニュー（iOS 標準）

@@ -7,7 +7,7 @@ import UIKit
 /// 加工は裏のタスク（メインスレッドを空ける）。送るのは同じ SSH の接続。切れたら繋ぎ直しを待って続きから
 @MainActor
 final class MediaSender {
-    /// 環境バーに出す進み具合（nil で消す）
+    /// 上の 1 行目に出す進み具合（nil で消す）
     var onStatus: ((String?) -> Void)?
     var onError: ((String) -> Void)?
     /// 入力行へ入れる（Enter は押さない）。送った元のタブに入れる

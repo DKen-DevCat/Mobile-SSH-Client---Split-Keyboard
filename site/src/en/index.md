@@ -38,7 +38,7 @@ Mainly five steps need a human: signing in to Xcode with an Apple ID, connecting
 
 - **Split keyboard**: a US layout (Mac-style, split) and Japanese kana flick input (with kana-kanji conversion) on the left and right, with the shell in the middle
 - **iPad hardware keyboards**: connect one and the on-screen keyboard disappears; the shell fills the screen
-- **Survives disconnects**: reconnects automatically when the app returns to the foreground, the network changes, or the connection drops, and re-attaches to your tmux session
+- **Survives disconnects**: reconnects automatically when the app returns to the foreground, the network changes, or the connection drops, and re-attaches to your tmux session. Stays connected for about 30 seconds in the background, then reconnects as soon as you return. Each tab gets its own tmux session (`main`, `main-2`, ...), and closing a tab leaves it running
 - **Touch**: drag vertically to scroll back, long-press to select, pinch to zoom. When vim, tmux or htop ask for the mouse, touches are sent as mouse events
 - **Send media**: send photos, videos and audio to an inbox on your Mac and put the paths on the command line. Videos become one image (a contact sheet) plus a transcript to save tokens. See [media (Japanese)](/media)
 - **Agent-driven setup**: a `splitterm` command and MCP server on the Mac let an agent check, edit and push the config, register the public key and re-install the app. See [MCP (Japanese)](/mcp)

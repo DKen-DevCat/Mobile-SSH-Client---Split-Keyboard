@@ -141,6 +141,37 @@ final class KeyboardTests: XCTestCase {
         XCTAssertEqual(FlickDirection.resolve(dx: 0, dy: 20, threshold: 12), .down)
     }
 
+    /// 方向のしきい値は押したキーの大きさから: 短い辺 × 0.3 を 8〜16pt に
+    func testFlickThresholdFollowsTheKeySize() {
+        // 13 mini のフリック（幅 36、高さ 49）→ 短い辺 36 × 0.3
+        XCTAssertEqual(FlickDirection.threshold(keySize: CGSize(width: 36.4, height: 49.2)), 36.4 * 0.3, accuracy: 0.001)
+        // 短い辺で決まる（縦横を入れ替えても同じ）
+        XCTAssertEqual(FlickDirection.threshold(keySize: CGSize(width: 40, height: 60)),
+                       FlickDirection.threshold(keySize: CGSize(width: 60, height: 40)))
+        // 小さいキーでも 8pt、大きいキーでも 16pt まで
+        XCTAssertEqual(FlickDirection.threshold(keySize: CGSize(width: 12, height: 12)), 8)
+        XCTAssertEqual(FlickDirection.threshold(keySize: CGSize(width: 200, height: 200)), 16)
+        // キーが大きいほど大きく（単調に増える）、範囲の外には出ない
+        let sizes = stride(from: 10.0, through: 90, by: 5).map { FlickDirection.threshold(keySize: CGSize(width: $0, height: $0 * 1.3)) }
+        XCTAssertEqual(sizes, sizes.sorted())
+        XCTAssertTrue(sizes.allSatisfy { FlickDirection.thresholdRange.contains($0) })
+        // 決め打ち（pitch × 0.45 = 13 mini で 13.5pt）より軽く決まる
+        XCTAssertLessThan(FlickDirection.threshold(keySize: CGSize(width: 36, height: 49)), 13.5)
+    }
+
+    /// ガイドは文字のある方向だけ。無い方向は中央の文字になる
+    func testFlickSetAssignedAndFallback() {
+        let abc = FlickSet("a", "b", "c", nil, nil)
+        XCTAssertEqual(abc.assigned(.center), "a")
+        XCTAssertEqual(abc.assigned(.left), "b")
+        XCTAssertEqual(abc.assigned(.up), "c")
+        XCTAssertNil(abc.assigned(.right))
+        XCTAssertNil(abc.assigned(.down))
+        XCTAssertEqual(abc.character(.right), "a")
+        XCTAssertEqual(abc.character(.down), "a")
+        XCTAssertEqual(FlickDirection.allCases.count, 5)
+    }
+
     func testJISFacesFillTheirRect() {
         let rect = CGRect(x: 44, y: 40, width: 182, height: 246)
         for face in [KeyboardLayouts.jisLeft, KeyboardLayouts.jisRight, KeyboardLayouts.kanaLeft, KeyboardLayouts.kanaRight,
@@ -233,18 +264,6 @@ final class KeyboardTests: XCTestCase {
         // 送信は「send」、改行は ↩︎
         XCTAssertEqual(KeyboardLayouts.kanaLeft.rows.joined().first { $0.id == "send" }?.label, "send")
         XCTAssertEqual(KeyboardLayouts.kanaLeft.rows.joined().first { $0.id == "newline" }?.label, "↩︎")
-    }
-
-    /// ポインタ: 大きくずらしたときだけ進み続け、ずれが大きいほど速く、上限で止まる
-    func testPointerSpeedGrowsWithOffset() {
-        XCTAssertEqual(PointerCurve.speed(for: 0), 0)
-        XCTAssertEqual(PointerCurve.speed(for: PointerCurve.rateStart), 0)
-        let speeds = stride(from: 16.0, through: 80, by: 4).map { PointerCurve.speed(for: CGFloat($0)) }
-        XCTAssertEqual(speeds, speeds.sorted())
-        XCTAssertGreaterThan(PointerCurve.speed(for: 40), PointerCurve.speed(for: 24) * 2)
-        XCTAssertEqual(PointerCurve.speed(for: 500), PointerCurve.maxSpeed)
-        // 細かい動きは、そのまま（倍率を掛けて）付いてくる
-        XCTAssertGreaterThan(PointerCurve.directGain, 1)
     }
 
     func testKanaTallKeysSpanTwoRows() {
