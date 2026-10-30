@@ -138,9 +138,9 @@ final class GlyphAtlas {
 
     private func rasterize(_ key: Key, width w: Int, height h: Int) -> [UInt8]? {
         var buf = [UInt8](repeating: 0, count: w * h)
-        let font = font(bold: key.bold, italic: key.italic)
+        let ctFont = font(bold: key.bold, italic: key.italic)
         let attr = NSAttributedString(string: key.text, attributes: [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
             NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
         ])
         let line = CTLineCreateWithAttributedString(attr)

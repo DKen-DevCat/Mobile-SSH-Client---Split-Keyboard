@@ -25,7 +25,7 @@ SCRIPT = ROOT / "scripts" / "ios_reinstall.sh"
 PLIST = ROOT / "launchd" / "com.dken.splitterm-ios.plist"
 UDID = "00008110-0000000000000001"
 TEAM = "TEAM000001"
-BUNDLE_ID = "io.github.dken-devcat.splitterm"
+BUNDLE_ID = "io.github.dken-devcat.mobile-ssh-client-split-keyboard"
 APP_ID = f"{TEAM}.{BUNDLE_ID}"
 H = 3600
 NOW = 1_793_340_000  # 2026-10-30 頃（偽の時計）
@@ -260,13 +260,13 @@ def test_waits_while_the_app_is_in_use(rig: Rig):
     rig.app_running(True)
     r = rig.run("--if-needed")
     assert r.returncode == 6
-    assert "SplitTerm が使われているので" in r.stdout
+    assert "Mobile-SSH-Client---Split-Keyboard が使われているので" in r.stdout
     assert rig.calls("xcodebuild") == []
     assert rig.notes() == []
 
 
 def test_installs_while_unlocked_if_the_app_is_not_running(rig: Rig):
-    # パスコードの無い iPhone はロック中と読めない。SplitTerm が動いていなければ閉じる心配は無い
+    # パスコードの無い iPhone はロック中と読めない。Mobile-SSH-Client---Split-Keyboard が動いていなければ閉じる心配は無い
     rig.installed(NOW + 47 * H)
     rig.locked(False)
     r = rig.run("--if-needed")
@@ -297,7 +297,7 @@ def test_does_not_wait_for_the_lock_in_the_last_12_hours(rig: Rig):
 
 
 def test_without_a_record_it_is_due_but_not_urgent(rig: Rig):
-    # 記録が無い（初めて・Xcode から入れた・記録が壊れた）なら期限は分からない。入れ直すが、SplitTerm が使われていれば待つ
+    # 記録が無い（初めて・Xcode から入れた・記録が壊れた）なら期限は分からない。入れ直すが、Mobile-SSH-Client---Split-Keyboard が使われていれば待つ
     rig.locked(False)
     rig.app_running(True)
     r = rig.run("--if-needed")
@@ -605,7 +605,7 @@ def test_app_is_landscape_only_on_iphone_and_ipad():
     assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = {land}$", base, re.M)
     assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = {land}$", base, re.M)
     assert re.search(r"^TARGETED_DEVICE_FAMILY = 1,2$", base, re.M)
-    assert re.search(r"^IPHONEOS_DEPLOYMENT_TARGET = 16\.0$", base, re.M)
+    assert re.search(r"^IPHONEOS_DEPLOYMENT_TARGET = 17\.0$", base, re.M)
 
 
 def test_config_file_is_reachable_from_files_app():
@@ -619,5 +619,5 @@ def test_config_file_is_reachable_from_files_app():
 
 def test_package_minimum_matches_the_app():
     pkg = (ROOT / "ios/TermKit/Package.swift").read_text()
-    assert ".iOS(.v16)" in pkg
+    assert ".iOS(.v17)" in pkg
 

@@ -65,7 +65,23 @@ final class KeyEncoderTests: XCTestCase {
         XCTAssertEqual(s(KeyEncoder.paste("a\nb\r\nc", ctx)), "a\rb\rc")
         var bp = ctx
         bp.bracketedPaste = true
-        XCTAssertEqual(s(KeyEncoder.paste("x\u{1b}[201~y", bp)), "\u{1b}[200~xy\u{1b}[201~")
+        // 貼った文字に終わりの印を仕込んでも、印は送られない（ESC を取り除く）
+        XCTAssertEqual(s(KeyEncoder.paste("x\u{1b}[201~y", bp)), "\u{1b}[200~x[201~y\u{1b}[201~")
+    }
+
+    /// 制御文字（ESC・ctrl-C・C1）は貼り付けから取り除く。タブと改行は残す
+    func testPasteDropsControlCharacters() {
+        XCTAssertEqual(KeyEncoder.sanitizePaste("a\u{1b}]52;c;x\u{07}b\u{03}c\u{9b}d\te\nf"), "a]52;c;xbcd\te\rf")
+        XCTAssertEqual(KeyEncoder.sanitizePaste("日本語"), "日本語")
+    }
+
+    func testMultiLinePasteNeedsConfirmationOnlyWithoutBracketedPaste() {
+        XCTAssertTrue(KeyEncoder.pasteRunsCommands("ls\nrm -rf x", ctx))
+        XCTAssertFalse(KeyEncoder.pasteRunsCommands("ls\n", ctx))
+        XCTAssertFalse(KeyEncoder.pasteRunsCommands("ls", ctx))
+        var bp = ctx
+        bp.bracketedPaste = true
+        XCTAssertFalse(KeyEncoder.pasteRunsCommands("ls\nrm -rf x", bp))
     }
 
     func testHorizontalMoveCountsWideCharsOnce() {
@@ -209,9 +225,21 @@ final class KanaComposerTests: XCTestCase {
     }
 
     func testCandidates() {
-        XCTAssertEqual(PassthroughConverter().candidates(for: "かな"), ["かな", "カナ"])
-        XCTAssertEqual(PassthroughConverter().candidates(for: "ー"), ["ー"])
+        XCTAssertEqual(PassthroughConverter().candidates(for: "かな").map(\.text), ["かな", "カナ"])
+        XCTAssertEqual(PassthroughConverter().candidates(for: "かな").map(\.consumed), [2, 2])
+        XCTAssertEqual(PassthroughConverter().candidates(for: "ー").map(\.text), ["ー"])
+        XCTAssertEqual(PassthroughConverter().candidates(for: ""), [])
         XCTAssertEqual(KanaComposer.katakana("ゔぁー"), "ヴァー")
+    }
+
+    /// 文節の候補は読みの先頭だけを確定し、残りは変換中のまま
+    func testCommitPartialCandidate() {
+        var k = KanaComposer()
+        k.append("きょうは")
+        XCTAssertEqual(k.commit(KanaCandidate(text: "今日", consumed: 3)), "今日")
+        XCTAssertEqual(k.reading, "は")
+        XCTAssertEqual(k.commit(KanaCandidate(text: "は", consumed: 99)), "は")
+        XCTAssertFalse(k.isComposing)
     }
 }
 

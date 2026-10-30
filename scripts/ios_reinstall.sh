@@ -2,14 +2,14 @@
 # iPhone・iPad アプリ（ios/）を無料の署名で作り直して、iPhone へ入れ直す（docs/design.md「配布」）。
 # 使い方: scripts/ios_reinstall.sh [--if-needed] [--force]
 #   --if-needed  launchd から 1 時間ごとに呼ぶ形。入れたアプリの期限の残りが SPLITTERM_IOS_RENEW_H 時間を切ったら、
-#                iPhone がロックされているか SplitTerm が動いていない時に入れ直す（残りが SPLITTERM_IOS_URGENT_H 時間を切ったら待たない）
+#                iPhone がロックされているか Mobile-SSH-Client---Split-Keyboard が動いていない時に入れ直す（残りが SPLITTERM_IOS_URGENT_H 時間を切ったら待たない）
 #   引数なし     今すぐ作り直して入れる（コードを変えたとき）
 #   --force      メモリの圧迫を見ない
 # 無料のプロファイルは 7 日で切れる。Xcode は手元に残った有効なプロファイルを使い続けるので、このアプリの
 # プロファイルで残りが SPLITTERM_IOS_RENEW_H 時間を切ったものを tmp/ios/old-profiles へどけてからビルドする（lfm3-vl-server の N0 で実測）
 # 環境変数: SPLITTERM_IOS_DEVICE / SPLITTERM_IOS_TEAM / SPLITTERM_IOS_RENEW_H / SPLITTERM_IOS_URGENT_H / SPLITTERM_IOS_DIR / SPLITTERM_IOS_LOG_DIR（README 参照）
 # 終了コード: 0 = 入れ直した・まだ要らない・ほかの実行中 / 1 = 失敗 / 2 = 引数誤り
-#             3 = メモリが足りず見送った / 5 = iPhone に届かず見送った / 6 = SplitTerm が使われているので見送った
+#             3 = メモリが足りず見送った / 5 = iPhone に届かず見送った / 6 = Mobile-SSH-Client---Split-Keyboard が使われているので見送った
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,7 +50,7 @@ log() { echo "[ios $(date '+%F %T')] $*"; }
 notify() {
   osascript - "$1" >/dev/null 2>&1 <<'EOF' || true
 on run argv
-  display notification (item 1 of argv) with title "SplitTerm"
+  display notification (item 1 of argv) with title "Mobile-SSH-Client---Split-Keyboard"
 end run
 EOF
 }
@@ -166,19 +166,19 @@ case "$state" in
   ""|unavailable) skip 5 "iPhone に届きません（同じ Wi-Fi にいないか、電源が切れています）" ;;
 esac
 
-# --- 使っている最中に閉じないよう、ロック中か SplitTerm が動いていない時に入れる（期限が近ければ待たない） ---
-# パスコードの無い iPhone はロック中と読めないので、SplitTerm が動いているかでも見る
+# --- 使っている最中に閉じないよう、ロック中か Mobile-SSH-Client---Split-Keyboard が動いていない時に入れる（期限が近ければ待たない） ---
+# パスコードの無い iPhone はロック中と読めないので、Mobile-SSH-Client---Split-Keyboard が動いているかでも見る
 if [ "$IF_NEEDED" = 1 ] && [ "$URGENT" != 1 ]; then
   xcrun devicectl device info lockState --device "$UDID" --timeout 60 --json-output "$DIR/lock_state.json" \
     >/dev/null 2>&1 || skip 5 "iPhone に届きません（ロックの状態を読めませんでした）"
   if [ "$(jq -r '.result.passcodeRequired' "$DIR/lock_state.json")" != true ]; then
     xcrun devicectl device info processes --device "$UDID" --timeout 60 --json-output "$DIR/processes.json" \
-      >/dev/null 2>&1 || skip 6 "SplitTerm が動いているか分からないので、ロックされるまで待ちます"
+      >/dev/null 2>&1 || skip 6 "Mobile-SSH-Client---Split-Keyboard が動いているか分からないので、ロックされるまで待ちます"
     # 一覧の形が読めなければ、動いているとみなして待つ
     running="$(jq -r 'if (.result.runningProcesses | type) == "array"
       then [.result.runningProcesses[] | .executable // "" | select(endswith("/SplitTerm.app/SplitTerm"))] | length
       else "unknown" end' "$DIR/processes.json" 2>/dev/null || true)"
-    [ "$running" = 0 ] || skip 6 "SplitTerm が使われているので、ロックされるか閉じられるまで待ちます"
+    [ "$running" = 0 ] || skip 6 "Mobile-SSH-Client---Split-Keyboard が使われているので、ロックされるか閉じられるまで待ちます"
   fi
 fi
 

@@ -25,8 +25,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         w.makeKeyAndVisible()
         window = w
         // 横持ちだけ（docs/design.md「画面構成」）
-        if #available(iOS 16.0, *) {
-            ws.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
-        }
+        ws.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
     }
 }

@@ -56,6 +56,14 @@ final class ConfigParserTests: XCTestCase {
         XCTAssertEqual(d.map(\.line), [3])
     }
 
+    /// inf や巨大な値で、後の整数への変換が落ちないこと
+    func testDurationsMustBeFiniteAndBounded() {
+        for v in ["inf", "nan", "1e300", "-1", "90000s"] {
+            XCTAssertEqual(ConfigParser.parse("keepalive = \(v)").diagnostics.count, 1, v)
+        }
+        XCTAssertEqual(ConfigParser.parse("keepalive = 86400").config.keepalive, 86400)
+    }
+
     func testZoomSteps() {
         XCTAssertEqual(ConfigParser.parse("zoom-steps = 100, 85%, 70").config.zoomSteps, [100, 85, 70])
         XCTAssertEqual(ConfigParser.parse("zoom-steps = 10").diagnostics.count, 1)

@@ -6,7 +6,8 @@ import TermCore
 
 /// キーチェーンの項目（この端末だけ。iCloud に同期しない。docs/design.md「セキュリティ要件」）
 enum Keychain {
-    static func read(service: String, account: String) -> Data? {
+    /// 読む。項目が無ければ nil。それ以外の失敗（ロック中で読めない など）は投げる（無いと取り違えて作り直さない）
+    static func read(service: String, account: String) throws -> Data? {
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -15,8 +16,12 @@ enum Keychain {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
-        return out as? Data
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        switch status {
+        case errSecSuccess: return out as? Data
+        case errSecItemNotFound: return nil
+        default: throw KeychainError(status: status)
+        }
     }
 
     static func write(_ data: Data, service: String, account: String) throws {
@@ -48,7 +53,7 @@ enum Keychain {
 public struct KeychainError: LocalizedError {
     public var status: OSStatus
     public var errorDescription: String? {
-        "キーチェーンに書けませんでした（\(status)）"
+        "キーチェーンを読み書きできませんでした（\(status)）"
     }
 }
 
@@ -70,6 +75,11 @@ public enum SSHAuthKey {
         String(openSSHPublicKey: nio.publicKey) + " splitterm"
     }
 
+    /// 公開鍵の SHA256 の指紋（`ssh-keygen -lf` と同じ形）
+    public var fingerprint: String {
+        HostKeyFingerprint.sha256(openSSHPublicKey: String(openSSHPublicKey: nio.publicKey)) ?? "?"
+    }
+
     public var isHardwareBacked: Bool {
         if case .secureEnclave = self { return true }
         return false
@@ -80,9 +90,10 @@ public enum DeviceKeyStore {
     static let service = "io.github.dken-devcat.splitterm.ssh-key"
     static let account = "default"
 
-    /// 鍵を読む。無ければ作って保存する
+    /// 鍵を読む。無いときだけ作って保存する。読めない（ロック中など）・壊れているときは投げる
+    /// （作り直すと authorized_keys に登録した鍵が使えなくなるので、黙って置き換えない）
     public static func loadOrCreate() throws -> SSHAuthKey {
-        if let data = Keychain.read(service: service, account: account) {
+        if let data = try Keychain.read(service: service, account: account) {
             if SecureEnclave.isAvailable,
                let k = try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data) {
                 return .secureEnclave(k)
@@ -90,6 +101,7 @@ public enum DeviceKeyStore {
             if let k = try? P256.Signing.PrivateKey(rawRepresentation: data) {
                 return .software(k)
             }
+            throw KeychainError(status: errSecDecode)
         }
         if SecureEnclave.isAvailable {
             var error: Unmanaged<CFError>?
@@ -111,8 +123,10 @@ public enum DeviceKeyStore {
 public enum HostKeyStore {
     static let service = "io.github.dken-devcat.splitterm.host-keys"
 
-    public static func stored(for endpoint: String) -> String? {
-        Keychain.read(service: service, account: endpoint).flatMap { String(data: $0, encoding: .utf8) }
+    /// 保存したホスト鍵。無ければ nil。読めなければ（キーチェーンの失敗）投げる
+    /// （初めての接続先とも、鍵が変わったとも取り違えない。呼ぶ側は接続を止める）
+    public static func load(for endpoint: String) throws -> String? {
+        try Keychain.read(service: service, account: endpoint).flatMap { String(data: $0, encoding: .utf8) }
     }
 
     public static func save(_ openSSHKey: String, for endpoint: String) throws {
@@ -123,7 +137,5 @@ public enum HostKeyStore {
         Keychain.delete(service: service, account: endpoint)
     }
 
-    public static func verdict(for endpoint: String, presented: String) -> HostKeyVerdict {
-        HostKeyVerdict.judge(stored: stored(for: endpoint), presented: presented)
-    }
+
 }

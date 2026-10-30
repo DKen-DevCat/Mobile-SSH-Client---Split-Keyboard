@@ -1,4 +1,4 @@
-# SplitTerm
+# Mobile-SSH-Client---Split-Keyboard
 
 iPhone と iPad を横持ちにして、左右に分けたキーボードでシェルを挟む SSH ターミナル。自分の Mac の tmux（と Claude Code）を操作するためのフロントエンドで、通信の速さと操作感を最優先にしている。設定は Ghostty のように config ファイル 1 枚。配布は無料の Apple ID の署名で、Mac が期限の前に自動で入れ直す（lfm3-vl-server と同じ作り）。
 
@@ -9,7 +9,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | 場所 | 中身 |
 |---|---|
 | `ios/SplitTerm/` | アプリ（UIKit）。Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） |
-| `ios/TermKit/` | Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など、Mac で `swift test`）と `TermSession`（SSH・エミュレータ・キーチェーン） |
+| `ios/TermKit/` | Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など、Mac で `swift test`）、`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
 | `ios/SplitTerm/Resources/config.example` | config の見本（全項目の説明付き。値はすべて既定値） |
 | `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`） |
 | `launchd/com.dken.splitterm-ios.plist` | 1 時間ごとに期限を見て入れ直す |
@@ -17,7 +17,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 
 ## 準備（1 回だけ）
 
-前提: Mac に Xcode（Apple ID でサインイン済み）と jq。接続先の Mac に tmux（`brew install tmux`）。Tailscale などで iPhone から Mac の SSH（リモートログイン）に届くこと。
+前提: iPhone・iPad は iOS / iPadOS 17 以上。Mac に Xcode（Apple ID でサインイン済み）と jq。接続先の Mac に tmux（`brew install tmux`）。Tailscale などで iPhone から Mac の SSH（リモートログイン）に届くこと。
 
 1. iPhone・iPad を USB でつないで「信頼」し、「設定 > プライバシーとセキュリティ > デベロッパモード」をオンにする
 2. 入れる（初回は証明書・端末の登録・App ID・プロファイルが自動で作られる）
@@ -26,7 +26,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
    scripts/ios_reinstall.sh
    ```
 
-3. 端末の「設定 > 一般 > VPN とデバイス管理」で「Apple Development: …」を信頼してから、SplitTerm を開く
+3. 端末の「設定 > 一般 > VPN とデバイス管理」で「Apple Development: …」を信頼してから、Mobile-SSH-Client---Split-Keyboard を開く
 4. config を作って接続先（`host = …`）を書き、端末へ送る
 
    ```bash
@@ -37,7 +37,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
    scripts/ios_push_config.sh
    ```
 
-5. SplitTerm の公開鍵（Secure Enclave の鍵。秘密鍵は端末から出ない）を、この Mac の `~/.ssh/authorized_keys` に足す
+5. Mobile-SSH-Client---Split-Keyboard の公開鍵（Secure Enclave の鍵。秘密鍵は端末から出ない）を、この Mac の `~/.ssh/authorized_keys` に足す。指紋が出るので、アプリの ＋ →「公開鍵をコピー」に出た指紋と同じなら `y`（足す行には `restrict,pty` が付く）
 
    ```bash
    scripts/ios_pubkey.sh
@@ -65,7 +65,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 |---|---|
 | コードを変えたので入れ直す | `scripts/ios_reinstall.sh` |
 | 設定を変える（Mac で） | `~/.config/splitterm/config` を直して `scripts/ios_push_config.sh`。開いているアプリにもすぐ効く |
-| 設定を変える（端末で） | ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > SplitTerm > config |
+| 設定を変える（端末で） | ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
 | 画面に頼らない部分のテスト（Mac） | `(cd ios/TermKit && swift test)` |
 | スクリプトのテスト | `python3 -m pytest tests` |
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
@@ -82,11 +82,11 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | `SPLITTERM_IOS_URGENT_H` | `12` | 残りがこれを切ったら、端末のロックを待たない |
 | `SPLITTERM_IOS_DIR` / `SPLITTERM_IOS_LOG_DIR` | `tmp/ios` / `logs` | 記録とビルドの置き場所 / ログの置き場所 |
 
-`ios_reinstall.sh` の終了コード: 0 = 入れ直した・まだ要らない・ほかの実行中 / 1 = 失敗 / 2 = 引数誤り / 3 = メモリに余裕が無く見送った / 5 = 端末に届かず見送った / 6 = SplitTerm が使われているので見送った
+`ios_reinstall.sh` の終了コード: 0 = 入れ直した・まだ要らない・ほかの実行中 / 1 = 失敗 / 2 = 引数誤り / 3 = メモリに余裕が無く見送った / 5 = 端末に届かず見送った / 6 = Mobile-SSH-Client---Split-Keyboard が使われているので見送った
 
 ## 使い方の要点
 
-- **キーボード**: US（Mac 配列の分割。caps lock の位置が control、esc は左下）とかなフリック（12 キー × 左右）。環境バーの「US / かな」で切り替え
+- **キーボード**: US（Mac 配列の分割。caps lock の位置が control、esc は左下）とかなフリック（12 キー × 左右、AzooKey でかな漢字変換）。環境バーの「US / かな」で切り替え
 - **修飾キー**: 押しながらでも、タップしてワンショットでも効く。command はアプリ内（⌘C コピー、⌘V ペースト、⌘− / ⌘= 倍率）
 - **シェル**: 縦ドラッグでスクロールバック、長押し→ドラッグで選択、ダブルタップで単語、2 本指タップでメニュー、ピンチで倍率（85% / 100%）。vim・tmux・htop がマウスを求めたらマウスとして送る
 - **切れたら**: 前面に戻った・回線が変わった・通信が切れたときに自動で繋ぎ直し、tmux のセッションに戻る。シェルを exit したタブは、タップで繋ぎ直す

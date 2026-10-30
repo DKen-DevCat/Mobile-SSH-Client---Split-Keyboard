@@ -108,7 +108,7 @@ public struct KeyboardFace: Sendable {
 
     /// 各キーの枠（rect の中で下寄せ、段の高さは rowHeight）。2 段にまたがるキーは下の段の同じ位置をふさぐ
     public func frames(in rect: CGRect, rowHeight: CGFloat) -> [(key: KeySpec, frame: CGRect)] {
-        var out: [(KeySpec, CGRect)] = []
+        var out: [(key: KeySpec, frame: CGRect)] = []
         // (段, 開始単位, 幅単位) のふさがった場所
         var blocked: [(row: Int, x: CGFloat, w: CGFloat)] = []
         let top = rect.maxY - rowHeight * CGFloat(rows.count)
@@ -123,7 +123,7 @@ public struct KeyboardFace: Sendable {
                 }
                 let frame = CGRect(x: rect.minX + x * unit, y: top + CGFloat(r) * rowHeight,
                                    width: key.width * unit, height: rowHeight * CGFloat(key.rowSpan))
-                out.append((key, frame))
+                out.append((key: key, frame: frame))
                 for extra in 1..<max(1, key.rowSpan) {
                     blocked.append((r + extra, x, key.width))
                 }

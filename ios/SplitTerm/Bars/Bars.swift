@@ -118,7 +118,7 @@ final class EnvironmentBar: UIView {
 
 /// 変換候補バー（かな入力のときだけ）。読みと候補を並べ、タップで確定する
 final class CandidateBar: UIView {
-    var onPick: ((String) -> Void)?
+    var onPick: ((KanaCandidate) -> Void)?
     private let stack = UIStackView()
     private let scroll = UIScrollView()
     private var colors: KeyboardColors?
@@ -139,12 +139,12 @@ final class CandidateBar: UIView {
         backgroundColor = colors.functionKey
     }
 
-    func update(candidates: [String]) {
+    func update(candidates: [KanaCandidate]) {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (i, c) in candidates.enumerated() {
             let b = UIButton(type: .system)
             var cfg = UIButton.Configuration.plain()
-            cfg.title = c
+            cfg.title = c.text
             cfg.baseForegroundColor = colors?.text ?? .white
             cfg.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10)
             if i == 0 {

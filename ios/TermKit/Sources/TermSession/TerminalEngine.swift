@@ -148,6 +148,22 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
     public var onTitle: ((String) -> Void)?
     public var onBell: (() -> Void)?
     public var onModesChanged: (() -> Void)?
+    /// 解析待ちが多すぎる（true）／減った（false）。受信を止める・再開するのに使う。解析のキューか受信のスレッドから呼ぶ
+    public var onBacklog: (@Sendable (Bool) -> Void)?
+
+    /// 解析待ちのバイト数と、受信を止めているか（state で守る）
+    private let state = NSLock()
+    private var pendingBytes = 0
+    private var paused = false
+    /// 受信を止めているか（接続を替えたとき、新しい接続も止めておくのに使う）
+    public var isBacklogged: Bool { state.withLock { paused } }
+    static let backlogHigh = 8 * 1024 * 1024
+    static let backlogLow = 1 * 1024 * 1024
+    // 題名・ベル・モードの知らせは、接続先が連打してもメインスレッドへは 1 回にまとめる
+    private var pendingTitle: String?
+    private var mainNoticeScheduled = false
+    private var pendingBell = false
+    private var pendingModes = false
 
     public init(cols: Int, rows: Int, scrollback: Int, termName: String) {
         var options = TerminalOptions.default
@@ -155,6 +171,10 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
         options.rows = max(1, rows)
         options.scrollback = scrollback
         options.termName = termName
+        // 画像は描かない。kitty の画像は受け取らない（接続先が 1 画面あたり最大 10MB を置けてしまうのを防ぐ）。
+        // sixel は対応していると答えない。ただし SwiftTerm に解釈を止める公開の口が無いので、送られれば SwiftTerm の上限の中で解釈される
+        options.kittyGraphics.storageLimitBytesPerScreen = 0
+        options.enableSixelReported = false
         terminal = Terminal(delegate: self, options: options)
     }
 
@@ -162,6 +182,15 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
 
     /// 接続先からのバイト列。どのスレッドからでもよい。順番どおりに解釈する
     public func feed(_ bytes: [UInt8]) {
+        let pause: Bool = state.withLock {
+            pendingBytes += bytes.count
+            if !paused && pendingBytes > Self.backlogHigh {
+                paused = true
+                return true
+            }
+            return false
+        }
+        if pause { onBacklog?(true) }
         queue.async { [self] in
             var i = 0
             while i < bytes.count {
@@ -169,6 +198,15 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
                 terminal.terminalLock.withLock { terminal.feed(buffer: bytes[i..<end]) }
                 i = end
             }
+            let resume: Bool = state.withLock {
+                pendingBytes -= bytes.count
+                if paused && pendingBytes < Self.backlogLow {
+                    paused = false
+                    return true
+                }
+                return false
+            }
+            if resume { onBacklog?(false) }
             onDisplayNeeded?()
         }
     }
@@ -309,19 +347,65 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
         onResponse?(Array(data))
     }
 
+    /// 接続先を「信頼しない」。SwiftTerm の既定（信頼する）のままだと、画面の中身のチェックサムを接続先へ返す
+    /// （DECRQCRA。画面の内容を少しずつ読み出す道になる）。作業ディレクトリの通知（OSC 6・7）も使わない
+    public func isProcessTrusted(source: Terminal) -> Bool { false }
+
+    // クリップボードの読み書き（OSC 52）と窓の操作（題名の送り返しなど）は、SwiftTerm の既定（何もしない）のまま
+
     public func setTerminalTitle(source: Terminal, title: String) {
-        DispatchQueue.main.async { [weak self] in self?.onTitle?(title) }
+        let clean = Self.sanitizeTitle(title)
+        state.withLock { pendingTitle = clean }
+        scheduleMainNotice()
+    }
+
+    /// 溜まった知らせをメインスレッドで 1 回にまとめて渡す
+    private func scheduleMainNotice() {
+        let schedule: Bool = state.withLock {
+            if mainNoticeScheduled { return false }
+            mainNoticeScheduled = true
+            return true
+        }
+        guard schedule else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let (title, bell, modes): (String?, Bool, Bool) = self.state.withLock {
+                defer {
+                    self.pendingTitle = nil
+                    self.pendingBell = false
+                    self.pendingModes = false
+                    self.mainNoticeScheduled = false
+                }
+                return (self.pendingTitle, self.pendingBell, self.pendingModes)
+            }
+            if let title { self.onTitle?(title) }
+            if bell { self.onBell?() }
+            if modes { self.onModesChanged?() }
+        }
+    }
+
+    /// 題名は接続先が自由に決める。制御文字と双方向の書式文字を除き、タブに収まる長さに切る
+    public static func sanitizeTitle(_ title: String) -> String {
+        let scalars = title.unicodeScalars.filter { u in
+            !(u.value < 0x20 || (0x7F...0x9F).contains(u.value) || (0x200E...0x200F).contains(u.value)
+              || (0x202A...0x202E).contains(u.value) || (0x2066...0x2069).contains(u.value))
+        }
+        let s = String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespaces)
+        return s.count > 40 ? String(s.prefix(39)) + "…" : s
     }
 
     public func bell(source: Terminal) {
-        DispatchQueue.main.async { [weak self] in self?.onBell?() }
+        state.withLock { pendingBell = true }
+        scheduleMainNotice()
     }
 
     public func mouseModeChanged(source: Terminal) {
-        DispatchQueue.main.async { [weak self] in self?.onModesChanged?() }
+        state.withLock { pendingModes = true }
+        scheduleMainNotice()
     }
 
     public func bufferActivated(source: Terminal) {
-        DispatchQueue.main.async { [weak self] in self?.onModesChanged?() }
+        state.withLock { pendingModes = true }
+        scheduleMainNotice()
     }
 }
