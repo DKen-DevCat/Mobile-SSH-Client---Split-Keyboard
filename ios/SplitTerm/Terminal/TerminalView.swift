@@ -75,7 +75,6 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         let menu = UIEditMenuInteraction(delegate: self)
         addInteraction(menu)
         editMenu = menu
-        setUpPointer()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -197,7 +196,8 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
 
     // MARK: タッチ
 
-    private func cell(at p: CGPoint) -> GridPoint {
+    /// 点（このビューの左上を原点とする pt）の文字セル。範囲の外は端のセル。ポインタ（RootViewController）のクリックも使う
+    func cell(at p: CGPoint) -> GridPoint {
         guard let m = metrics, let d = delegate?.terminalViewFrame(self) else { return GridPoint(row: 0, col: 0) }
         let c = m.cell(at: p, cols: d.frame.cols, rows: d.frame.rows)
         return GridPoint(row: c.row, col: c.col)
@@ -281,68 +281,6 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
             delegate?.terminalView(self, pinchZoomIn: g.scale > 1)
         default:
             break
-        }
-    }
-
-    // MARK: ポインタ（キーボードのスペースの横の赤い丸で動かす。シェルの中だけで効く。docs/design.md「ポインタ」）
-
-    private let pointerLayer = CAShapeLayer()
-    /// ポインタの先の位置（シェルの左上を原点とする pt）。まだ動かしていなければ nil
-    private(set) var pointerLocation: CGPoint?
-
-    private func setUpPointer() {
-        // Mac の矢印の形（先が原点）
-        let arrow = UIBezierPath()
-        arrow.move(to: .zero)
-        for (x, y) in [(0.0, 17.0), (4.2, 13.2), (7.2, 19.8), (9.6, 18.8), (6.7, 12.3), (12.2, 12.3)] {
-            arrow.addLine(to: CGPoint(x: x, y: y))
-        }
-        arrow.close()
-        pointerLayer.path = arrow.cgPath
-        pointerLayer.fillColor = UIColor.white.cgColor
-        pointerLayer.strokeColor = UIColor.black.cgColor
-        pointerLayer.lineWidth = 1
-        pointerLayer.lineJoin = .round
-        pointerLayer.isHidden = true
-        pointerLayer.zPosition = 10
-        layer.addSublayer(pointerLayer)
-    }
-
-    private func showPointer(at p: CGPoint) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        pointerLayer.position = p
-        pointerLayer.isHidden = false
-        CATransaction.commit()
-    }
-
-    /// ポインタを動かす（シェルの外には出さない）。初めは画面の中央から
-    func movePointer(dx: CGFloat, dy: CGFloat) {
-        let from = pointerLocation ?? CGPoint(x: bounds.midX, y: bounds.midY)
-        let p = CGPoint(x: min(max(0, from.x + dx), max(0, bounds.width - 1)),
-                        y: min(max(0, from.y + dy), max(0, bounds.height - 1)))
-        pointerLocation = p
-        showPointer(at: p)
-    }
-
-    /// 文字を打ったら隠す（Mac と同じ。位置は覚えておく）
-    func hidePointer() {
-        guard !pointerLayer.isHidden else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        pointerLayer.isHidden = true
-        CATransaction.commit()
-    }
-
-    /// ポインタの位置でクリックする。左はタップ、右は 2 本指のタップと同じ扱い（マウス報告・カーソル移動・編集メニュー）
-    func pointerClick(right: Bool) {
-        let p = pointerLocation ?? CGPoint(x: bounds.midX, y: bounds.midY)
-        pointerLocation = p
-        showPointer(at: p)
-        if right {
-            delegate?.terminalView(self, twoFingerTappedAt: cell(at: p), location: p)
-        } else {
-            delegate?.terminalView(self, tappedAt: cell(at: p), location: p)
         }
     }
 

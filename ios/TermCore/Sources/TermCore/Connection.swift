@@ -43,7 +43,7 @@ public struct ReconnectPolicy: Sendable, Equatable {
     }
 }
 
-/// 接続の状態。環境バーのタブに出す
+/// 接続の状態。上の 2 行目のタブに出す
 public enum ConnectionState: Equatable, Sendable {
     case idle
     case connecting(attempt: Int)

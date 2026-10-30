@@ -19,7 +19,13 @@ final class RootViewController: UIViewController {
     private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisRight, model: model, colors: colors)
     /// 📎（写真・動画・音声・ファイルを送る）。シェルの左下に置く
     private let clipButton = UIButton(type: .system)
-    private let envBar = EnvironmentBar()
+    /// キーボード選択（今のキーボードの短い名前を出す丸いボタン）。シェルの右下に置く。分割のときだけ出す
+    private let keyboardButton = UIButton(type: .system)
+    /// 上の 2 行（シェルの上に前面で重なる）: 1 行目は時計と状態・倍率、2 行目はタブと＋
+    private let statusRow = StatusRow()
+    private let tabRow = TabRow()
+    /// ポインタ（矢印）の層。画面いっぱい・最前面でタッチは受けない
+    private let pointerOverlay = PointerOverlayView()
     private let candidateBar = CandidateBar()
     private let notice = UILabel()
     private let emptyLabel = UILabel()
@@ -61,15 +67,19 @@ final class RootViewController: UIViewController {
         view.addSubview(leftKeyboard)
         view.addSubview(rightKeyboard)
         view.addSubview(candidateBar)
-        view.addSubview(envBar)
         notice.font = .systemFont(ofSize: 12, weight: .medium)
         notice.textAlignment = .center
+        notice.adjustsFontSizeToFitWidth = true
+        notice.minimumScaleFactor = 0.7
         notice.isHidden = true
         view.addSubview(notice)
         emptyLabel.numberOfLines = 0
         emptyLabel.textAlignment = .center
         emptyLabel.font = .systemFont(ofSize: 13)
         view.addSubview(emptyLabel)
+        // 上の 2 行はシェルとキーボードより前面（レイアウトのたびに前へ出し直す）
+        view.addSubview(statusRow)
+        view.addSubview(tabRow)
 
         terminalView.delegate = self
         model.output = self
@@ -78,15 +88,15 @@ final class RootViewController: UIViewController {
             self?.leftKeyboard.setNeedsDisplay()
             self?.rightKeyboard.setNeedsDisplay()
         }
-        envBar.onSelectTab = { [weak self] i in self?.selectTab(i) }
-        envBar.onCloseTab = { [weak self] i in self?.closeTab(i) }
-        envBar.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
-        envBar.setKeyboardMenu(UIMenu(title: "キーボード", children: [UIDeferredMenuElement.uncached { [weak self] completion in
-            completion(self?.keyboardMenuElements() ?? [])
-        }]))
-        envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
+        tabRow.onSelectTab = { [weak self] i in self?.selectTab(i) }
+        tabRow.onCloseTab = { [weak self] i in self?.closeTab(i) }
+        tabRow.onNewTab = { [weak self] in self?.newTab() }
+        statusRow.onZoom = { [weak self] in self?.changeZoom { $0.cycle() } }
+        statusRow.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
         candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
         setUpMedia()
+        setUpKeyboardButton()
+        view.addSubview(pointerOverlay)
 
         gate.scene = { [weak self] in self?.view.window?.windowScene }
         gate.onResume = { [weak self] in self?.resume() }
@@ -103,10 +113,10 @@ final class RootViewController: UIViewController {
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
             // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）。
-            // 環境バーの通信の印には、つながっていないことも出す
+            // 上の 1 行目の通信の印には、つながっていないことも出す
             let type = path.status == .satisfied ? path.availableInterfaces.first?.type : nil
             DispatchQueue.main.async { [weak self] in
-                self?.envBar.setNetwork(type)
+                self?.statusRow.setNetwork(type)
                 if let type { self?.pathChanged(type) }
             }
         }
@@ -117,7 +127,7 @@ final class RootViewController: UIViewController {
         // 自動接続は、ロックを解いてから（resume）
     }
 
-    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は環境バーに出す）
+    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は上の 1 行目に出す）
     override var prefersStatusBarHidden: Bool { false }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     /// キーボードは画面の下端と左右の端に触れるので、システムのジェスチャを後回しにする
@@ -138,7 +148,9 @@ final class RootViewController: UIViewController {
         view.backgroundColor = colors.background
         leftKeyboard.colors = colors
         rightKeyboard.colors = colors
-        envBar.apply(colors: colors)
+        statusRow.apply(colors: colors)
+        tabRow.apply(colors: colors)
+        applyKeyboardButtonColors()
         clipButton.tintColor = colors.text.withAlphaComponent(0.85)
         candidateBar.apply(colors: colors)
         notice.textColor = colors.subText
@@ -163,7 +175,7 @@ final class RootViewController: UIViewController {
             previousKeyboard = c.keyboard == .english ? .romaji : .english
         }
         for s in sessions { s.config = c }
-        envBar.plus.menu = makeMenu()
+        tabRow.plus.menu = makeMenu()
         updateEnvBar()
         configureFont()
         view.setNeedsLayout()
@@ -190,14 +202,14 @@ final class RootViewController: UIViewController {
         let r = LayoutEngine.compute(input)
         layout = r
         terminalView.frame = r.shell
-        envBar.frame = r.environmentBar
+        statusRow.frame = r.statusRow
+        tabRow.frame = r.tabRow
         let faces = KeyboardLayouts.faces(for: keyboardKind)
         for (kb, frame, face) in [(leftKeyboard, r.leftKeyboard, faces.left), (rightKeyboard, r.rightKeyboard, faces.right)] {
             kb.isHidden = frame == nil
             if let frame {
                 kb.frame = frame
                 kb.rowHeight = r.rowHeight
-                kb.flickThreshold = max(10, r.pitch * 0.45)
                 if kb.face.rows != face.rows { kb.face = face }
             }
         }
@@ -205,10 +217,21 @@ final class RootViewController: UIViewController {
         if let c = r.candidateBar { candidateBar.frame = c }
         notice.isHidden = r.mode != .tooNarrow
         notice.text = "窓が狭いので画面のキーボードを隠しています"
-        notice.frame = CGRect(x: r.shell.minX, y: r.environmentBar.minY - 18, width: r.shell.width, height: 16)
+        // シェルの下端の上。左下の 📎・右下の ⌨ を避けて、間に置く
+        let side = LayoutEngine.cornerButtonMargin + LayoutEngine.cornerButtonSize + 4
+        notice.frame = CGRect(x: r.shell.minX + side, y: r.shell.maxY - 22,
+                              width: max(0, r.shell.width - 2 * side), height: 16)
         emptyLabel.frame = r.shell.insetBy(dx: 16, dy: 16)
-        clipButton.frame = CGRect(x: r.shell.minX + 6, y: r.shell.maxY - 42, width: 36, height: 36)
-        view.bringSubviewToFront(clipButton)
+        // 角の丸いボタン: 左下が 📎、右下がキーボード選択（分割のときだけ）
+        let inset = LayoutEngine.cornerButtonMargin, size = LayoutEngine.cornerButtonSize
+        clipButton.frame = CGRect(x: r.shell.minX + inset, y: r.shell.maxY - inset - size, width: size, height: size)
+        keyboardButton.isHidden = r.keyboardButton == nil
+        if let b = r.keyboardButton { keyboardButton.frame = b }
+        pointerOverlay.frame = view.bounds
+        // 上の 2 行・📎・キーボード選択はシェルとキーボードより前面、ポインタはその上
+        for v in [statusRow, tabRow, clipButton, keyboardButton, pointerOverlay] as [UIView] {
+            view.bringSubviewToFront(v)
+        }
         updateEnvBar()
         regrid()
     }
@@ -262,16 +285,29 @@ final class RootViewController: UIViewController {
         terminalView.requestRender()
     }
 
+    /// ＋のタップ: 新しいタブを開く。接続先は 今のタブの host、無ければ auto-connect の host、無ければ最初の host。
+    /// どれも無ければ設定を編集する（番号に応じた tmux のセッションは openSession が決める）
+    private func newTab() {
+        if let host = active?.host ?? config.autoConnectHost ?? config.hosts.first {
+            openSession(host)
+        } else {
+            editConfig()
+        }
+    }
+
+    /// 上の 2 行（時計と状態・倍率、タブ）とキーボード選択を、今の状態に合わせる（名前は「環境バー」の頃のまま）
     private func updateEnvBar() {
         let tabs = sessions.enumerated().map { i, s in
-            EnvironmentBar.Tab(title: s.title, state: s.state, selected: i == activeIndex)
+            TabRow.Tab(title: s.title, state: s.state, selected: i == activeIndex)
         }
-        envBar.update(tabs: tabs, zoomPercent: zoom.percent, keyboard: keyboardKind,
-                      showKeyboardButton: layout?.mode == .split, diagnostics: store.diagnostics.count)
+        tabRow.update(tabs: tabs)
+        statusRow.update(zoomPercent: zoom.percent, diagnostics: store.diagnostics.count)
+        keyboardButton.setTitle(keyboardKind.shortTitle, for: .normal)
+        keyboardButton.isHidden = layout?.keyboardButton == nil
         emptyLabel.isHidden = !sessions.isEmpty
         emptyLabel.text = config.hosts.isEmpty
-            ? "接続先がありません。\n＋ →「設定を編集」で host を書いてください。\n例: host = mac you@your-mac.tailnet.ts.net"
-            : "＋ から接続先を選んでください"
+            ? "接続先がありません。\n＋ を長押し →「設定を編集」で host を書いてください。\n例: host = mac you@your-mac.tailnet.ts.net"
+            : "＋ をタップで接続します（長押しで接続先を選べます）"
         if let s = active, case .failed(let reason) = s.state {
             notice.isHidden = false
             notice.text = reason
@@ -327,11 +363,37 @@ final class RootViewController: UIViewController {
         updateEnvBar()
     }
 
-    /// キーボードを選ぶメニューの中身（環境バーのボタン・🌐 の長押しの吹き出し）
+    /// キーボードを選ぶメニューの中身（シェルの右下のボタン・🌐 の長押しの吹き出し）
     private func keyboardMenuElements() -> [UIMenuElement] {
         KeyboardKind.menuOrder.map { kind in
             UIAction(title: kind.title, state: kind == keyboardKind ? .on : .off) { [weak self] _ in self?.setKeyboard(kind) }
         }
+    }
+
+    /// キーボード選択のボタン（シェルの右下の角の丸いボタン）。📎 と同じ作りで、タップでメニューを出す
+    private func setUpKeyboardButton() {
+        if let label = keyboardButton.titleLabel {
+            // 「abcローマ字」のような長い名前は、丸の中に収まるよう縮める
+            label.font = .systemFont(ofSize: 11, weight: .bold)
+            label.adjustsFontSizeToFitWidth = true
+            label.minimumScaleFactor = 0.5
+            label.lineBreakMode = .byClip
+        }
+        keyboardButton.layer.cornerRadius = LayoutEngine.cornerButtonSize / 2
+        keyboardButton.showsMenuAsPrimaryAction = true
+        keyboardButton.accessibilityLabel = "キーボードを選ぶ"
+        keyboardButton.menu = UIMenu(title: "キーボード", children: [UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.keyboardMenuElements() ?? [])
+        }])
+        keyboardButton.isHidden = true
+        view.addSubview(keyboardButton)
+        applyKeyboardButtonColors()
+    }
+
+    /// 📎 と同じ見た目: 地は文字色の丸（少し透ける）、字は背景色
+    private func applyKeyboardButtonColors() {
+        keyboardButton.backgroundColor = colors.text.withAlphaComponent(0.85)
+        keyboardButton.setTitleColor(colors.background, for: .normal)
     }
 
     /// 🌐 の長押し: iOS の吹き出し（ポップオーバー）でキーボードを選ぶ
@@ -367,7 +429,7 @@ final class RootViewController: UIViewController {
     private func route(_ key: TermKey, _ mods: KeyModifiers) {
         guard !gate.isLocked else { return }
         // 文字を打ったらポインタを隠す（Mac と同じ）
-        terminalView.hidePointer()
+        hidePointer()
         if mods.contains(.command) {
             handleCommand(key)
             return
@@ -507,12 +569,11 @@ final class RootViewController: UIViewController {
         picker.presenter = self
         picker.onPicked = { [weak self] items in self?.sendMedia(items) }
         picker.onError = { [weak self] message in self?.alert("メディア", message) }
-        sender.onStatus = { [weak self] text in self?.envBar.setProgress(text) }
+        sender.onStatus = { [weak self] text in self?.statusRow.setProgress(text) }
         sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
         sender.onInsert = { [weak self] text, session in self?.insertMediaPaths(text, into: session) }
         // 開くたびに作る（送っている途中なら「やめる」を出す）
-        // 📎 はシェルの左下（環境バーのものは使わない）
-        envBar.attach.isHidden = true
+        // 📎 はシェルの左下
         clipButton.setImage(UIImage(systemName: "paperclip.circle.fill",
                                     withConfiguration: UIImage.SymbolConfiguration(pointSize: 26)), for: .normal)
         clipButton.showsMenuAsPrimaryAction = true
@@ -673,7 +734,7 @@ extension RootViewController: KeyboardOutput {
             // ローマ字: 英字と句読点（、。ー「」）はかなにして読みに足す
             if keyboardKind.usesRomaji, mods.subtracting(.shift).isEmpty, case .text(let t) = k, t.count == 1,
                let c = t.first, let kana = romaji.input(c) {
-                terminalView.hidePointer()
+                hidePointer()
                 if !kana.isEmpty { composer.append(kana) }
                 updateCandidates()
                 return
@@ -721,17 +782,66 @@ extension RootViewController: KeyboardOutput {
     }
 }
 
-// MARK: - スペースの横の赤い丸 → シェルのポインタ
+// MARK: - スペースの横の赤い丸 → ポインタ（docs/design.md「ポインタ」。シェルと上の 2 行を動き、クリックできる）
 
 extension RootViewController: PointerOutput {
+    /// ポインタが動ける範囲: シェルの枠と、上の 2 行（左右いっぱい）の和
+    private var pointerRects: [CGRect] { [terminalView.frame, statusRow.frame.union(tabRow.frame)] }
+
+    /// ポインタの今の位置。まだ動かしていなければシェルの中央
+    private var pointerHome: CGPoint {
+        pointerOverlay.location ?? CGPoint(x: terminalView.frame.midX, y: terminalView.frame.midY)
+    }
+
     func pointerMove(dx: CGFloat, dy: CGFloat) {
         guard !gate.isLocked else { return }
-        terminalView.movePointer(dx: dx, dy: dy)
+        let from = pointerHome
+        // 範囲の外へ出る動きは、範囲の中で最も近い点に寄せる
+        pointerOverlay.show(at: PointerArea.clamp(CGPoint(x: from.x + dx, y: from.y + dy), toUnionOf: pointerRects))
+    }
+
+    /// 文字を打ったらポインタを隠す（Mac と同じ。位置は覚えておく）
+    func hidePointer() {
+        pointerOverlay.hide()
     }
 
     func pointerClick(right: Bool) {
-        guard !gate.isLocked else { return }
-        terminalView.pointerClick(right: right)
+        guard !gate.isLocked, presentedViewController == nil else { return }
+        let p = PointerArea.clamp(pointerHome, toUnionOf: pointerRects)
+        pointerOverlay.show(at: p)
+        // 上の 2 行の上: その下のボタン（タブ・＋・倍率・⚠）を押す。右クリックは何もしない
+        if statusRow.frame.union(tabRow.frame).contains(p), let control = control(at: p) {
+            if !right { control.sendActions(for: .touchUpInside) }
+            return
+        }
+        // キーボード選択のボタンの上: 吹き出しでキーボードを選ぶ。📎 の上は何もしない
+        if !keyboardButton.isHidden, keyboardButton.frame.contains(p) {
+            presentKeyboardMenu(anchor: keyboardButton.convert(keyboardButton.bounds, to: nil))
+            return
+        }
+        if clipButton.frame.contains(p) { return }
+        // シェルの上: シェルの座標に直して、タップ（左）・2 本指のタップ（右）と同じ扱い
+        // （マウス報告・入力行のカーソル移動・編集メニュー）
+        guard terminalView.frame.contains(p) else { return }
+        let local = view.convert(p, to: terminalView)
+        let cell = terminalView.cell(at: local)
+        // terminalView プロパティと名前が同じなので、デリゲートとして呼ぶ
+        let delegate: TerminalViewDelegate = self
+        if right {
+            delegate.terminalView(terminalView, twoFingerTappedAt: cell, location: local)
+        } else {
+            delegate.terminalView(terminalView, tappedAt: cell, location: local)
+        }
+    }
+
+    /// 点の下のビューから上へたどって見つけたボタン（UIControl）
+    private func control(at p: CGPoint) -> UIControl? {
+        var v = view.hitTest(p, with: nil)
+        while let x = v, x !== view {
+            if let c = x as? UIControl, c.isEnabled { return c }
+            v = x.superview
+        }
+        return nil
     }
 }
 
@@ -897,7 +1007,7 @@ extension RootViewController: SessionPresenter {
                 case .changed(let expected, let actual):
                     a = UIAlertController(
                         title: "ホスト鍵が変わっています",
-                        message: "\(host.name) の鍵が、保存したものと違います。なりすましの恐れがあるので接続を止めました。\n\n保存: \(expected)\n今回: \(actual)\n\n接続先の鍵を作り直したのが確かなときだけ、＋ →「このタブのホスト鍵を忘れる」で消してから繋ぎ直してください。",
+                        message: "\(host.name) の鍵が、保存したものと違います。なりすましの恐れがあるので接続を止めました。\n\n保存: \(expected)\n今回: \(actual)\n\n接続先の鍵を作り直したのが確かなときだけ、＋ を長押し →「このタブのホスト鍵を忘れる」で消してから繋ぎ直してください。",
                         preferredStyle: .alert)
                     a.addAction(UIAlertAction(title: "OK", style: .cancel) { _ in cont.resume(returning: false) })
                 }

@@ -175,7 +175,7 @@ public enum KeyboardKind: String, Sendable, CaseIterable {
         }
     }
 
-    /// 環境バーに出す短い名前
+    /// シェルの右下のキーボード選択のボタンに出す短い名前
     public var shortTitle: String {
         switch self {
         case .romaji: return "ローマ字"
@@ -186,7 +186,7 @@ public enum KeyboardKind: String, Sendable, CaseIterable {
         }
     }
 
-    /// フリックの面（上に寄せて置く）
+    /// フリックの面
     public var isFlick: Bool { self == .kana || self == .flickRomaji || self == .flickEnglish }
     /// 英字をローマ字としてかなにする
     public var usesRomaji: Bool { self == .romaji || self == .flickRomaji }
