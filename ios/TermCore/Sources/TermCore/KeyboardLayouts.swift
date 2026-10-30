@@ -98,12 +98,17 @@ public struct FlickSet: Hashable, Sendable {
     }
 
     public func character(_ d: FlickDirection) -> String {
+        assigned(d) ?? center
+    }
+
+    /// その方向に割り当てた文字（無ければ nil。フリックのガイドは、文字のある方向だけ四角を出す）
+    public func assigned(_ d: FlickDirection) -> String? {
         switch d {
         case .center: return center
-        case .left: return left ?? center
-        case .up: return up ?? center
-        case .right: return right ?? center
-        case .down: return down ?? center
+        case .left: return left
+        case .up: return up
+        case .right: return right
+        case .down: return down
         }
     }
 
@@ -111,8 +116,19 @@ public struct FlickSet: Hashable, Sendable {
     public var cycle: [String] { [center, left, up, right, down].compactMap { $0 } }
 }
 
-public enum FlickDirection: Sendable, Equatable {
+public enum FlickDirection: Sendable, Hashable, CaseIterable {
     case center, left, up, right, down
+
+    /// 方向を決める移動量（pt）の範囲。キーが小さくても大きくても、軽い動きで決まり、指が少しぶれただけでは決まらない
+    public static let thresholdRange: ClosedRange<CGFloat> = 8...16
+    /// しきい値 = キーの短い辺 × この値
+    public static let thresholdRatio: CGFloat = 0.3
+
+    /// 方向のしきい値。押したキーの大きさから決める（短い辺 × 0.3 を 8〜16pt に。端末ごとの値は持たない）
+    public static func threshold(keySize: CGSize) -> CGFloat {
+        let t = min(keySize.width, keySize.height) * thresholdRatio
+        return min(max(t, thresholdRange.lowerBound), thresholdRange.upperBound)
+    }
 
     /// 指を置いた位置から離した位置までの移動で方向を決める（離した位置で決まる。docs/design.md「同時入力」）
     public static func resolve(dx: CGFloat, dy: CGFloat, threshold: CGFloat) -> FlickDirection {
