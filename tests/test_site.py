@@ -246,3 +246,55 @@ def test_aio_check_catches(copy: Path, name: str):
 
 def test_aio_check_needs_the_public_dir(tmp_path: Path):
     assert run(CHECK, "--public", tmp_path / "none").returncode == 2
+
+
+# ── 手元で見るためのサーバー（site/serve.py） ─────────────────────────────
+
+serve = load("site_serve", ROOT / "site/serve.py")
+
+
+def test_serve_resolves_clean_urls_like_cloudflare(built: Path):
+    def r(p):
+        f, redirect = serve.resolve(built, p)
+        return (f.relative_to(built).as_posix() if f else None), redirect
+
+    assert r("/") == ("index.html", None)
+    assert r("/en/") == ("en/index.html", None)
+    assert r("/en") == (None, "/en/")
+    assert r("/get-started") == ("get-started.html", None)
+    assert r("/get-started.md") == ("get-started.md", None)
+    assert r("/nope") == (None, None)
+    # site/public の外は配らない
+    for outside in ("/../site.json", "/%2e%2e/site.json", "/assets/../../build.py", "relative"):
+        assert r(outside) == (None, None), outside
+
+
+def test_serve_applies_the_headers_file(built: Path):
+    rules = serve.parse_headers((built / "_headers").read_text(encoding="utf-8"))
+    h = serve.headers_for("/en/index.md", rules)
+    assert h["Content-Type"].startswith("text/markdown")
+    assert "script-src 'none'" in h["Content-Security-Policy"]
+    assert serve.headers_for("/llms.txt", rules)["Content-Type"].startswith("text/plain")
+
+
+def test_serve_answers_over_http(built: Path):
+    import threading
+    import urllib.error
+    import urllib.request
+    from functools import partial
+
+    rules = serve.parse_headers((built / "_headers").read_text(encoding="utf-8"))
+    server = serve.ThreadingHTTPServer(("127.0.0.1", 0), partial(serve.Handler, public=built, rules=rules))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        with urllib.request.urlopen(base + "/get-started") as res:
+            assert res.status == 200
+            assert "nosniff" in res.headers["X-Content-Type-Options"]
+            assert "<html" in res.read().decode("utf-8")
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(base + "/no-such-page")
+        assert e.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -77,6 +77,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
 | アイコン・favicon を作り直す | `node scripts/gen_brand.cjs`（Playwright が要る。元の絵は `brand/`。`--og` で OGP 画像も） |
 | 公開サイトを作り直す・確かめる | `python3 site/build.py` と `python3 bench/aio_check.py`（`site/src` と `site/public` を一緒に入れる） |
+| 公開サイトを手元で見る | `python3 site/serve.py` → http://127.0.0.1:8788/（英語は /en/。作り直してから配る） |
 
 ### 環境変数
 

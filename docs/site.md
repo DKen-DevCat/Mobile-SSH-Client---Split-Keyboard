@@ -23,6 +23,7 @@
 | `site/src/assets/` | 画像など。そのまま `/assets/` に配る（無ければ何もしない） |
 | `site/build.py` | 生成 |
 | `site/public/` | 生成物（手で直さない） |
+| `site/serve.py` | 手元で見るためのサーバー（Cloudflare Pages と同じ URL とヘッダー） |
 | `bench/aio_check.py` | ベンチマーク A |
 | `bench/agent_bench.py`・`bench/tasks.json` | ベンチマーク B |
 | `bench/configspec.py` | config.example の読み取りと、config の簡易な検査（splitterm が無いときのフォールバック） |
@@ -38,6 +39,16 @@ python3 site/build.py --out DIR  # 別の場所（無いか空のフォルダ）
 ```
 
 出力は毎回同じ（日時を埋め込まない。`lastmod` は front matter の `updated`）。
+
+## 手元で見る（site/serve.py）
+
+```bash
+python3 site/serve.py                # 作り直してから http://127.0.0.1:8788/ で配る（英語は /en/）
+python3 site/serve.py --no-build     # 作り直さずに配る
+python3 site/serve.py --port 9000    # 別のポートで
+```
+
+標準ライブラリだけで動く。Cloudflare Pages と同じに見えるよう、拡張子の無い URL（`/get-started` → `get-started.html`）、`_headers` のヘッダー（CSP など）、無いページの `404.html` を再現する。既定では自分の Mac からしか見えない（`127.0.0.1`）。`python3 -m http.server` では拡張子の無いリンクが切れるので使わない。
 
 ### ページの書き方
 
