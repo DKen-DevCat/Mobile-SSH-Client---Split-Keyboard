@@ -28,3 +28,27 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check pytest==9.2.0
       - name: テスト
         run: python3 -m pytest tests/test_site.py tests/test_tools.py tests/test_bench.py
+
+  # Swift を Mac で実際にビルドしてテストする（公開リポジトリの macOS ランナーは無料）。
+  # TermCore と splitterm のテスト、アプリ全体のビルド（シミュレータ向け、署名なし）
+  swift:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Xcode を選ぶ（Swift 6.2 が要る）
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+          swift --version
+      - name: TermCore と splitterm のテスト
+        run: swift test --package-path ios/TermCore
+      - name: アプリをビルドする（シミュレータ向け、署名なし）
+        run: >-
+          xcodebuild -project ios/SplitTerm.xcodeproj -scheme SplitTerm
+          -destination 'generic/platform=iOS Simulator' -configuration Debug
+          -skipPackagePluginValidation -skipMacroValidation
+          CODE_SIGNING_ALLOWED=NO build
