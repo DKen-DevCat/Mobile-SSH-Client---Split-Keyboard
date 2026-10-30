@@ -156,7 +156,7 @@ Ghostty と同じく、**config ファイル 1 枚**ですべてを決める。�
 
 | 区分 | 項目（既定値） |
 | --- | --- |
-| 接続 | `host = 名前 ユーザー@アドレス[:ポート] [tmux=名前\|none] [auth=key\|password]`、`auto-connect`（空＝最初の host、`none`＝つながない）、`term = xterm-256color`、`keepalive = 15s`、`reconnect = true`、`password-auth = false` |
+| 接続 | `host = 名前 ユーザー@アドレス[:ポート] [tmux=名前\|none] [auth=key\|password]`（`tmux` は既定 `main`。タブごとに `main-2`・`main-3`…と別のセッションに入る）、`auto-connect`（空＝最初の host、`none`＝つながない）、`term = xterm-256color`、`keepalive = 15s`、`reconnect = true`、`password-auth = false` |
 | 表示 | `font-family = system-mono`、`font-family-cjk = Hiragino Sans`、`font-size = 10`、`zoom-steps = 85, 100`（先頭が起動時）、`color-space = display-p3`、`background`・`foreground`・`cursor-color`・`accent`・`selection-background`、`palette = 0〜15=#RRGGBB`、`minimum-contrast = 4.5`、`cursor-style = block`、`cursor-blink = false`、`scrollback-limit = 10000` |
 | キーボード | `keyboard = us`、`keyboard-pitch = auto`、`key-repeat-delay = 400ms`、`key-repeat-interval = 50ms`、`option-as-meta = true`、`haptics = true`、`newline = auto`、`soft-keyboard-with-hardware = false` |
 | 操作 | `mouse-reporting = true` |
@@ -354,10 +354,16 @@ ThinkPad の TrackPoint のように、英数とかなの位置（スペース�
 
 ### 手順
 
-1. **MVP（実装済み）**：config の `host` に tmux のセッション名を持たせ（既定 `main`）、接続時にログインシェルで `tmux -u new-session -A -s <名前>` を実行する（Homebrew の PATH を通すため。tmux が無ければ知らせて素のシェル）。次の場面で自動で繋ぎ直す。
-   - 前面に戻った（切れていれば、待たずにすぐ）
-   - 通信が切れた（0 秒、0.5 秒、1 秒、2 秒、4 秒、8 秒、以降 15 秒おき。裏にいる間は試さない）
-   - 回線の種類が変わった（Wi-Fi ⇄ 5G。TCP は続かないので、切れたと分かるのを待たずに繋ぎ直す）
+1. **MVP（実装済み）**：config の `host` に tmux のセッション名を持たせ（既定 `main`）、接続時にそのセッションへ入る（無ければ作る）。SSH の exec はログインシェルを通らず、`.zshrc` などに書いた PATH が効かないので、tmux の場所は自分で探す。
+   - **探す場所と順**：接続先の `/bin/sh` が（ログインシェルが fish・tcsh でも壊れないように）、`/opt/homebrew/bin/tmux`、`/usr/local/bin/tmux`、`/opt/local/bin/tmux`、`$HOME/.nix-profile/bin/tmux`、`/run/current-system/sw/bin/tmux`、`/usr/bin/tmux` を順に試し、最初に実行できたものを使う。どれにも無ければ、ログインシェルの `command -v tmux`。この一覧は `HostEntry.tmuxSearchPaths` の 1 か所だけにあり、`splitterm doctor` も同じ一覧で探して、見つけた場所を出す。
+   - **起動**：tmux 自体はログインシェル（`$SHELL -lc`）経由で `tmux -u new-session -A -s <名前>` として起動し、tmux のサーバーにログインの環境（PATH）を持たせる。
+   - **見つからないとき**：「tmux が見つかりません（Mac で brew install tmux を入れると、切れても作業が残ります）。素のシェルを開きます」と出して、素のシェル（`$SHELL -l`）を開く。
+   - **タブごとに別のセッション**：1 つ目のタブは `main`、2 つ目からは `main-2`・`main-3`…（`tmux=` の名前に `-番号`。番号は、同じ接続先で開いているタブが使っていない最小のもの。`TabSlots`）。タブの題名も `mac`・`mac 2`…（接続先の題名が来たら `mac 2 · 題名`）。＋も ⌘T も同じ。タブを閉じても tmux のセッションは残し（kill しない）、次に開いたタブが同じ番号なら、そのセッションに戻る。止まるのは、シェルでプロセスを終わらせたときだけ。`tmux=none` のタブは、番号に関わらず素のシェル。
+   - **裏に回っても約 30 秒は繋いだまま**：裏に回ったとき、繋がっているタブが 1 つでもあれば、iOS のバックグラウンドの猶予（`beginBackgroundTask`。約 30 秒、全タブで 1 つ）を取る。猶予が切れる前に、自分で全タブの接続を閉じ（状態は「裏に回ったので切りました」。再試行は予約しない）、猶予を返す。猶予の前に前面へ戻れば、接続はそのまま続く。`reconnect = false` のときは、自分で閉じたタブも前面に戻って勝手には繋がず、タブのタップで繋ぐ。
+   - **繋ぎ直す場面**：次の場面で自動で繋ぎ直す。
+     - 前面に戻った（切れていれば、待たずにすぐ。猶予が切れて自分で閉じたタブも、ここで繋ぎ直して同じ tmux のセッションに戻る）
+     - 通信が切れた（0 秒、0.5 秒、1 秒、2 秒、4 秒、8 秒、以降 15 秒おき。裏にいる間は試さない）
+     - 回線の種類が変わった（Wi-Fi ⇄ 5G。TCP は続かないので、切れたと分かるのを待たずに繋ぎ直す）
    - 接続先のシェルが終わった（exit や tmux の detach）ときと、ホスト鍵の拒否・認証の失敗では繋ぎ直さない（最初に起きた原因で見分ける）。タブをもう一度タップで繋ぎ直す。
    - 握手（TCP・鍵交換・認証・端末を開く）が 20 秒で終わらなければ止める。ホスト鍵の確認やパスワードを人に聞いている時間は数えない（聞き終わったら改めて 20 秒）。
    - つないでいる途中でタブを閉じたら、その接続は端末を開く前に止める（閉じたタブの tmux のクライアントを残さない）。
