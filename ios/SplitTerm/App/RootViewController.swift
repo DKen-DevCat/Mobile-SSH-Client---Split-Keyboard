@@ -99,6 +99,7 @@ final class RootViewController: UIViewController {
         nc.addObserver(self, selector: #selector(hardwareKeyboardChanged), name: .GCKeyboardDidDisconnect, object: nil)
         nc.addObserver(self, selector: #selector(willDeactivate), name: UIScene.willDeactivateNotification, object: nil)
         nc.addObserver(self, selector: #selector(didEnterBackground), name: UIScene.didEnterBackgroundNotification, object: nil)
+        nc.addObserver(self, selector: #selector(willEnterForeground), name: UIScene.willEnterForegroundNotification, object: nil)
         nc.addObserver(self, selector: #selector(didActivate), name: UIScene.didActivateNotification, object: nil)
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -227,7 +228,10 @@ final class RootViewController: UIViewController {
     // MARK: タブ
 
     private func openSession(_ host: HostEntry) {
-        let s = TerminalSession(host: host, config: config, cols: grid.cols, rows: grid.rows)
+        // 同じ接続先で開いているタブが使っていない、いちばん小さい番号（tmux のセッションが main・main-2…と分かれる）。
+        // ⌘T も＋もここを通る
+        let slot = TabSlots.next(used: sessions.filter { $0.host.name == host.name }.map { $0.slot })
+        let s = TerminalSession(host: host, config: config, cols: grid.cols, rows: grid.rows, slot: slot)
         s.presenter = self
         let tv = terminalView
         s.onDisplayNeeded = { [weak tv] in tv?.requestRender() }
@@ -255,6 +259,8 @@ final class RootViewController: UIViewController {
 
     private func closeTab(_ i: Int) {
         guard sessions.indices.contains(i) else { return }
+        // 接続を閉じるだけで、tmux は残す。次に開いたタブが同じ番号なら、そのセッションに戻る
+        // （止まるのは、シェルでプロセスを終わらせたとき）
         sessions[i].close()
         sessions.remove(at: i)
         activeIndex = min(activeIndex, max(0, sessions.count - 1))
@@ -634,9 +640,46 @@ final class RootViewController: UIViewController {
         gate.willDeactivate()
     }
 
+    /// 裏に回ってもしばらく繋いでおくための、iOS のバックグラウンドの猶予（約 30 秒）。全タブで 1 つ
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+
     @objc private func didEnterBackground() {
         gate.didEnterBackground()
         for s in sessions { s.resignedActive() }
+        keepConnectionsForAWhile()
+    }
+
+    /// 裏に回ったら、繋がっている（繋いでいる途中を含む）タブが 1 つでもあるとき猶予を 1 つ取る。期限が来たら自分で閉じ、
+    /// 期限の前に前面へ戻れば、接続はそのまま続く（docs/design.md「接続の安定性」）
+    private func keepConnectionsForAWhile() {
+        guard backgroundTask == .invalid, sessions.contains(where: { $0.isLive }) else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "keep-ssh") { [weak self] in
+            self?.backgroundTimeExpired()
+        }
+        // 猶予をもらえなかった。止められる前に、自分で閉じる
+        if backgroundTask == .invalid { suspendAllForBackground() }
+    }
+
+    /// 猶予の期限（メインで呼ばれる）。iOS に止められる前に、全タブの接続を閉じてから猶予を返す。
+    /// 返さないと、アプリごと終了させられる
+    private func backgroundTimeExpired() {
+        suspendAllForBackground()
+        endBackgroundTask()
+    }
+
+    private func suspendAllForBackground() {
+        for s in sessions { s.suspendForBackground() }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
+    }
+
+    /// 前面に戻り始めた。期限の前なら、接続はそのまま続ける（猶予を返すだけ）
+    @objc private func willEnterForeground() {
+        endBackgroundTask()
     }
 
     @objc private func didActivate() {
@@ -645,6 +688,7 @@ final class RootViewController: UIViewController {
 
     /// ロックを解いた、またはロックの無いまま前面に戻った
     private func resume() {
+        endBackgroundTask()
         store.reload()
         if autoConnectPending {
             autoConnectPending = false
