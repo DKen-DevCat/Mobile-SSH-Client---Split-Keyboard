@@ -20,11 +20,10 @@ public struct EchoPredictor: Sendable {
         }
     }
 
-    /// 予測してはいけない場面。どれかが立っていれば、予測を消して何もしない
+    /// 予測してはいけない場面。どれかが立っていれば、予測を消して何もしない。
+    /// 代替画面・マウス報告は止めない（tmux は外側の端末を代替画面にし、mouse on ならマウス報告も使う）。
+    /// vim の通常モードなどは、返る文字が予測と合わないので、確かめが通らず出ない
     public struct Context: Equatable, Sendable {
-        /// vim や less など（打った文字が文字として返るとは限らない）
-        public var alternateScreen: Bool
-        public var mouseReporting: Bool
         public var cursorHidden: Bool
         /// スクロールバックを見ている
         public var scrolledBack: Bool
@@ -33,10 +32,8 @@ public struct EchoPredictor: Sendable {
         /// 範囲を選んでいる
         public var selecting: Bool
 
-        public init(alternateScreen: Bool = false, mouseReporting: Bool = false, cursorHidden: Bool = false,
-                    scrolledBack: Bool = false, composing: Bool = false, selecting: Bool = false) {
-            self.alternateScreen = alternateScreen
-            self.mouseReporting = mouseReporting
+        public init(cursorHidden: Bool = false, scrolledBack: Bool = false, composing: Bool = false,
+                    selecting: Bool = false) {
             self.cursorHidden = cursorHidden
             self.scrolledBack = scrolledBack
             self.composing = composing
@@ -44,7 +41,7 @@ public struct EchoPredictor: Sendable {
         }
 
         var blocked: Bool {
-            alternateScreen || mouseReporting || cursorHidden || scrolledBack || composing || selecting
+            cursorHidden || scrolledBack || composing || selecting
         }
     }
 
@@ -121,6 +118,12 @@ public struct EchoPredictor: Sendable {
             guard let shown = cellText(head.col, head.row) else {
                 reset()
                 return
+            }
+            // 空白は、返ってきても画面のセルは空のまま。カーソルが同じ行でその桁より先へ進んでいれば、返ってきたとみなす
+            if head.char == " ", shown.isEmpty || shown == " ", cursor.row == head.row, cursor.col > head.col {
+                pending.removeFirst()
+                confirmed = true
+                continue
             }
             // まだ返っていない。待つのはカーソルが先頭の位置にあるあいだだけ（動いていたら返るはずの文字が来なかった）
             if shown.isEmpty {

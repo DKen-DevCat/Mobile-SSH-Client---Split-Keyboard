@@ -487,12 +487,11 @@ final class RootViewController: UIViewController {
 
     // MARK: 読み・先行表示（カーソルの位置に重ねる。docs/design.md「ローマ字入力」「先行表示」）
 
-    /// 予測してはいけない場面（vim などの代替画面、マウス報告、カーソルが隠れている、スクロールバック・選択・変換中）
+    /// 予測してはいけない場面（カーソルが隠れている、スクロールバック・選択・変換中）。
+    /// 代替画面・マウス報告では止めない（tmux の中でも効かせる。vim などは確かめが通らず出ない）
     private func echoContext(_ s: TerminalSession) -> EchoPredictor.Context {
-        let m = s.engine.modes()
-        return EchoPredictor.Context(alternateScreen: m.alternateScreen, mouseReporting: m.mouseReporting,
-                                     cursorHidden: echoCursorHidden, scrolledBack: s.scrollTop != nil,
-                                     composing: composer.isComposing || !romaji.isEmpty, selecting: s.selection != nil)
+        EchoPredictor.Context(cursorHidden: echoCursorHidden, scrolledBack: s.scrollTop != nil,
+                              composing: composer.isComposing || !romaji.isEmpty, selecting: s.selection != nil)
     }
 
     /// 送ったキーを予測に知らせる。修飾なしの文字は、返事を待たずにカーソルの位置へ薄く出す

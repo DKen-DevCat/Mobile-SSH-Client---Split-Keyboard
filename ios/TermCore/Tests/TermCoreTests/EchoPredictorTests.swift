@@ -185,8 +185,6 @@ final class EchoPredictorTests: XCTestCase {
 
     func testBlockedContextsClearAndShowNothing() {
         let blocked: [(String, Predictor.Context)] = [
-            ("alternateScreen", .init(alternateScreen: true)),
-            ("mouseReporting", .init(mouseReporting: true)),
             ("cursorHidden", .init(cursorHidden: true)),
             ("scrolledBack", .init(scrolledBack: true)),
             ("composing", .init(composing: true)),
@@ -201,6 +199,122 @@ final class EchoPredictorTests: XCTestCase {
             XCTAssertFalse(p.confirmed, name)
             XCTAssertNil(p.display, name)
         }
+    }
+
+    /// tmux は外側の端末を代替画面にし、mouse on ならマウス報告も使う。それでも確かめた後なら出る
+    /// （Context に代替画面・マウス報告の項目は無い。守りは「確かめる前は出さない」「突き合わせて外れたら消す」の 2 つ）
+    func testShownInsideAlternateScreenOrMouseReportingOnceConfirmed() {
+        // 代替画面でもマウス報告でも、アプリが渡す Context は同じ（plain）。最初の 1 文字は出ない
+        var p = Predictor()
+        p.typed("a", cursor: (5, 0), now: 0, context: plain)
+        XCTAssertNil(p.display)
+        // 返ってきた（確かめた）後は、次の文字から出る
+        p.reconcile(cellText: screen([5: "a"]), cursor: (6, 0), now: 0.1)
+        XCTAssertTrue(p.confirmed)
+        p.typed("b", cursor: (6, 0), now: 0.2, context: plain)
+        XCTAssertEqual(p.display?.text, "b")
+        XCTAssertEqual(p.display?.at.col, 6)
+    }
+
+    func testViNormalModeNeverConfirms() {
+        // vim の通常モードで l を打つ: 5 桁目はもとの文字（w）のまま、カーソルが 1 つ進むだけ。予測と合わないので出ない
+        var p = Predictor()
+        p.typed("l", cursor: (5, 0), now: 0, context: plain)
+        p.reconcile(cellText: screen([5: "w", 6: "x"]), cursor: (6, 0), now: 0.05)
+        XCTAssertFalse(p.confirmed)
+        XCTAssertTrue(p.pending.isEmpty)
+        XCTAssertNil(p.display)
+        // 打ち続けても、確かめが通らないので出ない
+        p.typed("l", cursor: (6, 0), now: 0.1, context: plain)
+        XCTAssertNil(p.display)
+    }
+
+    func testSpaceEchoIsRecognizedEvenThoughTheCellStaysEmpty() {
+        // 空白が返ってきても、画面のセルは空のまま。カーソルが先へ進んだら、返ってきたとみなす
+        var p = confirmedPredictor()
+        p.typed(" ", cursor: (6, 0), now: 1, context: plain)
+        XCTAssertEqual(p.display?.text, " ")
+        // まだ返っていない（カーソルが動かない）
+        p.reconcile(cellText: screen([5: "a"]), cursor: (6, 0), now: 1.05)
+        XCTAssertTrue(p.confirmed)
+        XCTAssertEqual(p.pending.count, 1)
+        // 返ってきた: セルは空のまま、カーソルが 7 桁目へ
+        p.reconcile(cellText: screen([5: "a"]), cursor: (7, 0), now: 1.1)
+        XCTAssertTrue(p.confirmed)
+        XCTAssertTrue(p.pending.isEmpty)
+        // 確かめた状態が続くので、空白の後の文字もすぐ出る
+        p.typed("b", cursor: (7, 0), now: 1.2, context: plain)
+        XCTAssertEqual(p.display?.text, "b")
+        XCTAssertEqual(p.display?.at.col, 7)
+    }
+
+    func testSpaceCellMayAlsoBeASpaceCharacter() {
+        var p = confirmedPredictor()
+        p.typed(" ", cursor: (6, 0), now: 1, context: plain)
+        p.reconcile(cellText: screen([5: "a", 6: " "]), cursor: (7, 0), now: 1.1)
+        XCTAssertTrue(p.confirmed)
+        XCTAssertTrue(p.pending.isEmpty)
+    }
+
+    func testTypingWithSpacesKeepsBeingConfirmed() {
+        // ls -la のように空白を挟んで打っても、確かめた状態が続き、空白の後の文字も出る
+        var p = Predictor()
+        var cells: [Int: String] = [:]
+        var col = 2
+        var t: TimeInterval = 0
+        // 最初の 1 文字は、返事を待って確かめる
+        p.typed("l", cursor: (col, 0), now: t, context: plain)
+        XCTAssertNil(p.display)
+        cells[col] = "l"
+        col += 1
+        t += 0.1
+        p.reconcile(cellText: screen(cells), cursor: (col, 0), now: t)
+        XCTAssertTrue(p.confirmed)
+        for ch in "s -la" {
+            t += 0.1
+            p.typed(String(ch), cursor: (col, 0), now: t, context: plain)
+            // 打った瞬間に出る（空白の後の文字も）
+            XCTAssertEqual(p.display?.text, String(ch), "\(ch)")
+            XCTAssertEqual(p.display?.at.col, col, "\(ch)")
+            // 返事: 空白はセルが空のまま、カーソルだけが進む
+            if ch != " " { cells[col] = String(ch) }
+            col += 1
+            t += 0.05
+            p.reconcile(cellText: screen(cells), cursor: (col, 0), now: t)
+            XCTAssertTrue(p.confirmed, "\(ch)")
+            XCTAssertTrue(p.pending.isEmpty, "\(ch)")
+        }
+    }
+
+    func testSeveralCharsIncludingSpaceInFlight() {
+        // 空白を含む 3 文字が返る前に続けて打たれ、まとめて返ってきた
+        var p = confirmedPredictor()
+        p.typed("-", cursor: (6, 0), now: 1, context: plain)
+        p.typed(" ", cursor: (6, 0), now: 1.01, context: plain)
+        p.typed("l", cursor: (6, 0), now: 1.02, context: plain)
+        XCTAssertEqual(p.display?.text, "- l")
+        // 先頭の - だけ返った
+        p.reconcile(cellText: screen([5: "a", 6: "-"]), cursor: (7, 0), now: 1.05)
+        XCTAssertEqual(p.display?.text, " l")
+        XCTAssertEqual(p.display?.at.col, 7)
+        // 空白まで返った（セルは空のまま、カーソルは 8 桁目）。残りは l
+        p.reconcile(cellText: screen([5: "a", 6: "-"]), cursor: (8, 0), now: 1.1)
+        XCTAssertEqual(p.display?.text, "l")
+        XCTAssertEqual(p.display?.at.col, 8)
+        XCTAssertTrue(p.confirmed)
+        // l も返った
+        p.reconcile(cellText: screen([5: "a", 6: "-", 8: "l"]), cursor: (9, 0), now: 1.15)
+        XCTAssertTrue(p.pending.isEmpty)
+        XCTAssertTrue(p.confirmed)
+    }
+
+    func testSpaceWithTheCursorOnAnotherRowIsNotConfirmed() {
+        // 空白を打ったのに、カーソルが別の行へ動いた（画面の書き換え）: 返ってきたとは見ない
+        var p = confirmedPredictor()
+        p.typed(" ", cursor: (6, 0), now: 1, context: plain)
+        p.reconcile(cellText: screen([5: "a"]), cursor: (9, 3), now: 1.1)
+        XCTAssertFalse(p.confirmed)
+        XCTAssertTrue(p.pending.isEmpty)
     }
 
     func testOnlyPrintableASCIIIsPredicted() {
