@@ -342,6 +342,8 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | 「公開鍵を取れませんでした」「送れませんでした」 | アプリを一度開いてから、もう一度試す |
 | 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ →「このタブのホスト鍵を忘れる」 |
 | config の ⚠ | `splitterm config check` で行番号と理由を見て直す |
+| アプリで「認証に失敗しました」 | 公開鍵を登録したか確かめる: `grep -c splitterm ~/.ssh/authorized_keys` が 0 なら段 11。登録済みなら、システム設定 > 一般 > 共有 > リモートログイン の「アクセスを許可」に自分が入っているか、`~/.ssh` の権限（`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`）を見る。理由は `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` に出る |
+| ビルドが「Validate plug-in “SwiftTermBuildInfoPlugin”」で止まる | 初回だけ人の手: `open ios/*.xcodeproj` で Xcode を開き、実行先を「Any iOS Simulator Device」にして ⌘B、出てきた「Trust & Enable」を押す（Xcode でビルドするには先に `ios/Config/Local.xcconfig` に `DEVELOPMENT_TEAM` を書く）。そのあと段 7 をやり直す |
 
 ---
 

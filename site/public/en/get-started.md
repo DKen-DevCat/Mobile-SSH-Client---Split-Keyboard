@@ -234,3 +234,5 @@ Verify: the app shows the tmux screen (session `main`). Setup is complete.
 | 「公開鍵を取れませんでした」「送れませんでした」 (could not fetch / send) | Open the app once, then retry |
 | The host key does not match | There is no way to accept it. Only if you really changed the key, use ＋ → 「このタブのホスト鍵を忘れる」 ("forget this tab's host key") in the app |
 | ⚠ on the config | Run `splitterm config check` to see the line numbers and reasons |
+| 「認証に失敗しました」 (authentication failed) in the app | Check the public key is registered: if `grep -c splitterm ~/.ssh/authorized_keys` prints 0, do step 11. If it is there, check that you are allowed in System Settings > General > Sharing > Remote Login, and the permissions (`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`). The reason appears in `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` |
+| The build stops at "Validate plug-in “SwiftTermBuildInfoPlugin”" | Human, first time only: open Xcode with `open ios/*.xcodeproj`, choose "Any iOS Simulator Device", press ⌘B and click "Trust & Enable" (to build in Xcode, first write `DEVELOPMENT_TEAM` into `ios/Config/Local.xcconfig`). Then redo step 7 |
