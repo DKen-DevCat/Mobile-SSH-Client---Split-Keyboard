@@ -38,8 +38,9 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     private var idleTicks = 0
 
     // 描く必要があるか。解釈のキューからも立てる
-    private let flagLock = NSLock()
-    private var renderRequested = false
+    private nonisolated let flagLock = NSLock()
+    /// flagLock の中だけで読み書きする
+    private nonisolated(unsafe) var renderRequested = false
 
     // 慣性スクロール（pt/秒）
     private var velocity: CGFloat = 0
@@ -125,14 +126,17 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
 
     // MARK: 描画ループ（変化が無ければ止める。docs/design.md「待機中は描画しない」）
 
-    /// どのスレッドからでもよい
-    func requestRender() {
+    /// どのスレッドからでもよい（解析のキューからも呼ぶ）
+    nonisolated func requestRender() {
         flagLock.lock()
         let was = renderRequested
         renderRequested = true
         flagLock.unlock()
-        if !was {
-            if Thread.isMainThread { startLink() } else { DispatchQueue.main.async { [weak self] in self?.startLink() } }
+        guard !was else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { startLink() }
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.startLink() }
         }
     }
 

@@ -89,7 +89,7 @@ final class RootViewController: UIViewController {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let type: NWInterface.InterfaceType? =
                 path.status == .satisfied ? path.availableInterfaces.first?.type : nil
-            DispatchQueue.main.async { self?.pathChanged(type) }
+            DispatchQueue.main.async { [weak self] in self?.pathChanged(type) }
         }
         pathMonitor.start(queue: DispatchQueue(label: "splitterm.path"))
 

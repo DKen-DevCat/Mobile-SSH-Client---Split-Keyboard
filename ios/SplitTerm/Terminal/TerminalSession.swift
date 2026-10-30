@@ -87,8 +87,12 @@ final class TerminalSession {
         let engine = self.engine
         conn.onData = { bytes in engine.feed(bytes) }
         engine.onResponse = { [weak conn] bytes in conn?.send(bytes) }
-        conn.onClose = { [weak self] reason in
-            DispatchQueue.main.async { self?.connectionClosed(reason, conn) }
+        // conn を強く持たない（持つと onClose → conn の循環で、接続ごとに NIO のチャンネルが残る）
+        conn.onClose = { [weak self, weak conn] reason in
+            DispatchQueue.main.async { [weak self, weak conn] in
+                guard let conn else { return }
+                self?.connectionClosed(reason, conn)
+            }
         }
         connection = conn
         let size = self.size
