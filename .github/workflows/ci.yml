@@ -32,7 +32,7 @@ jobs:
       - name: pytest を入れる
         run: python3 -m pip install --disable-pip-version-check pytest==9.2.0
       - name: テスト
-        run: python3 -m pytest tests/test_site.py tests/test_tools.py tests/test_bench.py
+        run: python3 -m pytest tests/test_site.py tests/test_tools.py tests/test_bench.py tests/test_pr_status.py
 
   # Swift を Mac で実際にビルドしてテストする（公開リポジトリの macOS ランナーは無料）。
   # TermCore と splitterm のテスト、アプリ全体のビルド（シミュレータ向け、署名なし）
