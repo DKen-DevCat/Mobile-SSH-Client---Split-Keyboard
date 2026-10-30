@@ -113,7 +113,7 @@
       "prompt": "Mobile-SSH-Client---Split-Keyboard の設定ファイルは、Mac と iPhone のそれぞれどこにある？",
       "required": [["~/\\.config/splitterm/config"], ["ファイル.{0,3}アプリ", "設定を編集"]],
       "examples": {
-        "pass": ["Mac は ~/.config/splitterm/config。iPhone は「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config（アプリの ＋ →「設定を編集」でも直せる）。"],
+        "pass": ["Mac は ~/.config/splitterm/config。iPhone は「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config（アプリの ＋ を長押し →「設定を編集」でも直せる）。"],
         "fail": ["アプリの設定画面から変えます。"]
       }
     },
@@ -154,7 +154,7 @@
       "prompt": "Mobile-SSH-Client---Split-Keyboard の公開鍵を Mac に登録するとき、何を確かめる？",
       "required": [["指紋", "fingerprint"], ["公開鍵をコピー", "アプリ(の画面|に出|の表示)"]],
       "examples": {
-        "pass": ["アプリの ＋ →「公開鍵をコピー」に出た指紋と、scripts/ios_pubkey.sh が出す指紋が同じかを確かめてから足す。"],
+        "pass": ["アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋と、scripts/ios_pubkey.sh が出す指紋が同じかを確かめてから足す。"],
         "fail": ["特に確かめずに authorized_keys に追記すればよい。"]
       }
     },

@@ -145,6 +145,6 @@ struct Doctor {
             return Check(id: "pubkey", status: .ok, message: "アプリの公開鍵が authorized_keys にあります")
         }
         return Check(id: "pubkey", status: .warn, message: "アプリの公開鍵が authorized_keys にありません",
-                     fix: "アプリの ＋ →「公開鍵をコピー」に出た指紋で splitterm pubkey --fingerprint SHA256:…", needsHuman: true)
+                     fix: "アプリの ＋ を長押し →「公開鍵をコピー」に出た指紋で splitterm pubkey --fingerprint SHA256:…", needsHuman: true)
     }
 }
