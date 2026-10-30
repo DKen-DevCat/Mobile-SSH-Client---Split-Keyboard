@@ -24,9 +24,11 @@ enum MediaProcessing {
     // MARK: 位置情報を外す
 
     /// 位置情報を外した写しを作り、その場所を返す。外せたことを読み直して確かめる。外せなければ投げる（送らない）。
+    /// もともと位置情報が無ければ、手を加えずに写す（GIF のアニメーションなども残る）。
     /// - 画像: メタデータだけ書き換える（再圧縮しない）。書き戻せない形式（RAW・WebP など）は JPEG にして外す
-    /// - 動画・m4a: 書き出し直す（再エンコードしない）。時系列の位置のトラックが残るものは送らない
+    /// - 動画・m4a: 映像と音声のトラックだけを書き出し直す（再エンコードしない。メタデータとそのトラックは持っていかない）
     /// - そのほか（PDF・テキスト・mp3・wav など、位置を持たない形式）: そのままの写し
+    /// 形式は拡張子で決め、拡張子が無い・知らないときは中身を見る
     static func withoutLocation(_ src: URL) async throws -> URL {
         let ext = src.pathExtension.lowercased()
         let type = UTType(filenameExtension: ext)
@@ -36,12 +38,26 @@ enum MediaProcessing {
         if type?.conforms(to: .movie) == true || type?.conforms(to: .video) == true || ext == "m4a" {
             return try await stripAVLocation(src)
         }
-        let dst = MediaPicker.newURL(ext: ext)
+        if type == nil || type?.isDynamic == true {
+            if let s = CGImageSourceCreateWithURL(src as CFURL, nil), CGImageSourceGetType(s) != nil, CGImageSourceGetCount(s) > 0 {
+                return try stripImageLocation(src)
+            }
+            let tracks = (try? await AVURLAsset(url: src).load(.tracks)) ?? []
+            if tracks.contains(where: { $0.mediaType == .video || $0.mediaType == .audio }) {
+                return try await stripAVLocation(src)
+            }
+        }
+        return try copy(src)
+    }
+
+    private static func copy(_ src: URL) throws -> URL {
+        let dst = MediaPicker.newURL(ext: src.pathExtension)
         try FileManager.default.copyItem(at: src, to: dst)
         return dst
     }
 
     private static func stripImageLocation(_ src: URL) throws -> URL {
+        if hasNoLocation(image: src) { return try copy(src) }
         guard let source = CGImageSourceCreateWithURL(src as CFURL, nil), let type = CGImageSourceGetType(source) else {
             throw Failure.unreadable("画像を読めません")
         }
@@ -124,30 +140,48 @@ enum MediaProcessing {
 
     // MARK: 動画・音声
 
-    /// 位置情報などの個人の情報を外した写し（再エンコードしない。AVMetadataItemFilter.forSharing）
+    /// 位置情報などの個人の情報を外した写し（再エンコードしない）。映像と音声のトラックだけで組み直して書き出す。
+    /// iPhone の動画には時系列のメタデータのトラック（向き・明るさなど）がふつう付いているので、トラックごと持っていかない
     private static func stripAVLocation(_ src: URL) async throws -> URL {
+        let asset = AVURLAsset(url: src)
+        if (try? await hasNoLocation(av: asset)) == true { return try copy(src) }
         let ext = src.pathExtension.lowercased()
         let (fileType, outExt): (AVFileType, String) =
             ext == "mp4" ? (.mp4, "mp4") : ext == "m4v" ? (.m4v, "m4v") : ext == "m4a" ? (.m4a, "m4a") : (.mov, "mov")
-        let dst = MediaPicker.newURL(ext: outExt)
-        guard let export = AVAssetExportSession(asset: AVURLAsset(url: src), presetName: AVAssetExportPresetPassthrough) else {
+        let composition = AVMutableComposition()
+        for kind in [AVMediaType.video, .audio] {
+            for track in try await asset.loadTracks(withMediaType: kind) {
+                guard let t = composition.addMutableTrack(withMediaType: kind, preferredTrackID: kCMPersistentTrackID_Invalid)
+                else { continue }
+                let range = try await track.load(.timeRange)
+                try t.insertTimeRange(range, of: track, at: range.start)
+                if kind == .video { t.preferredTransform = try await track.load(.preferredTransform) }
+            }
+        }
+        guard !composition.tracks.isEmpty,
+              let export = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) else {
             throw locationNotRemoved
         }
+        let dst = MediaPicker.newURL(ext: outExt)
         export.outputURL = dst
         export.outputFileType = fileType
         export.metadataItemFilter = .forSharing()
         export.shouldOptimizeForNetworkUse = false
-        await export.export()
-        guard export.status == .completed, (try? await hasNoLocation(av: dst)) == true else {
+        await withTaskCancellationHandler {
+            await export.export()
+        } onCancel: {
+            export.cancelExport()
+        }
+        guard export.status == .completed, (try? await hasNoLocation(av: AVURLAsset(url: dst))) == true else {
             try? FileManager.default.removeItem(at: dst)
+            if Task.isCancelled { throw CancellationError() }
             throw locationNotRemoved
         }
         return dst
     }
 
     /// 動画・音声に位置情報が残っていないか（位置のメタデータと、時系列のメタデータのトラック）
-    static func hasNoLocation(av url: URL) async throws -> Bool {
-        let asset = AVURLAsset(url: url)
+    static func hasNoLocation(av asset: AVAsset) async throws -> Bool {
         for item in try await asset.load(.metadata) {
             if item.commonKey == .commonKeyLocation { return false }
             if let id = item.identifier?.rawValue.lowercased(), id.contains("location") || id.contains("gps") { return false }
@@ -303,7 +337,11 @@ enum MediaProcessing {
             }
             export.outputURL = audio
             export.outputFileType = .m4a
-            await export.export()
+            await withTaskCancellationHandler {
+                await export.export()
+            } onCancel: {
+                export.cancelExport()
+            }
             guard export.status == .completed else {
                 try? FileManager.default.removeItem(at: audio)
                 return .skipped("（動画に音声が無いので、文字起こしを飛ばしました）")

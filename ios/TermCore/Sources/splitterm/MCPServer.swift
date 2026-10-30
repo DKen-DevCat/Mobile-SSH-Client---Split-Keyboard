@@ -79,10 +79,10 @@ struct MCPServer {
 
     // MARK: JSON-RPC
 
-    /// 1 行の要求に答える。通知（id が無い）には nil
-    /// 1 行の上限（config の道具に大きな入力は要らない）
+    /// 1 行の上限（config の道具に大きな入力は要らない。読んだ後に比べるので、メモリの上限ではなく、大きすぎる要求を断る印）
     static let maxLine = 1 << 20
 
+    /// 1 行の要求に答える。通知（id が無い）には nil
     func handle(line: String) -> String? {
         guard line.utf8.count <= Self.maxLine, let data = line.data(using: .utf8),
               let msg = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

@@ -39,19 +39,37 @@ extension SSHConnection {
         let done = root.eventLoop.makePromise(of: ExecResult.self)
         let started = root.eventLoop.makePromise(of: Void.self)
         let handler = ExecHandler(command: command, started: started, done: done)
-        let child: Channel
-        do {
-            child = try await root.pipeline.handler(type: NIOSSHHandler.self).flatMap { ssh -> EventLoopFuture<Channel> in
-                let p = root.eventLoop.makePromise(of: Channel.self)
-                ssh.createChannel(p, channelType: .session) { child, type in
+        // チャンネルを開く。接続先が黙っていても、取り消しても、時間で見切る
+        // （見切った後に開いたチャンネルでは、コマンドを走らせずに閉じる。ExecHandler.abandon）
+        let opened = root.eventLoop.makePromise(of: Channel.self)
+        let openTimeout = root.eventLoop.scheduleTask(in: .milliseconds(Int64(timeout * 1000))) {
+            handler.abandon()
+            opened.fail(ExecError.timedOut(timeout))
+        }
+        root.pipeline.handler(type: NIOSSHHandler.self).whenComplete { result in
+            switch result {
+            case .success(let ssh):
+                ssh.createChannel(opened, channelType: .session) { child, type in
                     guard type == .session else { return child.eventLoop.makeFailedFuture(SSHError.channelRejected) }
                     return child.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).flatMapThrowing {
                         try child.pipeline.syncOperations.addHandler(handler)
                     }
                 }
-                return p.futureResult
-            }.get()
+            case .failure(let error):
+                opened.fail(error)
+            }
+        }
+        let child: Channel
+        do {
+            child = try await withTaskCancellationHandler {
+                try await opened.futureResult.get()
+            } onCancel: {
+                root.eventLoop.execute { handler.abandon() }
+                opened.fail(CancellationError())
+            }
+            openTimeout.cancel()
         } catch {
+            openTimeout.cancel()
             // チャンネルを開けなかった。待っている約束を片付ける（ExecHandler が付いていれば、外すときにも片付く）
             started.fail(error)
             done.fail(error)
@@ -172,7 +190,17 @@ final class ExecHandler: ChannelDuplexHandler {
         self.done = done
     }
 
+    /// 待つのをやめた（時間切れ・取り消し）。この後に開いても、コマンドは走らせない。イベントループの上で呼ぶ
+    private var abandoned = false
+    func abandon() {
+        abandoned = true
+    }
+
     func channelActive(context: ChannelHandlerContext) {
+        guard !abandoned else {
+            context.close(promise: nil)
+            return
+        }
         context.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(command: command, wantReply: true), promise: nil)
         context.fireChannelActive()
     }
@@ -270,7 +298,10 @@ public enum MediaUploader {
                 return p.directory + "/" + name
             }
             // 中身が合わない（途中までの残りが別物だった など）。.part は消えているので、もう 1 度だけ最初から
-            if fin.status == RemoteCommands.Exit.mismatch && attempt == 0 { continue }
+            if fin.status == RemoteCommands.Exit.mismatch {
+                if attempt == 0 { continue }
+                throw ExecError.refused("送ったファイルの中身が 2 度とも合いませんでした")
+            }
             try refuseIfRemoteSaidNo(fin, mediaDir: dir)
             throw ExecError.failed("送り終わりを確かめられませんでした")
         }
@@ -303,6 +334,7 @@ public enum MediaUploader {
         defer { try? h.close() }
         var hasher = SHA256()
         while let chunk = try autoreleasepool(invoking: { try h.read(upToCount: 1 << 20) }), !chunk.isEmpty {
+            try Task.checkCancellation()
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
