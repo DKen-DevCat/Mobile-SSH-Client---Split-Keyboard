@@ -37,6 +37,13 @@ final class RootViewController: UIViewController {
     private var lastCandidates: (reading: String, candidates: [KanaCandidate]) = ("", [])
     private var zoom = ZoomSteps(steps: [85, 100])
     private var composer = KanaComposer()
+    /// 先行表示（直接送る文字を、返事を待たずにカーソルの位置へ薄く出す。docs/design.md「先行表示」）
+    private var echo = EchoPredictor()
+    /// 予測を持っているタブ（予測はタブごとには持たない。替わったら捨てる）
+    private weak var echoOwner: TerminalSession?
+    /// 最後に描いた画面でカーソルが隠れていたか
+    private var echoCursorHidden = false
+    private var echoExpiryScheduled = false
     /// かな漢字変換（AzooKey）。裏のキューで変換し、最新の結果だけを候補バーに出す
     private let kana = KanaConversionQueue()
     private var hardwareKeyboard = GCKeyboard.coalesced != nil
@@ -128,6 +135,13 @@ final class RootViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         terminalView.becomeFirstResponder()
+        releaseEdgeTouchDelay()
+    }
+
+    /// 画面の端のタッチは、システムのジェスチャ（ホームバーの上スワイプなど）の判定が終わるまで届かず、端のキーが遅れる。
+    /// ウィンドウのジェスチャの delaysTouchesBegan を切る（公開の API。ウィンドウに載った後に、毎回かけ直す）
+    private func releaseEdgeTouchDelay() {
+        view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false }
     }
 
     // MARK: 設定
@@ -152,6 +166,7 @@ final class RootViewController: UIViewController {
         terminalView.keyRepeatInterval = c.keyRepeatInterval
         terminalView.cursorBlink = c.cursorBlink
         terminalView.setColorSpace(c.colorSpace)
+        terminalView.setInlineColors(text: colors.text, background: colors.background, accent: colors.accent)
         gate.colors = colors
         gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur, stripLocation: c.mediaStripLocation,
                      lockAfter: c.appLockAfter)
@@ -211,6 +226,7 @@ final class RootViewController: UIViewController {
         view.bringSubviewToFront(clipButton)
         updateEnvBar()
         regrid()
+        releaseEdgeTouchDelay()
     }
 
     /// シェルの大きさから桁数と行数を出し、端末と接続先へ知らせる（SSH の window-change）
@@ -388,6 +404,8 @@ final class RootViewController: UIViewController {
             }
         }
         guard let s = active else { return }
+        // 先行表示は、スクロールバックや選択を戻す前の状態で見る（戻すと画面が飛ぶので、その 1 打は予測しない）
+        let echoState = echoContext(s)
         // スクロールバック中にキーを押したら、最下部（入力位置）へ戻る
         if s.scrollTop != nil || s.selection != nil {
             s.scrollTop = nil
@@ -395,7 +413,99 @@ final class RootViewController: UIViewController {
             terminalView.stopInertia()
             terminalView.requestRender()
         }
+        noteEcho(key, mods, session: s, context: echoState)
         s.send(KeyEncoder.encode(key, mods, encodingContext))
+    }
+
+    // MARK: 読み・先行表示（カーソルの位置に重ねる。docs/design.md「ローマ字入力」「先行表示」）
+
+    /// 予測してはいけない場面（vim などの代替画面、マウス報告、カーソルが隠れている、スクロールバック・選択・変換中）
+    private func echoContext(_ s: TerminalSession) -> EchoPredictor.Context {
+        let m = s.engine.modes()
+        return EchoPredictor.Context(alternateScreen: m.alternateScreen, mouseReporting: m.mouseReporting,
+                                     cursorHidden: echoCursorHidden, scrolledBack: s.scrollTop != nil,
+                                     composing: composer.isComposing || !romaji.isEmpty, selecting: s.selection != nil)
+    }
+
+    /// 送ったキーを予測に知らせる。修飾なしの文字は、返事を待たずにカーソルの位置へ薄く出す
+    private func noteEcho(_ key: TermKey, _ mods: KeyModifiers, session s: TerminalSession,
+                          context: EchoPredictor.Context) {
+        resetEchoIfSessionChanged(s)
+        if !mods.isDisjoint(with: [.control, .option]) {
+            echo.key(.modified)
+        } else {
+            switch key {
+            case .text(let t):
+                echo.typed(t, cursor: s.engine.cursorPosition(), now: CACurrentMediaTime(), context: context)
+            case .enter, .newline: echo.key(.enter)
+            case .escape: echo.key(.escape)
+            case .tab: echo.key(.tab)
+            case .backspace, .delete: echo.key(.backspace)
+            case .up, .down, .left, .right, .home, .end, .pageUp, .pageDown: echo.key(.arrow)
+            case .function: echo.key(.modified)
+            }
+        }
+        refreshInline()
+    }
+
+    /// 貼り付け・メディアのパスの挿入。返ってくる画面は予測できない
+    private func noteEchoPaste() {
+        echo.key(.paste)
+        refreshInline()
+    }
+
+    /// タブが替わったら予測を捨てる（予測はタブごとには持たない）
+    private func resetEchoIfSessionChanged(_ s: TerminalSession?) {
+        guard s !== echoOwner else { return }
+        echoOwner = s
+        echo.reset()
+        refreshInline()
+    }
+
+    /// 変換中の読み（無ければ先行表示の文字）をカーソルの位置に重ねる。
+    /// キーを確定した瞬間に同期で呼ぶ（変換の結果は待たない）。重ねる文字が無ければ隠す
+    private func refreshInline() {
+        let reading = composer.reading + romaji.pending
+        if !reading.isEmpty {
+            terminalView.setInlineText(reading, style: .composing)
+        } else if let d = echo.display {
+            // 行の終わりを越える分は出さない（折り返しは返事で決まる）
+            let text = String(d.text.prefix(max(0, grid.cols - d.at.col)))
+            terminalView.setInlineText(text, style: .predicted, at: d.at)
+            if echo.hasPending { scheduleEchoExpiry() }
+        } else {
+            terminalView.setInlineText("", style: .predicted)
+            if echo.hasPending { scheduleEchoExpiry() }
+        }
+    }
+
+    /// 返事が来なくても（接続が切れた・遅い）、予測は 1 秒で消える。描画のついでに突き合わせるので、描画を頼む
+    private func scheduleEchoExpiry() {
+        guard !echoExpiryScheduled else { return }
+        echoExpiryScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + EchoPredictor.timeout + 0.05) { [weak self] in
+            guard let self else { return }
+            self.echoExpiryScheduled = false
+            guard self.echo.hasPending else { return }
+            self.terminalView.requestRender()
+            self.scheduleEchoExpiry()
+        }
+    }
+
+    /// 描いた画面を予測と突き合わせる（返ってきた文字は本物に置き換わり、外れたら予測を消す）
+    private func reconcileEcho(_ frame: ScreenFrame, session s: TerminalSession) {
+        resetEchoIfSessionChanged(s)
+        echoCursorHidden = frame.cursor == nil
+        guard echo.hasPending else { return }
+        if let c = frame.cursor, frame.atBottom {
+            echo.reconcile(cellText: { col, row in
+                guard col >= 0, col < frame.cols, row >= 0, row < frame.rows else { return nil }
+                return frame.cell(col: col, row: row).text
+            }, cursor: (col: c.col, row: c.row), now: CACurrentMediaTime())
+        } else {
+            echo.reset()
+        }
+        refreshInline()
     }
 
     /// ⌘ の操作（Mac のターミナルと同じ。接続先には送らない）
@@ -439,12 +549,16 @@ final class RootViewController: UIViewController {
 
     private func sendCommitted(_ text: String) {
         guard !text.isEmpty else { return }
+        // 確定した文字は変換の結果。先行表示の予測（ASCII の直接入力）とは別なので、予測は捨てる
+        noteEchoPaste()
         active?.send(KeyEncoder.encode(.text(text), [], encodingContext))
     }
 
     private func updateCandidates() {
         let reading = composer.reading
         let pending = romaji.pending
+        // 読みはキーを確定した瞬間に、カーソルの位置へ出す（候補の変換は待たない。候補バーの更新は裏の結果で）
+        refreshInline()
         kana.request(reading) { [weak self] candidates in
             self?.lastCandidates = (reading, candidates)
             self?.candidateBar.update(candidates: candidates, pending: pending)
@@ -498,6 +612,7 @@ final class RootViewController: UIViewController {
     private func sendPaste(_ text: String, _ ctx: EncodingContext) {
         guard let s = active else { return }
         s.scrollTop = nil
+        noteEchoPaste()
         s.send(KeyEncoder.paste(text, ctx))
     }
 
@@ -581,6 +696,7 @@ final class RootViewController: UIViewController {
         let line = text.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
         if session === active, composer.isComposing { commitComposition(nil) }
         session.scrollTop = nil
+        noteEchoPaste()
         session.send(KeyEncoder.paste(line, encodingContext(for: session)))
     }
 
@@ -739,11 +855,23 @@ extension RootViewController: PointerOutput {
 
 extension RootViewController: TerminalViewDelegate {
     func terminalViewFrame(_ view: TerminalView) -> (frame: ScreenFrame, theme: Theme, selection: TextSelection?)? {
-        guard let s = active else { return nil }
+        guard let s = active else {
+            // タブが無い。出していた予測は捨てる
+            if echo.hasPending || echo.confirmed { echo.reset(); refreshInline() }
+            return nil
+        }
         let frame = s.engine.readScreen(theme: theme, scrollTop: s.scrollTop, cursorShape: config.cursorStyle)
         // 最下部に追いついたら、追従に戻す
         if s.scrollTop != nil && frame.atBottom { s.scrollTop = nil }
+        // 描く画面を、先行表示の予測と突き合わせる（本物が出たら予測は消える）
+        reconcileEcho(frame, session: s)
         return (frame, theme, s.selection)
+    }
+
+    func terminalViewCursorCell(_ view: TerminalView) -> (col: Int, row: Int)? {
+        // スクロールバックを見ている間は重ねない。カーソルが隠れていても、端末の持つ位置に出す
+        guard let s = active, s.scrollTop == nil else { return nil }
+        return s.engine.cursorPosition()
     }
 
     private var gestureMode: GestureMode {
