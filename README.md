@@ -15,6 +15,8 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`） |
 | `launchd/com.dken.splitterm-ios.plist` | 1 時間ごとに期限を見て入れ直す |
 | `tests/` | スクリプトとプロジェクトの設定のテスト（pytest） |
+| `site/` | 公開サイト（Get Started・llms.txt）。`site/src` の Markdown から `site/build.py` で `site/public` を作り、Cloudflare Pages が配る（`site/README.md`・`docs/site.md`） |
+| `bench/` | AIO のベンチマーク。静的な検査（`aio_check.py`、CI）、エージェントの課題（`agent_bench.py`、手元の `claude -p`）、AI 検索の見え方（`visibility.md`） |
 
 ## 準備（1 回だけ）
 
@@ -73,6 +75,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | スクリプトのテスト | `python3 -m pytest tests` |
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
 | アイコン・favicon を作り直す | `node scripts/gen_brand.cjs`（Playwright が要る。元の絵は `brand/`。`--og` で OGP 画像も） |
+| 公開サイトを作り直す・確かめる | `python3 site/build.py` と `python3 bench/aio_check.py`（`site/src` と `site/public` を一緒に入れる） |
 
 ### 環境変数
 

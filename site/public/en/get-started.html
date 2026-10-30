@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Get Started | Mobile-SSH-Client---Split-Keyboard</title>
+<meta name="description" content="How to install and set up Mobile-SSH-Client---Split-Keyboard on a Mac and an iPhone or iPad. Written so an agent can execute it — each step has the command to run, how to verify success, and the steps that need a human (HUMAN-ONLY).">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started">
+<link rel="alternate" hreflang="en" href="https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started">
+<link rel="alternate" hreflang="ja" href="https://mobile-ssh-client---split-keyboard.pages.dev/get-started">
+<link rel="alternate" hreflang="x-default" href="https://mobile-ssh-client---split-keyboard.pages.dev/get-started">
+<link rel="alternate" type="text/markdown" href="/en/get-started.md" title="Markdown">
+<link rel="alternate" type="text/plain" href="/en/llms.txt" title="llms.txt">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:title" content="Get Started | Mobile-SSH-Client---Split-Keyboard">
+<meta property="og:description" content="How to install and set up Mobile-SSH-Client---Split-Keyboard on a Mac and an iPhone or iPad. Written so an agent can execute it — each step has the command to run, how to verify success, and the steps that need a human (HUMAN-ONLY).">
+<meta property="og:url" content="https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "HowTo",
+ "name": "Get Started",
+ "description": "How to install and set up Mobile-SSH-Client---Split-Keyboard on a Mac and an iPhone or iPad. Written so an agent can execute it — each step has the command to run, how to verify success, and the steps that need a human (HUMAN-ONLY).",
+ "inLanguage": "en",
+ "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started",
+ "estimatedCost": {
+  "@type": "MonetaryAmount",
+  "currency": "JPY",
+  "value": "0"
+ },
+ "tool": [
+  {
+   "@type": "HowToTool",
+   "name": "Mac"
+  },
+  {
+   "@type": "HowToTool",
+   "name": "Xcode"
+  },
+  {
+   "@type": "HowToTool",
+   "name": "iPhone or iPad (iOS / iPadOS 17 or later)"
+  },
+  {
+   "@type": "HowToTool",
+   "name": "USB cable"
+  }
+ ],
+ "step": [
+  {
+   "@type": "HowToStep",
+   "position": 1,
+   "name": "Clone the repository",
+   "text": "Run: git clone https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard ~/Mobile-SSH-Client---Split-Keyboard cd ~/Mobile-SSH-Client---Split-Keyboard Verify: ls scripts/ios_reinstall.sh prints the file name. If you already have it, update it with git pull.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#clone"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 2,
+   "name": "Check Xcode and the tools",
+   "text": "Run: xcodebuild -version jq --version tmux -V nc -z 127.0.0.1 22 && echo \"SSH OK\" Verify: all four print a version or SSH OK. If something is missing: jq or tmux: brew install jq tmux. No xcodebuild, or it says \"requires Xcode\": HUMAN-ONLY. Install Xcode from the App Store and open it once. Then the human runs sudo xcode-select -s /Applications/Xcode.app/Contents/Developer. No SSH OK: HUMAN-ONLY. Turn on System Settings > General > Sharing > Remote Login.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#tools"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 3,
+   "name": "Build the splitterm command",
+   "text": "A command that runs on the Mac and lets an agent handle the config (it is also an MCP server). It has no third-party dependencies. Run: swift build -c release --package-path ios/TermCore ios/TermCore/.build/release/splitterm doctor Verify: the build ends with Build complete!, and doctor prints what it checked and how to fix what is missing. At this point it is fine if the Team, the device and the app are reported missing; later steps fill them in. To use it over MCP, register it now: claude mcp add splitterm -- \"$PWD/ios/TermCore/.build/release/splitterm\" mcp (details on the MCP page, in Japanese). If your checkout has no ios/TermCore, skip this step. The later steps also work with the scripts/ commands.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#cli"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 4,
+   "name": "Sign in to Xcode with an Apple ID",
+   "text": "HUMAN-ONLY: open Xcode, go to Xcode > Settings… > Accounts, click + and sign in with an Apple ID. A free Apple ID is enough (it creates a Personal Team). Never give the Apple ID password or verification codes to the agent. Verify (the agent runs this): defaults export com.apple.dt.Xcode - | plutil -extract IDEProvisioningTeamByIdentifier json -o - - | jq -r '[.[][] | select(.isFreeProvisioningTeam == true) | .teamID] | unique | .[]' Success is one line with a 10-character Team ID. Nothing printed means the sign-in is not done yet. If two or more lines are printed, choose one with export SPLITTERM_IOS_TEAM=<Team ID>.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#apple-id"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 5,
+   "name": "Connect the device by USB and trust the Mac",
+   "text": "HUMAN-ONLY: connect the iPhone or iPad to the Mac by USB. When the device asks \"Trust This Computer?\", tap Trust and enter the passcode. Verify (the agent runs this): xcrun devicectl list devices Success: the device is listed and its state is not unavailable. If two or more devices are paired with the Mac, choose one with export SPLITTERM_IOS_DEVICE=<UDID>.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#trust-mac"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 6,
+   "name": "Turn on Developer Mode",
+   "text": "HUMAN-ONLY: on the device, turn on Settings > Privacy & Security > Developer Mode. Restart when asked, and after unlocking choose \"Turn On\" in the confirmation. If the item is not there, open Xcode once with the device connected by USB, and it appears. Verify: the human sees it turned on in the same screen. Step 7 succeeding confirms it.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#developer-mode"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 7,
+   "name": "Install the app",
+   "text": "The first run creates the signing certificate, registers the device, and creates the App ID and provisioning profile automatically. Run: scripts/ios_reinstall.sh Verify: exit code 0, and the last line is 入れ直しました（ビルド …）。次の期限は … (\"re-installed (build …); next expiry …\"). With splitterm built, ios/TermCore/.build/release/splitterm install does the same. Over MCP, use app_install. Exit code 1: read the message and the logs (logs/ios_build.log, logs/ios_install.log). 無料の Team が分かりません (\"cannot find the free Team\") means go back to step 4. Exit code 3: the Mac is short on memory. Close other apps, or run scripts/ios_reinstall.sh --force. Exit code 5: the device cannot be reached. Reconnect the USB cable and unlock the device.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#install"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 8,
+   "name": "Trust the developer profile on the device",
+   "text": "HUMAN-ONLY: on the device, open Settings > General > VPN & Device Management, choose \"Apple Development: (your Apple ID)\" and tap Trust. Then open Mobile-SSH-Client---Split-Keyboard and unlock it with Face ID or the passcode. Opening the app once creates its public key (splitterm.pub) and a sample config in the app's Documents folder. Verify (the agent runs this): scripts/ios_pubkey.sh --print Success: a line ecdsa-sha2-nistp256 … splitterm and a line 指紋: SHA256:… (\"fingerprint\") are printed. This only prints; nothing is registered yet. If it says 公開鍵を取れませんでした (\"could not fetch the public key\"), open the app again and retry.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#trust-developer"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 9,
+   "name": "Create the config and add your host",
+   "text": "The config on the Mac is ~/.config/splitterm/config. Create it from the sample and add one host line. First, find the user name and address of the host: whoami scutil --get LocalHostName On the same Wi-Fi the address is <LocalHostName>.local; with Tailscale it is this Mac's name in tailscale status (for example mac.tail1234.ts.net). Ask the human which one to use. Run (replace <user> and <address>): ios/TermCore/.build/release/splitterm config init ios/TermCore/.build/release/splitterm host add mac <user>@<address> --tmux main ios/TermCore/.build/release/splitterm config check Verify: config check exits with 0. Lines it cannot read are printed as N 行目: reason (\"line N\"). Without splitterm, do the same with: scripts/ios_push_config.sh --init printf 'host = mac %s@%s tmux=main\\n' \"<user>\" \"<address>\" >> ~/.config/splitterm/config grep '^host' ~/.config/splitterm/config All keys are listed on the config page (Japanese).",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#config"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 10,
+   "name": "Send the config to the device",
+   "text": "Run: scripts/ios_push_config.sh Verify: it prints 送りました: … → <UDID> (\"sent\"). A running app picks it up immediately. splitterm push (MCP: config_push) does the same.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#push"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 11,
+   "name": "Register the public key on the Mac",
+   "text": "This adds the app's public key to ~/.ssh/authorized_keys on this Mac. The key file on the device can be changed from the Files app, so the fingerprint is compared with the app's screen before adding. HUMAN-ONLY: in the app, tap ＋ → 「公開鍵をコピー」 (\"Copy public key\") and tell the agent the fingerprint shown (it starts with SHA256:). The agent never guesses it, and never uses the fingerprint printed by --print in step 8 instead (that would verify nothing). Run (with the fingerprint from the human): scripts/ios_pubkey.sh --fingerprint 'SHA256:<fingerprint shown in the app>' Verify: it prints 足しました: …/.ssh/authorized_keys (\"added\") or もう登録してあります (\"already registered\"). If it prints 指紋がアプリの表示（…）と違います (\"the fingerprint does not match the app\"), stop and tell the human. The added line is prefixed with restrict,pty (terminal only; port forwarding and the like are disabled). Alternatively, the human can run scripts/ios_pubkey.sh in their own terminal, compare the fingerprint and answer y.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#pubkey"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 12,
+   "name": "Schedule the automatic re-install",
+   "text": "Apps signed with a free Apple ID stop launching after 7 days. launchd checks the expiry every hour and re-installs when less than 48 hours are left (while the device is locked or the app is not in use). Run (this rewrites the repository path inside the plist to the current location, then registers it): mkdir -p ~/Library/LaunchAgents logs sed -E \"s#/Users/[^/]+/Mobile-SSH-Client---Split-Keyboard#$PWD#g\" launchd/com.dken.splitterm-ios.plist > ~/Library/LaunchAgents/com.dken.splitterm-ios.plist launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dken.splitterm-ios.plist Verify: launchctl list | grep com.dken.splitterm-ios prints one line. It runs once right after registration, so tail -n 3 logs/ios_reinstall.log shows a line like 期限まで … 時間です。まだ入れ直しません (\"… hours until expiry; no re-install yet\"). If it was already registered and bootstrap fails, run launchctl bootout gui/$(id -u)/com.dken.splitterm-ios and register again.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#launchd"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 13,
+   "name": "Connect for the first time",
+   "text": "First, print the host key fingerprint of the Mac you connect to (the agent runs this and shows it to the human): ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub HUMAN-ONLY: open the app (it connects to the first host on launch; you can also pick one from the ＋ menu). When it asks you to confirm the host key fingerprint, accept only if it matches the SHA256:… printed above. If it differs, do not accept. Verify: the app shows the tmux screen (session main). Setup is complete.",
+   "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#first-connect"
+  }
+ ],
+ "dateModified": "2026-10-30"
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header><p class="brand"><a href="/en/">Mobile-SSH-Client---Split-Keyboard</a></p><nav aria-label="Site"><ul><li><a href="/en/">Home</a></li><li><a href="/en/get-started" aria-current="page">Get Started</a></li><li><a href="/" hreflang="ja" lang="ja">日本語</a></li></ul></nav></header>
+<main id="main">
+<h1 id="get-started">Get Started</h1>
+<p>You build the app from source with Xcode on a Mac and install it on an iPhone or iPad with a free Apple ID. Then you write your host into the config and send it, register the app&#x27;s public key on the Mac, and let launchd re-install the app every 7 days. It costs ¥0.</p>
+<p>An agent (Claude Code or similar) can execute this page as-is. To hand it off, give the agent on your Mac this one line:</p>
+<pre tabindex="0"><code class="language-text">Read https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started.md and install and set up Mobile-SSH-Client---Split-Keyboard on this Mac and iPhone.</code></pre>
+<p>The Japanese version (<a href="/get-started">はじめる</a>) is the primary one. The scripts print their messages in Japanese; the expected messages are quoted below with a translation.</p>
+<h2 id="how-to-read">How to read this runbook</h2>
+<ul><li>Each step says what to run, then how to verify success. Run commands from the repository root (<code>~/Mobile-SSH-Client---Split-Keyboard</code>)</li><li>Steps marked <strong>HUMAN-ONLY</strong> are not run by the agent. Ask the human, wait until they say it is done, then verify</li><li>If a step fails, do not go on. Show the output to the human and see &quot;Troubleshooting&quot;</li><li>For agents: never guess or invent a key fingerprint; always use the one the human reads from the app. Never put keys or passwords in the config. Ask the human for anything that needs <code>sudo</code></li></ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: Item・Requirement"><table><thead><tr><th scope="col">Item</th><th scope="col">Requirement</th></tr></thead><tbody><tr><td>iPhone / iPad</td><td>iOS / iPadOS 17 or later: iPhone XS, XR, SE (2nd generation) or later; iPad (6th generation) or later</td></tr><tr><td>Mac</td><td>Xcode and jq (install jq with Homebrew if missing)</td></tr><tr><td>Host</td><td>SSH (Remote Login on macOS) and tmux. Usually the same Mac</td></tr><tr><td>Network</td><td>The device must reach the host&#x27;s SSH (same Wi-Fi, or Tailscale or similar)</td></tr><tr><td>Apple ID</td><td>A free one is enough. No paid Apple Developer Program membership needed</td></tr><tr><td>First time only</td><td>A USB cable between the device and the Mac</td></tr></tbody></table></div>
+<h2 id="clone">1. Clone the repository</h2>
+<p>Run:</p>
+<pre tabindex="0"><code class="language-bash">git clone https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard ~/Mobile-SSH-Client---Split-Keyboard
+cd ~/Mobile-SSH-Client---Split-Keyboard</code></pre>
+<p>Verify: <code>ls scripts/ios_reinstall.sh</code> prints the file name. If you already have it, update it with <code>git pull</code>.</p>
+<h2 id="tools">2. Check Xcode and the tools</h2>
+<p>Run:</p>
+<pre tabindex="0"><code class="language-bash">xcodebuild -version
+jq --version
+tmux -V
+nc -z 127.0.0.1 22 &amp;&amp; echo &quot;SSH OK&quot;</code></pre>
+<p>Verify: all four print a version or <code>SSH OK</code>.</p>
+<p>If something is missing:</p>
+<ul><li>jq or tmux: <code>brew install jq tmux</code></li><li>No <code>xcodebuild</code>, or it says &quot;requires Xcode&quot;: <strong>HUMAN-ONLY</strong>. Install Xcode from the App Store and open it once. Then the human runs <code>sudo xcode-select -s /Applications/Xcode.app/Contents/Developer</code></li><li>No <code>SSH OK</code>: <strong>HUMAN-ONLY</strong>. Turn on System Settings &gt; General &gt; Sharing &gt; Remote Login</li></ul>
+<h2 id="cli">3. Build the splitterm command</h2>
+<p>A command that runs on the Mac and lets an agent handle the config (it is also an MCP server). It has no third-party dependencies.</p>
+<p>Run:</p>
+<pre tabindex="0"><code class="language-bash">swift build -c release --package-path ios/TermCore
+ios/TermCore/.build/release/splitterm doctor</code></pre>
+<p>Verify: the build ends with <code>Build complete!</code>, and <code>doctor</code> prints what it checked and how to fix what is missing. At this point it is fine if the Team, the device and the app are reported missing; later steps fill them in.</p>
+<ul><li>To use it over MCP, register it now: <code>claude mcp add splitterm -- &quot;$PWD/ios/TermCore/.build/release/splitterm&quot; mcp</code> (details on the <a href="/mcp">MCP page, in Japanese</a>)</li><li>If your checkout has no <code>ios/TermCore</code>, skip this step. The later steps also work with the <code>scripts/</code> commands</li></ul>
+<h2 id="apple-id">4. Sign in to Xcode with an Apple ID</h2>
+<blockquote class="human">
+<p><strong>HUMAN-ONLY</strong>: open Xcode, go to Xcode &gt; Settings… &gt; Accounts, click + and sign in with an Apple ID. A free Apple ID is enough (it creates a Personal Team). Never give the Apple ID password or verification codes to the agent.</p>
+</blockquote>
+<p>Verify (the agent runs this):</p>
+<pre tabindex="0"><code class="language-bash">defaults export com.apple.dt.Xcode - | plutil -extract IDEProvisioningTeamByIdentifier json -o - - | jq -r &#x27;[.[][] | select(.isFreeProvisioningTeam == true) | .teamID] | unique | .[]&#x27;</code></pre>
+<p>Success is one line with a 10-character Team ID. Nothing printed means the sign-in is not done yet. If two or more lines are printed, choose one with <code>export SPLITTERM_IOS_TEAM=&lt;Team ID&gt;</code>.</p>
+<h2 id="trust-mac">5. Connect the device by USB and trust the Mac</h2>
+<blockquote class="human">
+<p><strong>HUMAN-ONLY</strong>: connect the iPhone or iPad to the Mac by USB. When the device asks &quot;Trust This Computer?&quot;, tap Trust and enter the passcode.</p>
+</blockquote>
+<p>Verify (the agent runs this):</p>
+<pre tabindex="0"><code class="language-bash">xcrun devicectl list devices</code></pre>
+<p>Success: the device is listed and its state is not <code>unavailable</code>. If two or more devices are paired with the Mac, choose one with <code>export SPLITTERM_IOS_DEVICE=&lt;UDID&gt;</code>.</p>
+<h2 id="developer-mode">6. Turn on Developer Mode</h2>
+<blockquote class="human">
+<p><strong>HUMAN-ONLY</strong>: on the device, turn on Settings &gt; Privacy &amp; Security &gt; Developer Mode. Restart when asked, and after unlocking choose &quot;Turn On&quot; in the confirmation. If the item is not there, open Xcode once with the device connected by USB, and it appears.</p>
+</blockquote>
+<p>Verify: the human sees it turned on in the same screen. Step 7 succeeding confirms it.</p>
+<h2 id="install">7. Install the app</h2>
+<p>The first run creates the signing certificate, registers the device, and creates the App ID and provisioning profile automatically.</p>
+<p>Run:</p>
+<pre tabindex="0"><code class="language-bash">scripts/ios_reinstall.sh</code></pre>
+<p>Verify: exit code 0, and the last line is <code>入れ直しました（ビルド …）。次の期限は …</code> (&quot;re-installed (build …); next expiry …&quot;).</p>
+<ul><li>With <code>splitterm</code> built, <code>ios/TermCore/.build/release/splitterm install</code> does the same. Over MCP, use <code>app_install</code></li><li>Exit code 1: read the message and the logs (<code>logs/ios_build.log</code>, <code>logs/ios_install.log</code>). <code>無料の Team が分かりません</code> (&quot;cannot find the free Team&quot;) means go back to step 4</li><li>Exit code 3: the Mac is short on memory. Close other apps, or run <code>scripts/ios_reinstall.sh --force</code></li><li>Exit code 5: the device cannot be reached. Reconnect the USB cable and unlock the device</li></ul>
+<h2 id="trust-developer">8. Trust the developer profile on the device</h2>
+<blockquote class="human">
+<p><strong>HUMAN-ONLY</strong>: on the device, open Settings &gt; General &gt; VPN &amp; Device Management, choose &quot;Apple Development: (your Apple ID)&quot; and tap Trust. Then open Mobile-SSH-Client---Split-Keyboard and unlock it with Face ID or the passcode.</p>
+</blockquote>
+<p>Opening the app once creates its public key (<code>splitterm.pub</code>) and a sample config in the app&#x27;s Documents folder.</p>
+<p>Verify (the agent runs this):</p>
+<pre tabindex="0"><code class="language-bash">scripts/ios_pubkey.sh --print</code></pre>
+<p>Success: a line <code>ecdsa-sha2-nistp256 … splitterm</code> and a line <code>指紋: SHA256:…</code> (&quot;fingerprint&quot;) are printed. This only prints; nothing is registered yet. If it says <code>公開鍵を取れませんでした</code> (&quot;could not fetch the public key&quot;), open the app again and retry.</p>
+<h2 id="config">9. Create the config and add your host</h2>
+<p>The config on the Mac is <code>~/.config/splitterm/config</code>. Create it from the sample and add one <code>host</code> line.</p>
+<p>First, find the user name and address of the host:</p>
+<pre tabindex="0"><code class="language-bash">whoami
+scutil --get LocalHostName</code></pre>
+<p>On the same Wi-Fi the address is <code>&lt;LocalHostName&gt;.local</code>; with Tailscale it is this Mac&#x27;s name in <code>tailscale status</code> (for example <code>mac.tail1234.ts.net</code>). Ask the human which one to use.</p>
+<p>Run (replace <code>&lt;user&gt;</code> and <code>&lt;address&gt;</code>):</p>
+<pre tabindex="0"><code class="language-bash">ios/TermCore/.build/release/splitterm config init
+ios/TermCore/.build/release/splitterm host add mac &lt;user&gt;@&lt;address&gt; --tmux main
+ios/TermCore/.build/release/splitterm config check</code></pre>
+<p>Verify: <code>config check</code> exits with 0. Lines it cannot read are printed as <code>N 行目: reason</code> (&quot;line N&quot;).</p>
+<p>Without <code>splitterm</code>, do the same with:</p>
+<pre tabindex="0"><code class="language-bash">scripts/ios_push_config.sh --init
+printf &#x27;host = mac %s@%s tmux=main\n&#x27; &quot;&lt;user&gt;&quot; &quot;&lt;address&gt;&quot; &gt;&gt; ~/.config/splitterm/config
+grep &#x27;^host&#x27; ~/.config/splitterm/config</code></pre>
+<p>All keys are listed on the <a href="/config">config page (Japanese)</a>.</p>
+<h2 id="push">10. Send the config to the device</h2>
+<p>Run:</p>
+<pre tabindex="0"><code class="language-bash">scripts/ios_push_config.sh</code></pre>
+<p>Verify: it prints <code>送りました: … → &lt;UDID&gt;</code> (&quot;sent&quot;). A running app picks it up immediately. <code>splitterm push</code> (MCP: <code>config_push</code>) does the same.</p>
+<h2 id="pubkey">11. Register the public key on the Mac</h2>
+<p>This adds the app&#x27;s public key to <code>~/.ssh/authorized_keys</code> on this Mac. The key file on the device can be changed from the Files app, so the fingerprint is compared with the app&#x27;s screen before adding.</p>
+<blockquote class="human">
+<p><strong>HUMAN-ONLY</strong>: in the app, tap ＋ → 「公開鍵をコピー」 (&quot;Copy public key&quot;) and tell the agent the fingerprint shown (it starts with <code>SHA256:</code>). The agent never guesses it, and never uses the fingerprint printed by <code>--print</code> in step 8 instead (that would verify nothing).</p>
+</blockquote>
+<p>Run (with the fingerprint from the human):</p>
+<pre tabindex="0"><code class="language-bash">scripts/ios_pubkey.sh --fingerprint &#x27;SHA256:&lt;fingerprint shown in the app&gt;&#x27;</code></pre>
+<p>Verify: it prints <code>足しました: …/.ssh/authorized_keys</code> (&quot;added&quot;) or <code>もう登録してあります</code> (&quot;already registered&quot;). If it prints <code>指紋がアプリの表示（…）と違います</code> (&quot;the fingerprint does not match the app&quot;), stop and tell the human. The added line is prefixed with <code>restrict,pty</code> (terminal only; port forwarding and the like are disabled).</p>
+<p>Alternatively, the human can run <code>scripts/ios_pubkey.sh</code> in their own terminal, compare the fingerprint and answer <code>y</code>.</p>
+<h2 id="launchd">12. Schedule the automatic re-install</h2>
+<p>Apps signed with a free Apple ID stop launching after 7 days. launchd checks the expiry every hour and re-installs when less than 48 hours are left (while the device is locked or the app is not in use).</p>
+<p>Run (this rewrites the repository path inside the plist to the current location, then registers it):</p>
+<pre tabindex="0"><code class="language-bash">mkdir -p ~/Library/LaunchAgents logs
+sed -E &quot;s#/Users/[^/]+/Mobile-SSH-Client---Split-Keyboard#$PWD#g&quot; launchd/com.dken.splitterm-ios.plist &gt; ~/Library/LaunchAgents/com.dken.splitterm-ios.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dken.splitterm-ios.plist</code></pre>
+<p>Verify: <code>launchctl list | grep com.dken.splitterm-ios</code> prints one line. It runs once right after registration, so <code>tail -n 3 logs/ios_reinstall.log</code> shows a line like <code>期限まで … 時間です。まだ入れ直しません</code> (&quot;… hours until expiry; no re-install yet&quot;).</p>
+<p>If it was already registered and bootstrap fails, run <code>launchctl bootout gui/$(id -u)/com.dken.splitterm-ios</code> and register again.</p>
+<h2 id="first-connect">13. Connect for the first time</h2>
+<p>First, print the host key fingerprint of the Mac you connect to (the agent runs this and shows it to the human):</p>
+<pre tabindex="0"><code class="language-bash">ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></pre>
+<blockquote class="human">
+<p><strong>HUMAN-ONLY</strong>: open the app (it connects to the first <code>host</code> on launch; you can also pick one from the ＋ menu). When it asks you to confirm the host key fingerprint, accept only if it matches the <code>SHA256:…</code> printed above. If it differs, do not accept.</p>
+</blockquote>
+<p>Verify: the app shows the tmux screen (session <code>main</code>). Setup is complete.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<div class="scroll" role="region" tabindex="0" aria-label="表: Message・What to do"><table><thead><tr><th scope="col">Message</th><th scope="col">What to do</th></tr></thead><tbody><tr><td>「無料の Team が分かりません」 (cannot find the free Team)</td><td>Redo the sign-in in step 4. With two or more Teams, set <code>SPLITTERM_IOS_TEAM</code></td></tr><tr><td>「Mac と対になった iPhone がありません」 (no paired device)</td><td>Redo step 5 (connect by USB and tap Trust)</td></tr><tr><td>「端末が 2 台以上あります」 (two or more devices)</td><td>Set <code>SPLITTERM_IOS_DEVICE</code> to the UDID</td></tr><tr><td>The app does not open (&quot;Untrusted Developer&quot;)</td><td>Redo step 8</td></tr><tr><td>The app does not open after 7 days</td><td>Re-install with <code>scripts/ios_reinstall.sh</code>. Check the launchd job (step 12) and <code>logs/ios_reinstall.log</code></td></tr><tr><td>「公開鍵を取れませんでした」「送れませんでした」 (could not fetch / send)</td><td>Open the app once, then retry</td></tr><tr><td>The host key does not match</td><td>There is no way to accept it. Only if you really changed the key, use ＋ → 「このタブのホスト鍵を忘れる」 (&quot;forget this tab&#x27;s host key&quot;) in the app</td></tr><tr><td>⚠ on the config</td><td>Run <code>splitterm config check</code> to see the line numbers and reasons</td></tr></tbody></table></div>
+</main>
+<footer><p>This page in Markdown: <a href="/en/get-started.md" type="text/markdown">/en/get-started.md</a> · <a href="/en/llms.txt" type="text/plain">en/llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">Source code (GitHub)</a></p><p>Updated: <time datetime="2026-10-30">2026-10-30</time></p></footer>
+</body>
+</html>
