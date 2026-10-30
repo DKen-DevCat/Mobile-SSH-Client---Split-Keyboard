@@ -95,3 +95,17 @@ public struct ZoomSteps: Sendable, Equatable {
         index = sorted[next].offset
     }
 }
+
+/// スペースの横の赤い丸（ポインタ）の速さ（docs/design.md「ポインタ」）。ThinkPad の TrackPoint のように、触れた点からの
+/// ずれ（pt）で速さ（pt/秒）が決まる。小さなずれは細かく、大きなずれは速く
+public enum PointerCurve {
+    /// ずれがこれより小さい間は動かさない（触れた指の揺れ）
+    public static let deadZone: CGFloat = 3
+    /// 速さの上限（pt/秒）
+    public static let maxSpeed: CGFloat = 1600
+
+    public static func speed(for offset: CGFloat) -> CGFloat {
+        let e = max(0, offset - deadZone)
+        return min(maxSpeed, 14 * e + 1.6 * e * e)
+    }
+}

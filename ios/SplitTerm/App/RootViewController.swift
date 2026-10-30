@@ -65,6 +65,7 @@ final class RootViewController: UIViewController {
 
         terminalView.delegate = self
         model.output = self
+        model.pointer.output = self
         model.onChange = { [weak self] in
             self?.leftKeyboard.setNeedsDisplay()
             self?.rightKeyboard.setNeedsDisplay()
@@ -136,7 +137,8 @@ final class RootViewController: UIViewController {
         terminalView.cursorBlink = c.cursorBlink
         terminalView.setColorSpace(c.colorSpace)
         gate.colors = colors
-        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur, stripLocation: c.mediaStripLocation)
+        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur, stripLocation: c.mediaStripLocation,
+                     lockAfter: c.appLockAfter)
         if initial || zoom.steps != c.zoomSteps {
             zoom = ZoomSteps(steps: c.zoomSteps, current: initial ? nil : zoom.percent)
         }
@@ -315,6 +317,8 @@ final class RootViewController: UIViewController {
     /// キーを接続先へ。command はアプリ内の操作に使う
     private func route(_ key: TermKey, _ mods: KeyModifiers) {
         guard !gate.isLocked else { return }
+        // 文字を打ったらポインタを隠す（Mac と同じ）
+        terminalView.hidePointer()
         if mods.contains(.command) {
             handleCommand(key)
             return
@@ -344,6 +348,7 @@ final class RootViewController: UIViewController {
         s.send(KeyEncoder.encode(key, mods, encodingContext))
     }
 
+    /// ⌘ の操作（Mac のターミナルと同じ。接続先には送らない）
     private func handleCommand(_ key: TermKey) {
         guard case .text(let t) = key else { return }
         switch t.lowercased() {
@@ -351,6 +356,15 @@ final class RootViewController: UIViewController {
         case "v": pasteClipboard()
         case "-": changeZoom { $0.zoom(in: false) }
         case "=", "+": changeZoom { $0.zoom(in: true) }
+        case "t":
+            // 新しいタブ（今のタブと同じ接続先）
+            if let host = active?.host { openSession(host) }
+        case "w":
+            if sessions.indices.contains(activeIndex) { closeTab(activeIndex) }
+        case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+            // ⌘1〜⌘8 はその番号のタブ、⌘9 は最後のタブ
+            guard let n = Int(t), !sessions.isEmpty else { return }
+            selectTab(n == 9 ? sessions.count - 1 : n - 1)
         default: break
         }
     }
@@ -597,7 +611,23 @@ extension RootViewController: KeyboardOutput {
             updateCandidates()
         case .switchKeyboard:
             switchKeyboard()
+        case .lockApp:
+            gate.lockNow()
         }
+    }
+}
+
+// MARK: - スペースの横の赤い丸 → シェルのポインタ
+
+extension RootViewController: PointerOutput {
+    func pointerMove(dx: CGFloat, dy: CGFloat) {
+        guard !gate.isLocked else { return }
+        terminalView.movePointer(dx: dx, dy: dy)
+    }
+
+    func pointerClick(right: Bool) {
+        guard !gate.isLocked else { return }
+        terminalView.pointerClick(right: right)
     }
 }
 

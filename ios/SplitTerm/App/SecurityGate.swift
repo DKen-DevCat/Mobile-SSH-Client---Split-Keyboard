@@ -3,9 +3,11 @@ import TermCore
 import UIKit
 
 /// アプリのロックと画面の保護（docs/design.md「セキュリティ要件」）。
+/// - Face ID は、アプリを開いていない時間が app-lock-after（既定 15 分）を超えたときだけ求める。
+///   開いていない時間は、裏に回った時刻と起動した時刻（再起動したら必ずロック）から測る
 /// - 覆いは最前面の別のウィンドウに出す（アラートや「調べる」の画面より上。キー入力も覆いのウィンドウが受ける）
 /// - ロック中は、入力ルータがすべての入力を捨てる（`isLocked`）
-/// - config で守りを弱める変更（app-lock・privacy-blur・media-strip-location を false に）は、本人の確認（Face ID か
+/// - config で守りを弱める変更（app-lock・privacy-blur・media-strip-location を false に、app-lock-after を長く）は、本人の確認（Face ID か
 ///   パスコード）の後でだけ効かせる。config は「ファイル」アプリや Mac のエージェント（splitterm の config_push）から
 ///   書き換えられるので、端末の持ち主が知らないうちに守りを外せないようにする
 final class SecurityGate {
@@ -14,6 +16,8 @@ final class SecurityGate {
     private(set) var privacyBlur: Bool
     /// 送るメディアから位置情報を外す
     private(set) var stripLocation: Bool
+    /// アプリを開いていない時間がこれ（秒）を超えたらロックする。0 なら裏に回るたび
+    private(set) var lockAfter: TimeInterval
     /// ロックを解く必要がある
     private(set) var isLocked: Bool
 
@@ -35,11 +39,17 @@ final class SecurityGate {
     private var pendingAppLock: Bool?
     private var pendingPrivacyBlur: Bool?
     private var pendingStripLocation: Bool?
+    private var pendingLockAfter: TimeInterval?
     private var toldNoPasscode = false
     private let defaults = UserDefaults.standard
     private static let appLockKey = "security.appLock"
     private static let privacyBlurKey = "security.privacyBlur"
     private static let stripLocationKey = "security.stripLocation"
+    private static let lockAfterKey = "security.lockAfter"
+    /// 最後に裏に回った時刻と、そのときの起動時刻（開いていない時間を測る）
+    private static let lastActiveKey = "security.lastActive"
+    private static let bootKey = "security.bootTime"
+    static let defaultLockAfter: TimeInterval = 900
 
     init(colors: KeyboardColors) {
         self.colors = colors
@@ -47,8 +57,49 @@ final class SecurityGate {
         appLock = defaults.object(forKey: Self.appLockKey) as? Bool ?? true
         privacyBlur = defaults.object(forKey: Self.privacyBlurKey) as? Bool ?? true
         stripLocation = defaults.object(forKey: Self.stripLocationKey) as? Bool ?? true
-        isLocked = appLock
-        promptOnActivate = appLock
+        lockAfter = defaults.object(forKey: Self.lockAfterKey) as? Double ?? Self.defaultLockAfter
+        isLocked = false
+        promptOnActivate = false
+        // 起動したとき: 開いていない時間が長ければ（記録が無い・再起動した・時計が戻ったときも）ロックから始める
+        if appLock && idleTime() >= lockAfter {
+            isLocked = true
+            promptOnActivate = true
+        }
+    }
+
+    // MARK: 開いていない時間
+
+    /// 端末を起動した時刻（再起動したら変わる）
+    private static func bootTime() -> TimeInterval {
+        var tv = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &tv, &size, nil, 0) == 0 else { return 0 }
+        return TimeInterval(tv.tv_sec)
+    }
+
+    /// 最後に裏に回ってからの秒数。分からない（記録が無い・再起動した・時計が戻った）なら無限
+    private func idleTime() -> TimeInterval {
+        guard let last = defaults.object(forKey: Self.lastActiveKey) as? Double,
+              let boot = defaults.object(forKey: Self.bootKey) as? Double,
+              abs(boot - Self.bootTime()) < 2 else { return .infinity }
+        let idle = Date().timeIntervalSince1970 - last
+        return idle >= 0 ? idle : .infinity
+    }
+
+    private func recordInactive() {
+        defaults.set(Date().timeIntervalSince1970, forKey: Self.lastActiveKey)
+        defaults.set(Self.bootTime(), forKey: Self.bootKey)
+    }
+
+    /// 今すぐロックする（キーボードの Touch ID の位置のキー）。覆いのタップで開く
+    func lockNow() {
+        guard canAuthenticate else {
+            tellNoPasscode()
+            return
+        }
+        isLocked = true
+        promptOnActivate = false
+        showCover(locked: true)
     }
 
     /// 端末にパスコードが無いと、本人を確かめる手段が無い（ロックすると二度と開けない）
@@ -69,13 +120,16 @@ final class SecurityGate {
     // MARK: config の値
 
     /// config の値を受け取る。強める変更はすぐに、弱める変更は本人を確かめてから効かせる
-    func request(appLock wantLock: Bool, privacyBlur wantBlur: Bool, stripLocation wantStrip: Bool) {
+    func request(appLock wantLock: Bool, privacyBlur wantBlur: Bool, stripLocation wantStrip: Bool,
+                 lockAfter wantAfter: TimeInterval) {
         if wantLock && !appLock { set(appLock: true) }
         if wantBlur && !privacyBlur { set(privacyBlur: true) }
         if wantStrip && !stripLocation { set(stripLocation: true) }
+        if wantAfter < lockAfter { set(lockAfter: wantAfter) }
         pendingAppLock = (!wantLock && appLock) ? false : nil
         pendingPrivacyBlur = (!wantBlur && privacyBlur) ? false : nil
         pendingStripLocation = (!wantStrip && stripLocation) ? false : nil
+        pendingLockAfter = wantAfter > lockAfter ? wantAfter : nil
         // ロック中・確かめている途中なら、ロックを解いた後に、変更の名前を出して別に確かめる
         guard !isLocked, !authenticating else { return }
         confirmPending()
@@ -83,7 +137,8 @@ final class SecurityGate {
 
     /// 保留している弱める変更を、何を外すかを示して確かめる
     private func confirmPending() {
-        guard pendingAppLock != nil || pendingPrivacyBlur != nil || pendingStripLocation != nil else { return }
+        guard pendingAppLock != nil || pendingPrivacyBlur != nil || pendingStripLocation != nil || pendingLockAfter != nil
+        else { return }
         if !canAuthenticate {
             applyPending()
             return
@@ -92,7 +147,8 @@ final class SecurityGate {
         if pendingAppLock != nil { what.append("アプリのロック") }
         if pendingPrivacyBlur != nil { what.append("画面の保護（ぼかし）") }
         if pendingStripLocation != nil { what.append("送るメディアの位置情報を外すこと") }
-        authenticate(reason: "config の変更で\(what.joined(separator: "と"))を外す") { [weak self] ok in
+        if let after = pendingLockAfter { what.append("ロックまでの時間を \(Int(after / 60)) 分に延ばすこと") }
+        authenticate(reason: "config の変更で\(what.joined(separator: "と"))を許す") { [weak self] ok in
             guard let self else { return }
             if ok {
                 self.applyPending()
@@ -100,7 +156,8 @@ final class SecurityGate {
                 self.pendingAppLock = nil
                 self.pendingPrivacyBlur = nil
                 self.pendingStripLocation = nil
-                self.onNotice?("\(what.joined(separator: "と"))を外す config の変更は、本人の確認ができなかったので効かせていません")
+                self.pendingLockAfter = nil
+                self.onNotice?("\(what.joined(separator: "と"))の config の変更は、本人の確認ができなかったので効かせていません")
             }
         }
     }
@@ -109,9 +166,11 @@ final class SecurityGate {
         if let v = pendingAppLock { set(appLock: v) }
         if let v = pendingPrivacyBlur { set(privacyBlur: v) }
         if let v = pendingStripLocation { set(stripLocation: v) }
+        if let v = pendingLockAfter { set(lockAfter: v) }
         pendingAppLock = nil
         pendingPrivacyBlur = nil
         pendingStripLocation = nil
+        pendingLockAfter = nil
     }
 
     private func set(appLock v: Bool) {
@@ -129,6 +188,11 @@ final class SecurityGate {
         defaults.set(v, forKey: Self.stripLocationKey)
     }
 
+    private func set(lockAfter v: TimeInterval) {
+        lockAfter = v
+        defaults.set(v, forKey: Self.lockAfterKey)
+    }
+
     // MARK: 前面・裏
 
     func willDeactivate() {
@@ -138,7 +202,9 @@ final class SecurityGate {
     }
 
     func didEnterBackground() {
-        if appLock && canAuthenticate {
+        recordInactive()
+        // 0 なら裏に回るたびにロック。それ以外は、戻ってきたときに開いていない時間で決める
+        if appLock && lockAfter <= 0 && canAuthenticate {
             isLocked = true
             promptOnActivate = true
         }
@@ -152,6 +218,12 @@ final class SecurityGate {
             activationPending = true
             return
         }
+        // 開いていない時間が長ければロックする（Face ID は、このときだけ自分から出す）
+        // （0 のときは裏に回った時点でロックしている。コントロールセンターなどから戻っただけではロックしない）
+        if !isLocked && appLock && lockAfter > 0 && idleTime() >= lockAfter && canAuthenticate {
+            isLocked = true
+            promptOnActivate = true
+        }
         if isLocked && !canAuthenticate {
             // パスコードが無い端末では、ロックを解く手段が無い。開いて知らせる
             isLocked = false
@@ -161,6 +233,8 @@ final class SecurityGate {
             showCover(locked: true)
             if promptOnActivate { unlock() }
         } else {
+            // 前面にいる間は「開いている」。コントロールセンターなどから戻っても、ロックを数え直さない
+            recordInactive()
             hideCover()
             onResume?()
         }
@@ -176,6 +250,7 @@ final class SecurityGate {
             guard let self else { return }
             guard ok else { return }
             self.isLocked = false
+            self.recordInactive()
             self.hideCover()
             self.onResume?()
             // ロックの間に届いた、守りを弱める変更は、何を外すかを示して別に確かめる

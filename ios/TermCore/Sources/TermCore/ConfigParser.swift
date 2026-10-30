@@ -117,6 +117,7 @@ public enum ConfigParser {
         case "password-auth": c.passwordAuth = reset ? d.passwordAuth : try bool(value)
 
         case "app-lock": c.appLock = reset ? d.appLock : try bool(value)
+        case "app-lock-after": c.appLockAfter = reset ? d.appLockAfter : try duration(value, defaultUnit: .s)
         case "privacy-blur": c.privacyBlur = reset ? d.privacyBlur : try bool(value)
         case "clipboard-clear": c.clipboardClear = reset ? d.clipboardClear : try duration(value, defaultUnit: .s)
         case "mouse-reporting": c.mouseReporting = reset ? d.mouseReporting : try bool(value)
@@ -187,18 +188,26 @@ public enum ConfigParser {
         return v
     }
 
-    enum Unit { case ms, s }
+    enum Unit { case ms, s, m, h }
 
-    /// `400ms`・`1.5s`・`60`（単位を省くと項目ごとの単位）。秒で返す
+    /// `400ms`・`1.5s`・`15m`・`1h`・`60`（単位を省くと項目ごとの単位）。秒で返す
     static func duration(_ s: String, defaultUnit: Unit) throws -> Double {
         let t = s.lowercased()
         let (num, unit): (Substring, Unit) =
             t.hasSuffix("ms") ? (t.dropLast(2), .ms) :
-            t.hasSuffix("s") ? (t.dropLast(1), .s) : (Substring(t), defaultUnit)
+            t.hasSuffix("s") ? (t.dropLast(1), .s) :
+            t.hasSuffix("m") ? (t.dropLast(1), .m) :
+            t.hasSuffix("h") ? (t.dropLast(1), .h) : (Substring(t), defaultUnit)
         guard let v = Double(num.trimmingCharacters(in: .whitespaces)), v.isFinite, v >= 0 else {
-            throw ConfigError("`\(s)` は時間（例 400ms、60s）ではありません")
+            throw ConfigError("`\(s)` は時間（例 400ms、60s、15m）ではありません")
         }
-        let seconds = unit == .ms ? v / 1000 : v
+        let seconds: Double
+        switch unit {
+        case .ms: seconds = v / 1000
+        case .s: seconds = v
+        case .m: seconds = v * 60
+        case .h: seconds = v * 3600
+        }
         // 1 日を上限にする（大きすぎる値で整数への変換が落ちないように）
         guard seconds <= 86_400 else { throw ConfigError("`\(s)` は長すぎます（1 日まで）") }
         return seconds

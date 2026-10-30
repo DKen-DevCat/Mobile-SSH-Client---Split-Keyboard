@@ -59,8 +59,10 @@ jobs:
             -skipPackagePluginValidation -skipMacroValidation \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1
           code=$?
-          # エラーの行だけを先に出す（ログ全体は長い）
+          # エラーの行だけを先に出す（ログ全体は長い）。このリポジトリのコードの警告も（依存のものは除く）
           grep -nE "error:|\*\* BUILD" "$RUNNER_TEMP/build.log" | head -120
+          echo "--- 警告（このリポジトリ）"
+          grep -E "warning:" "$RUNNER_TEMP/build.log" | grep -v "SourcePackages" | sed "s#$GITHUB_WORKSPACE/##" | sort -u | head -60
           echo "xcodebuild の終了コード: $code"
           [ $code -eq 0 ] || tail -40 "$RUNNER_TEMP/build.log"
           exit $code

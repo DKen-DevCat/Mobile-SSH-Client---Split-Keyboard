@@ -144,20 +144,77 @@ final class KeyboardTests: XCTestCase {
     func testUSFacesFillTheirRect() {
         let rect = CGRect(x: 44, y: 40, width: 182, height: 314)
         for face in [KeyboardLayouts.usLeft, KeyboardLayouts.usRight] {
-            let frames = face.frames(in: rect, rowHeight: 62.8)
-            XCTAssertEqual(face.rows.count, LayoutEngine.keyboardRows)
-            for row in 0..<face.rows.count {
-                let inRow = frames.filter { abs($0.frame.minY - (rect.minY + CGFloat(row) * 62.8)) < 0.01 }
-                XCTAssertEqual(inRow.first?.frame.minX ?? 0, rect.minX, accuracy: 0.01)
-                XCTAssertEqual(inRow.last?.frame.maxX ?? 0, rect.maxX, accuracy: 0.01)
+            let frames = face.frames(in: rect)
+            XCTAssertEqual(face.rows.count, 6)  // F キーの段 + 5 段
+            // 段ごとに、左端から右端まで埋まる（2 段にまたがる return・上下に分けた矢印も含めて）
+            let rowTops = Set(frames.map { ($0.frame.minY * 100).rounded() / 100 })
+            for top in rowTops {
+                let inRow = frames.filter { abs($0.frame.minY - top) < 0.01 && $0.frame.height > 1 }
+                    + frames.filter { $0.frame.minY < top - 0.01 && $0.frame.maxY > top + 0.01 }
+                XCTAssertEqual(inRow.map(\.frame.minX).min() ?? 0, rect.minX, accuracy: 0.01)
+                XCTAssertEqual(inRow.map(\.frame.maxX).max() ?? 0, rect.maxX, accuracy: 0.01)
             }
+            XCTAssertEqual(frames.map(\.frame.maxY).max() ?? 0, rect.maxY, accuracy: 0.01)
+            XCTAssertEqual(frames.map(\.frame.minY).min() ?? 0, rect.minY, accuracy: 0.01)
         }
+    }
+
+    /// 写真の配列（Mac の英国式）: 刷ってある記号・return・F と J・ポインタの位置
+    func testUSFollowsTheMacBritishLayout() {
+        let rect = CGRect(x: 0, y: 0, width: 200, height: 280)
+        let left = KeyboardLayouts.usLeft.frames(in: rect)
+        let right = KeyboardLayouts.usRight.frames(in: rect)
+        func key(_ frames: [(key: KeySpec, frame: CGRect)], _ id: String) -> (key: KeySpec, frame: CGRect)? {
+            frames.first { $0.key.id == id }
+        }
+        // 3 は shift で £、option で #。2 は option で €
+        XCTAssertEqual(key(left, "ch-3")?.key.subLabel, "£")
+        XCTAssertEqual(key(left, "ch-3")?.key.option, "#")
+        XCTAssertEqual(key(left, "ch-2")?.key.option, "€")
+        XCTAssertEqual(key(left, "ch-§")?.key.subLabel, "±")
+        // ` は Z の左、\ は A の段の右（ISO）
+        XCTAssertNotNil(key(left, "ch-`"))
+        XCTAssertLessThan(key(left, "ch-`")!.frame.minX, key(left, "ch-z")!.frame.minX)
+        XCTAssertEqual(key(right, "ch-\\")?.frame.minY, key(right, "ch-h")?.frame.minY)
+        // return は 2 段にまたがり、右端にある
+        let send = key(right, "send")!
+        XCTAssertEqual(send.key.rowSpan, 2)
+        XCTAssertEqual(send.frame.maxX, rect.maxX, accuracy: 0.01)
+        XCTAssertEqual(send.frame.minY, key(right, "ch-y")!.frame.minY, accuracy: 0.01)
+        XCTAssertEqual(send.frame.maxY, key(right, "ch-h")!.frame.maxY, accuracy: 0.01)
+        // F と J だけがホームポジション
+        XCTAssertEqual((left + right).filter { $0.key.homing }.map(\.key.id).sorted(), ["ch-f", "ch-j"])
+        // ↑ と ↓ は 1 つの枠を上下に分ける
+        let up = key(right, "up")!.frame, down = key(right, "down")!.frame
+        XCTAssertEqual(up.minX, down.minX, accuracy: 0.01)
+        XCTAssertEqual(up.maxY, down.minY, accuracy: 0.01)
+        XCTAssertEqual(up.height, down.height, accuracy: 0.01)
+        // ポインタはスペースの内側（左面の右端、右面の左端）
+        let pl = key(left, "pointer-left")!.frame, pr = key(right, "pointer-right")!.frame
+        XCTAssertEqual(pl.maxX, rect.maxX, accuracy: 0.01)
+        XCTAssertEqual(pr.minX, rect.minX, accuracy: 0.01)
+        XCTAssertEqual(key(left, "space-l")!.frame.maxX, pl.minX, accuracy: 0.01)
+        XCTAssertEqual(key(right, "space-r")!.frame.minX, pr.maxX, accuracy: 0.01)
+        // F キーの段は低い
+        XCTAssertLessThan(key(left, "f1")!.frame.height, key(left, "ch-q")!.frame.height)
+        // 🌐（fn）が最下段の左端
+        XCTAssertEqual(key(left, "mod-fn")?.frame.minX, rect.minX)
+    }
+
+    /// ポインタ: 小さな揺れでは動かず、ずれが大きいほど速く、上限で止まる
+    func testPointerSpeedGrowsWithOffset() {
+        XCTAssertEqual(PointerCurve.speed(for: 0), 0)
+        XCTAssertEqual(PointerCurve.speed(for: PointerCurve.deadZone), 0)
+        let speeds = stride(from: 4.0, through: 60, by: 4).map { PointerCurve.speed(for: CGFloat($0)) }
+        XCTAssertEqual(speeds, speeds.sorted())
+        XCTAssertGreaterThan(PointerCurve.speed(for: 20), PointerCurve.speed(for: 8) * 2)
+        XCTAssertEqual(PointerCurve.speed(for: 500), PointerCurve.maxSpeed)
     }
 
     func testKanaTallKeysSpanTwoRows() {
         let rect = CGRect(x: 0, y: 0, width: 200, height: 300)
         for face in [KeyboardLayouts.kanaLeft, KeyboardLayouts.kanaRight] {
-            let frames = face.frames(in: rect, rowHeight: 60)
+            let frames = face.frames(in: rect)
             let tall = frames.filter { $0.key.rowSpan == 2 }
             XCTAssertEqual(tall.count, 1)
             XCTAssertEqual(tall[0].frame, CGRect(x: 160, y: 180, width: 40, height: 120))
@@ -172,7 +229,7 @@ final class KeyboardTests: XCTestCase {
     func testKanaSendAndNewlinePositions() {
         let rect = CGRect(x: 0, y: 0, width: 200, height: 300)
         func at(_ face: KeyboardFace, _ id: String) -> CGRect? {
-            face.frames(in: rect, rowHeight: 60).first { $0.key.id == id }?.frame
+            face.frames(in: rect).first { $0.key.id == id }?.frame
         }
         XCTAssertEqual(at(KeyboardLayouts.kanaLeft, "newline")?.origin, CGPoint(x: 0, y: 240))
         XCTAssertEqual(at(KeyboardLayouts.kanaLeft, "send")?.origin, CGPoint(x: 160, y: 180))

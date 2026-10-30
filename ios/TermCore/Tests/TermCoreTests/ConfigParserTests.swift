@@ -49,11 +49,22 @@ final class ConfigParserTests: XCTestCase {
     }
 
     func testDurations() {
-        let (c, d) = ConfigParser.parse("key-repeat-delay = 300ms\nkey-repeat-interval = 40\nclipboard-clear = 2m\nkeepalive = 1.5s")
+        let (c, d) = ConfigParser.parse("key-repeat-delay = 300ms\nkey-repeat-interval = 40\nclipboard-clear = 2m\nkeepalive = 1.5s\nkeepalive = 2x")
         XCTAssertEqual(c.keyRepeatDelay, 0.3, accuracy: 1e-9)
         XCTAssertEqual(c.keyRepeatInterval, 0.04, accuracy: 1e-9)
+        XCTAssertEqual(c.clipboardClear, 120, accuracy: 1e-9)
         XCTAssertEqual(c.keepalive, 1.5, accuracy: 1e-9)
-        XCTAssertEqual(d.map(\.line), [3])
+        XCTAssertEqual(d.map(\.line), [5])
+    }
+
+    /// Face ID を求めるまでの時間（既定 15 分、0 で毎回）
+    func testAppLockAfter() {
+        XCTAssertEqual(TermConfig().appLockAfter, 900)
+        XCTAssertEqual(ConfigParser.parse("app-lock-after = 15m").config.appLockAfter, 900)
+        XCTAssertEqual(ConfigParser.parse("app-lock-after = 1h").config.appLockAfter, 3600)
+        XCTAssertEqual(ConfigParser.parse("app-lock-after = 0").config.appLockAfter, 0)
+        XCTAssertEqual(ConfigParser.parse("app-lock-after = 90").config.appLockAfter, 90)
+        XCTAssertEqual(ConfigParser.parse("app-lock-after = 2d").diagnostics.count, 1)
     }
 
     /// inf や巨大な値で、後の整数への変換が落ちないこと

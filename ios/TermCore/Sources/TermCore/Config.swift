@@ -48,6 +48,8 @@ public struct TermConfig: Equatable, Sendable {
 
     // MARK: 安全
     public var appLock = true
+    /// アプリを開いていない時間がこれ（秒）を超えたら、次に開くときに Face ID を求める。0 で毎回
+    public var appLockAfter = 900.0
     public var privacyBlur = true
     /// アプリからコピーした内容を消すまでの秒数。0 で消さない
     public var clipboardClear = 60.0

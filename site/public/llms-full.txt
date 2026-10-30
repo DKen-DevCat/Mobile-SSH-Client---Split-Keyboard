@@ -463,7 +463,8 @@ splitterm config check --file path/to/config
 
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
-| `app-lock` | `true` | 起動時と、バックグラウンドからの復帰時に Face ID（かパスコード）を求める |
+| `app-lock` | `true` | アプリを開くときに Face ID（かパスコード）を求める（いつ求めるかは app-lock-after） |
+| `app-lock-after` | `15m` | アプリを開いていない時間がこれを超えたら、次に開くときに Face ID を求める（15m・1h・90s。0 で毎回） 長くする変更は、端末で本人の確認（Face ID かパスコード）の後で効く |
 | `privacy-blur` | `true` | アプリスイッチャーでターミナルの内容をぼかす |
 | `clipboard-clear` | `60s` | アプリからコピーした内容を消すまでの時間。0 で消さない |
 

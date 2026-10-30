@@ -2,21 +2,30 @@ import TermCore
 import UIKit
 
 /// 分割キーボードの片側。指ごとに独立して追跡し、両手で同時に押しても取りこぼさない。
-/// 文字は指を離した時点で確定する（出力順はその確定順）。⌫ と矢印は長押しでリピートする
+/// 文字は指を離した時点で確定する（出力順はその確定順）。⌫ と矢印は長押しでリピートする。
+/// 修飾キーは押している間だけ効き、長押ししてもリピートしない。スペースの横の赤い丸はポインタ（PointerStick）
 final class SplitKeyboardView: UIView {
     let model: KeyboardModel
     var face: KeyboardFace { didSet { relayout() } }
-    var rowHeight: CGFloat = 40 { didSet { relayout() } }
+    /// 1 段の高さの目安（隙間と文字の大きさに使う。段ごとの高さは面の比で決まる）
+    var rowHeight: CGFloat = 40 { didSet { setNeedsDisplay() } }
     var colors: KeyboardColors { didSet { setNeedsDisplay() } }
     var repeatDelay: TimeInterval = 0.4
     var repeatInterval: TimeInterval = 0.05
-    var haptics = true
+    var haptics = true {
+        didSet { model.pointer.haptics = haptics }
+    }
     /// フリックとみなす移動量（pt）
     var flickThreshold: CGFloat = 14
+
+    /// ThinkPad の TrackPoint の赤
+    static let pointerRed = UIColor(red: 0.86, green: 0.13, blue: 0.11, alpha: 1)
 
     private var keys: [(key: KeySpec, frame: CGRect)] = []
     private var active: [ObjectIdentifier: TouchState] = [:]
     private let feedback = UIImpactFeedbackGenerator(style: .light)
+    /// F と J（ホームポジション）は少し強く
+    private let homingFeedback = UIImpactFeedbackGenerator(style: .medium)
 
     private final class TouchState {
         let key: KeySpec
@@ -52,7 +61,7 @@ final class SplitKeyboardView: UIView {
     }
 
     private func relayout() {
-        keys = face.frames(in: bounds, rowHeight: rowHeight)
+        keys = face.frames(in: bounds)
         setNeedsDisplay()
     }
 
@@ -71,16 +80,45 @@ final class SplitKeyboardView: UIView {
             if case .modifier(let m) = key.action, activeMods.contains(m) { fill = colors.accent }
             fill.setFill()
             path.fill()
+            if case .pointer = key.action {
+                drawPointer(in: r)
+                continue
+            }
+            if case .capsLock = key.action { drawCapsLight(in: r, on: model.capsLock) }
             drawLabel(key, in: r)
+            if key.homing { drawHomingBar(in: r) }
         }
     }
 
-    private func drawLabel(_ key: KeySpec, in r: CGRect) {
-        let isWord = key.label.count > 2
-        let size = isWord ? min(12, r.height * 0.26) : min(20, r.height * 0.42)
-        let font = UIFont.systemFont(ofSize: size, weight: isWord ? .medium : .regular)
+    private func paragraph() -> NSParagraphStyle {
         let p = NSMutableParagraphStyle()
         p.alignment = .center
+        return p
+    }
+
+    private func drawLabel(_ key: KeySpec, in r: CGRect) {
+        let p = paragraph()
+        if let name = key.symbol {
+            // 絵（F キー・🌐・Touch ID）。F キーは絵の下に小さく番号
+            let hasText = !key.label.isEmpty
+            let side = min(r.width, r.height) * (hasText ? 0.42 : 0.52)
+            let conf = UIImage.SymbolConfiguration(pointSize: side, weight: .regular)
+            if let img = UIImage(systemName: name, withConfiguration: conf)?.withTintColor(colors.text, renderingMode: .alwaysOriginal) {
+                let sz = img.size
+                let y = hasText ? r.minY + r.height * 0.12 : r.midY - sz.height / 2
+                img.draw(in: CGRect(x: r.midX - sz.width / 2, y: y, width: sz.width, height: sz.height))
+            }
+            if hasText {
+                let font = UIFont.systemFont(ofSize: min(9, r.height * 0.24))
+                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: colors.subText, .paragraphStyle: p]
+                (key.label as NSString).draw(in: CGRect(x: r.minX, y: r.maxY - font.lineHeight - r.height * 0.06,
+                                                        width: r.width, height: font.lineHeight), withAttributes: attrs)
+            }
+            return
+        }
+        let isWord = key.label.count > 2
+        let size = isWord ? min(11, r.height * 0.24) : min(20, r.height * 0.42)
+        let font = UIFont.systemFont(ofSize: size, weight: isWord ? .medium : .regular)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: colors.text, .paragraphStyle: p]
         let label = key.label as NSString
         let h = label.size(withAttributes: attrs).height
@@ -93,6 +131,46 @@ final class SplitKeyboardView: UIView {
             y += r.height * 0.1
         }
         label.draw(in: CGRect(x: r.minX, y: y, width: r.width, height: h), withAttributes: attrs)
+        if let option = key.option {
+            // option で打つ文字（€・#）は右下に小さく
+            let f = UIFont.systemFont(ofSize: min(9, r.height * 0.2))
+            let right = NSMutableParagraphStyle()
+            right.alignment = .right
+            let a: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: colors.subText, .paragraphStyle: right]
+            (option as NSString).draw(in: CGRect(x: r.minX, y: r.maxY - f.lineHeight - r.height * 0.06,
+                                                 width: r.width - r.width * 0.1, height: f.lineHeight), withAttributes: a)
+        }
+    }
+
+    /// F と J の突起（指で探す印）
+    private func drawHomingBar(in r: CGRect) {
+        let w = r.width * 0.28, h: CGFloat = max(1.5, r.height * 0.035)
+        let bar = UIBezierPath(roundedRect: CGRect(x: r.midX - w / 2, y: r.maxY - r.height * 0.16, width: w, height: h),
+                               cornerRadius: h / 2)
+        colors.subText.setFill()
+        bar.fill()
+    }
+
+    /// caps lock のランプ（入のとき緑に光る）
+    private func drawCapsLight(in r: CGRect, on: Bool) {
+        let d = max(4, r.height * 0.1)
+        let dot = UIBezierPath(ovalIn: CGRect(x: r.minX + r.width * 0.1, y: r.minY + r.height * 0.12, width: d, height: d))
+        (on ? UIColor.systemGreen : colors.subText.withAlphaComponent(0.4)).setFill()
+        dot.fill()
+    }
+
+    /// 赤い丸（TrackPoint）。触れている間は少し明るく
+    private func drawPointer(in r: CGRect) {
+        let d = min(r.width, r.height) * 0.62
+        let circle = CGRect(x: r.midX - d / 2, y: r.midY - d / 2, width: d, height: d)
+        let red = model.pointer.isActive ? Self.pointerRed.withAlphaComponent(1) : Self.pointerRed.withAlphaComponent(0.92)
+        red.setFill()
+        UIBezierPath(ovalIn: circle).fill()
+        // 滑り止めの粒の質感（内側の輪）
+        UIColor.black.withAlphaComponent(0.25).setStroke()
+        let ring = UIBezierPath(ovalIn: circle.insetBy(dx: d * 0.18, dy: d * 0.18))
+        ring.lineWidth = max(1, d * 0.06)
+        ring.stroke()
     }
 
     // MARK: タッチ
@@ -109,21 +187,35 @@ final class SplitKeyboardView: UIView {
         for t in touches {
             let p = t.location(in: self)
             guard let hit = key(at: p) else { continue }
-            if haptics { feedback.impactOccurred(intensity: 0.6) }
+            let id = ObjectIdentifier(t)
+            if case .pointer = hit.key.action {
+                // ポインタ: ずれはウィンドウの座標で測る（左右の面をまたいでも同じ尺度）
+                let state = TouchState(key: hit.key, frame: hit.frame, start: p, highlight: CALayer())
+                active[id] = state
+                model.pointer.down(id, at: t.location(in: nil), time: t.timestamp)
+                setNeedsDisplay(hit.frame)
+                continue
+            }
+            if haptics {
+                if hit.key.homing { homingFeedback.impactOccurred(intensity: 1) } else { feedback.impactOccurred(intensity: 0.6) }
+            }
             let hl = CALayer()
             hl.frame = hit.frame.insetBy(dx: 1, dy: 1)
             hl.cornerRadius = 6
-            hl.backgroundColor = colors.pressed.cgColor
-            hl.opacity = 0.85
+            // F と J は押すと赤く光る
+            hl.backgroundColor = hit.key.homing ? Self.pointerRed.withAlphaComponent(0.85).cgColor : colors.pressed.cgColor
+            hl.opacity = hit.key.homing ? 1 : 0.85
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer.addSublayer(hl)
             CATransaction.commit()
             let state = TouchState(key: hit.key, frame: hit.frame, start: p, highlight: hl)
-            active[ObjectIdentifier(t)] = state
+            active[id] = state
             switch hit.key.action {
             case .modifier(let m):
                 model.modifierDown(m)
+            case .capsLock:
+                model.toggleCapsLock()
             case .key(_, _, true):
                 startRepeat(state)
             case .flick(let set):
@@ -133,26 +225,40 @@ final class SplitKeyboardView: UIView {
             }
         }
         feedback.prepare()
+        homingFeedback.prepare()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            guard let s = active[ObjectIdentifier(t)], case .flick(let set) = s.key.action else { continue }
-            let p = t.location(in: self)
-            let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: flickThreshold)
-            showPopup(s, text: set.character(d))
+            guard let s = active[ObjectIdentifier(t)] else { continue }
+            switch s.key.action {
+            case .pointer:
+                model.pointer.moved(ObjectIdentifier(t), to: t.location(in: nil))
+            case .flick(let set):
+                let p = t.location(in: self)
+                let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: flickThreshold)
+                showPopup(s, text: set.character(d))
+            default:
+                break
+            }
         }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         // 同時に離れた指は、時刻順に確定する
         for t in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
-            guard let s = active.removeValue(forKey: ObjectIdentifier(t)) else { continue }
+            let id = ObjectIdentifier(t)
+            guard let s = active.removeValue(forKey: id) else { continue }
             finish(s)
             let start = Perf.begin(.keyToSend)
             switch s.key.action {
+            case .pointer:
+                model.pointer.up(id, at: t.location(in: nil), time: t.timestamp)
+                setNeedsDisplay(s.frame)
             case .modifier(let m):
                 model.modifierUp(m)
+            case .capsLock:
+                break
             case .flick:
                 let p = t.location(in: self)
                 let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: flickThreshold)
@@ -166,9 +272,14 @@ final class SplitKeyboardView: UIView {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            guard let s = active.removeValue(forKey: ObjectIdentifier(t)) else { continue }
+            let id = ObjectIdentifier(t)
+            guard let s = active.removeValue(forKey: id) else { continue }
             finish(s)
-            if case .modifier(let m) = s.key.action { model.modifierUp(m, cancelled: true) }
+            switch s.key.action {
+            case .modifier(let m): model.modifierUp(m, cancelled: true)
+            case .pointer: model.pointer.cancel(id)
+            default: break
+            }
         }
     }
 
@@ -183,12 +294,16 @@ final class SplitKeyboardView: UIView {
 
     private func startRepeat(_ s: TouchState) {
         s.timer = Timer.scheduledTimer(withTimeInterval: repeatDelay, repeats: false) { [weak self, weak s] _ in
-            guard let self, let s else { return }
-            s.repeated = true
-            self.model.commit(s.key)
-            s.timer = Timer.scheduledTimer(withTimeInterval: self.repeatInterval, repeats: true) { [weak self, weak s] _ in
+            MainActor.assumeIsolated {
                 guard let self, let s else { return }
+                s.repeated = true
                 self.model.commit(s.key)
+                s.timer = Timer.scheduledTimer(withTimeInterval: self.repeatInterval, repeats: true) { [weak self, weak s] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, let s else { return }
+                        self.model.commit(s.key)
+                    }
+                }
             }
         }
     }

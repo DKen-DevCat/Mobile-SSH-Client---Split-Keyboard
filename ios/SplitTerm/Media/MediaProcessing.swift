@@ -167,17 +167,29 @@ enum MediaProcessing {
         export.outputFileType = fileType
         export.metadataItemFilter = .forSharing()
         export.shouldOptimizeForNetworkUse = false
-        await withTaskCancellationHandler {
-            await export.export()
-        } onCancel: {
-            export.cancelExport()
-        }
+        await exportCancellable(export)
         guard export.status == .completed, (try? await hasNoLocation(av: AVURLAsset(url: dst))) == true else {
             try? FileManager.default.removeItem(at: dst)
             if Task.isCancelled { throw CancellationError() }
             throw locationNotRemoved
         }
         return dst
+    }
+
+    /// 書き出しの取り消しを、別のスレッドから呼べるように包む（AVAssetExportSession は Sendable ではない）
+    private final class ExportHandle: @unchecked Sendable {
+        let session: AVAssetExportSession
+        init(_ session: AVAssetExportSession) { self.session = session }
+    }
+
+    /// 書き出す。Task を取り消したら書き出しも止める
+    private static func exportCancellable(_ export: AVAssetExportSession) async {
+        let handle = ExportHandle(export)
+        await withTaskCancellationHandler {
+            await handle.session.export()
+        } onCancel: {
+            handle.session.cancelExport()
+        }
     }
 
     /// 動画・音声に位置情報が残っていないか（位置のメタデータと、時系列のメタデータのトラック）
@@ -337,11 +349,7 @@ enum MediaProcessing {
             }
             export.outputURL = audio
             export.outputFileType = .m4a
-            await withTaskCancellationHandler {
-                await export.export()
-            } onCancel: {
-                export.cancelExport()
-            }
+            await exportCancellable(export)
             guard export.status == .completed else {
                 try? FileManager.default.removeItem(at: audio)
                 return .skipped("（動画に音声が無いので、文字起こしを飛ばしました）")

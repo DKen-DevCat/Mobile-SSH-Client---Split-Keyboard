@@ -1,33 +1,51 @@
 import CoreGraphics
 import Foundation
 
-/// 画面のキーボードの配置（データだけ。描画と触れ方はアプリ側）。docs/design.md「横持ち：US（Mac）分割」「横持ち：かなフリック」
+/// 画面のキーボードの配置（データだけ。描画と触れ方はアプリ側）。docs/design.md「横持ち：英語（Mac の英国式）分割」「横持ち：かなフリック」
 public struct KeySpec: Hashable, Sendable {
     public var id: String
     public var label: String
-    /// shift（US）または fn の小さな表示
+    /// shift の文字や記号（キーの上側の小さな表示）
     public var subLabel: String?
+    /// option で打つ文字（キーに刷ってあるもの。2 の € と 3 の #）。右下の小さな表示
+    public var option: String?
+    /// 文字の代わりに描く SF Symbols の名前（F キーの絵、🌐、Touch ID）
+    public var symbol: String?
+    /// ホームポジションの印（F と J）。押したときの振動を少し強くし、赤く光らせる
+    public var homing: Bool
     /// 幅（その面の単位）
     public var width: CGFloat
-    /// 縦に何段ぶん使うか（かなの送信・改行キーは 2）
+    /// 縦に何段ぶん使うか（かなの送信・改行キー、英語の return は 2）
     public var rowSpan: Int
+    /// 1 つの枠を上下に分けて置くキー（↑ と ↓）。空でなければ、このキー自身は置かない
+    public var stacked: [KeySpec]
     public var action: KeyAction
     public var style: KeyStyle
 
-    public init(_ id: String, _ label: String, sub: String? = nil, width: CGFloat = 1, rowSpan: Int = 1,
+    public init(_ id: String, _ label: String, sub: String? = nil, option: String? = nil, symbol: String? = nil,
+                homing: Bool = false, width: CGFloat = 1, rowSpan: Int = 1, stacked: [KeySpec] = [],
                 action: KeyAction, style: KeyStyle = .character) {
         self.id = id
         self.label = label
         self.subLabel = sub
+        self.option = option
+        self.symbol = symbol
+        self.homing = homing
         self.width = width
         self.rowSpan = rowSpan
+        self.stacked = stacked
         self.action = action
         self.style = style
     }
 }
 
 public enum KeyStyle: Hashable, Sendable {
-    case character, function, modifier, accent
+    case character, function, modifier, accent, pointer
+}
+
+/// ポインタ（スペースの横の赤い丸）が左右どちらか
+public enum PointerSide: Hashable, Sendable {
+    case left, right
 }
 
 public enum ModifierKey: Hashable, Sendable, CaseIterable {
@@ -39,13 +57,20 @@ public enum KeyAction: Hashable, Sendable {
     case character(String, shifted: String?, fn: TermKey?)
     /// 機能キー（矢印・⌫ など）。fn で `fn` のキーになる。`repeats` なら長押しでリピート
     case key(TermKey, fn: TermKey?, repeats: Bool)
+    /// 押している間だけ効く（離すと外れる。長押しでも 1 回）。fn だけは、ほかのキーを押さずに離すとキーボードを切り替える（🌐）
     case modifier(ModifierKey)
-    /// 送信（⏎、CR）
+    /// caps lock。押すたびに入・切（英字だけ大文字になる）
+    case capsLock
+    /// 送信（⏎、CR）。shift と一緒なら改行（`newline`）
     case send
     /// 改行（設定の `newline`）
     case newline
-    /// US とかなの切り替え
+    /// 英語とかなの切り替え
     case switchKeyboard
+    /// Touch ID の位置。アプリをすぐロックする
+    case lockApp
+    /// スペースの横の赤い丸。触れている間はシェルのポインタを動かす（触れ方はアプリ側）
+    case pointer(PointerSide)
     /// かなの 1 列。フリックの方向で文字が決まる
     case flick(FlickSet)
     /// 「→」。同じキーの連打で文字を進める（トグル入力）のを区切る
@@ -98,20 +123,36 @@ public enum FlickDirection: Sendable, Equatable {
 /// キーボードの片側 1 面
 public struct KeyboardFace: Sendable {
     public var rows: [[KeySpec]]
-    /// 全段で共通の格子の幅（単位）。nil なら段ごとに幅の合計で割る（US）
+    /// 全段で共通の格子の幅（単位）。nil なら段ごとに幅の合計で割る
     public var gridUnits: CGFloat?
+    /// 段ごとの高さの比（nil なら全段 1。英語の F キーの段は低い）
+    public var rowWeights: [CGFloat]?
 
-    public init(rows: [[KeySpec]], gridUnits: CGFloat? = nil) {
+    public init(rows: [[KeySpec]], gridUnits: CGFloat? = nil, rowWeights: [CGFloat]? = nil) {
         self.rows = rows
         self.gridUnits = gridUnits
+        self.rowWeights = rowWeights
     }
 
-    /// 各キーの枠（rect の中で下寄せ、段の高さは rowHeight）。2 段にまたがるキーは下の段の同じ位置をふさぐ
-    public func frames(in rect: CGRect, rowHeight: CGFloat) -> [(key: KeySpec, frame: CGRect)] {
+    /// 段の高さの比の合計（rect の高さをこれで割ったものが 1 の高さ）
+    public var totalWeight: CGFloat { (0..<rows.count).reduce(0) { $0 + weight($1) } }
+
+    func weight(_ row: Int) -> CGFloat { rowWeights.flatMap { row < $0.count ? $0[row] : nil } ?? 1 }
+
+    /// 各キーの枠（rect いっぱいに、段の高さは比で分ける）。2 段にまたがるキーは下の段の同じ位置をふさぐ。
+    /// 上下に分けるキー（stacked）は、子のキーを上下半分ずつに置く
+    public func frames(in rect: CGRect) -> [(key: KeySpec, frame: CGRect)] {
         var out: [(key: KeySpec, frame: CGRect)] = []
         // (段, 開始単位, 幅単位) のふさがった場所
         var blocked: [(row: Int, x: CGFloat, w: CGFloat)] = []
-        let top = rect.maxY - rowHeight * CGFloat(rows.count)
+        let unitHeight = rect.height / max(totalWeight, 0.0001)
+        var tops: [CGFloat] = []
+        var y = rect.minY
+        for r in 0..<rows.count {
+            tops.append(y)
+            y += weight(r) * unitHeight
+        }
+        tops.append(y)
         for (r, row) in rows.enumerated() {
             let units = gridUnits ?? row.reduce(0) { $0 + $1.width }
             let unit = rect.width / max(units, 0.0001)
@@ -121,9 +162,17 @@ public struct KeyboardFace: Sendable {
                 while let b = blocked.first(where: { $0.row == r && abs($0.x - x) < 0.001 }) {
                     x += b.w
                 }
-                let frame = CGRect(x: rect.minX + x * unit, y: top + CGFloat(r) * rowHeight,
-                                   width: key.width * unit, height: rowHeight * CGFloat(key.rowSpan))
-                out.append((key: key, frame: frame))
+                let bottom = tops[min(r + max(1, key.rowSpan), rows.count)]
+                let frame = CGRect(x: rect.minX + x * unit, y: tops[r], width: key.width * unit, height: bottom - tops[r])
+                if key.stacked.isEmpty {
+                    out.append((key: key, frame: frame))
+                } else {
+                    let h = frame.height / CGFloat(key.stacked.count)
+                    for (i, child) in key.stacked.enumerated() {
+                        out.append((key: child, frame: CGRect(x: frame.minX, y: frame.minY + CGFloat(i) * h,
+                                                              width: frame.width, height: h)))
+                    }
+                }
                 for extra in 1..<max(1, key.rowSpan) {
                     blocked.append((r + extra, x, key.width))
                 }
@@ -135,51 +184,77 @@ public struct KeyboardFace: Sendable {
 }
 
 public enum KeyboardLayouts {
-    // MARK: US（Mac）分割。5|6・T|Y・G|H・B|N で分ける。caps lock の位置は control
+    // MARK: 英語（Mac の英国式、ISO）分割。写真の配列（docs/design.md）をそのまま左右に分ける。
+    // 5|6・T|Y・G|H・B|N で分ける。最上段は esc と F1〜F12、最下段は fn（🌐）・control・option・command・矢印
 
-    static func ch(_ c: String, _ shifted: String? = nil, fn: TermKey? = nil, sub: String? = nil) -> KeySpec {
-        KeySpec("ch-\(c)", c, sub: sub ?? shifted, action: .character(c, shifted: shifted, fn: fn))
+    static func ch(_ c: String, _ shifted: String? = nil, option: String? = nil, fn: TermKey? = nil) -> KeySpec {
+        KeySpec("ch-\(c)", c, sub: shifted, option: option, action: .character(c, shifted: shifted, fn: fn))
     }
 
-    static func letter(_ c: String) -> KeySpec {
-        KeySpec("ch-\(c)", c.uppercased(), action: .character(c, shifted: c.uppercased(), fn: nil))
+    static func letter(_ c: String, homing: Bool = false) -> KeySpec {
+        KeySpec("ch-\(c)", c.uppercased(), homing: homing, action: .character(c, shifted: c.uppercased(), fn: nil))
     }
 
-    static func mod(_ m: ModifierKey, _ label: String, width: CGFloat = 1) -> KeySpec {
-        KeySpec("mod-\(m)", label, width: width, action: .modifier(m), style: .modifier)
+    static func mod(_ m: ModifierKey, _ label: String, sub: String? = nil, symbol: String? = nil,
+                    width: CGFloat = 1, id: String? = nil) -> KeySpec {
+        KeySpec(id ?? "mod-\(m)", label, sub: sub, symbol: symbol, width: width, action: .modifier(m), style: .modifier)
     }
 
     static func fnKey(_ id: String, _ label: String, _ key: TermKey, fn: TermKey? = nil, sub: String? = nil,
-                      width: CGFloat = 1, repeats: Bool = false) -> KeySpec {
-        KeySpec(id, label, sub: sub, width: width, action: .key(key, fn: fn, repeats: repeats), style: .function)
+                      symbol: String? = nil, width: CGFloat = 1, repeats: Bool = false) -> KeySpec {
+        KeySpec(id, label, sub: sub, symbol: symbol, width: width, action: .key(key, fn: fn, repeats: repeats), style: .function)
     }
 
+    /// F キー（Mac の刷り込みの絵）。端末には F1〜F12 を送る
+    static func fKey(_ n: Int, _ symbol: String, width: CGFloat = 1) -> KeySpec {
+        fnKey("f\(n)", "F\(n)", .function(n), symbol: symbol, width: width)
+    }
+
+    static func space(_ id: String, width: CGFloat) -> KeySpec {
+        KeySpec(id, "", width: width, action: .character(" ", shifted: nil, fn: nil))
+    }
+
+    static func pointer(_ side: PointerSide) -> KeySpec {
+        KeySpec("pointer-\(side)", "", action: .pointer(side), style: .pointer)
+    }
+
+    /// F キーの段の高さ（ほかの段を 1 として）
+    public static let functionRowWeight: CGFloat = 0.6
+
     public static let usLeft = KeyboardFace(rows: [
-        [ch("`", "~", fn: .escape, sub: "~"), ch("1", "!", fn: .function(1)), ch("2", "@", fn: .function(2)),
-         ch("3", "#", fn: .function(3)), ch("4", "$", fn: .function(4)), ch("5", "%", fn: .function(5))],
-        [fnKey("tab", "tab", .tab, width: 1.5), letter("q"), letter("w"), letter("e"), letter("r"), letter("t")],
-        [mod(.control, "control", width: 1.75), letter("a"), letter("s"), letter("d"), letter("f"), letter("g")],
-        [mod(.shift, "shift", width: 2.25), letter("z"), letter("x"), letter("c"), letter("v"), letter("b")],
-        [fnKey("esc", "esc", .escape), mod(.fn, "fn"), mod(.option, "option"), mod(.command, "command", width: 1.25),
-         KeySpec("space-l", "", width: 2.5, action: .character(" ", shifted: nil, fn: nil))],
-    ])
+        [fnKey("esc", "esc", .escape, width: 1.5), fKey(1, "sun.min"), fKey(2, "sun.max"), fKey(3, "rectangle.3.group"),
+         fKey(4, "magnifyingglass"), fKey(5, "mic"), fKey(6, "moon")],
+        [ch("§", "±"), ch("1", "!", fn: .function(1)), ch("2", "@", option: "€", fn: .function(2)),
+         ch("3", "£", option: "#", fn: .function(3)), ch("4", "$", fn: .function(4)), ch("5", "%", fn: .function(5))],
+        [fnKey("tab", "⇥", .tab, width: 1.5), letter("q"), letter("w"), letter("e"), letter("r"), letter("t")],
+        [KeySpec("caps", "⇪", width: 1.75, action: .capsLock, style: .modifier),
+         letter("a"), letter("s"), letter("d"), letter("f", homing: true), letter("g")],
+        [mod(.shift, "⇧", width: 1.25, id: "mod-shift-l"), ch("`", "~"),
+         letter("z"), letter("x"), letter("c"), letter("v"), letter("b")],
+        [mod(.fn, "fn", symbol: "globe"), mod(.control, "control", sub: "^", id: "mod-control-l"),
+         mod(.option, "option", sub: "⌥", id: "mod-option-l"), mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-l"),
+         space("space-l", width: 1.5), pointer(.left)],
+    ], rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
 
     public static let usRight = KeyboardFace(rows: [
+        [fKey(7, "backward", width: 1.25), fKey(8, "playpause", width: 1.25), fKey(9, "forward", width: 1.25),
+         fKey(10, "speaker", width: 1.25), fKey(11, "speaker.wave.1", width: 1.25), fKey(12, "speaker.wave.3", width: 1.25),
+         KeySpec("lock", "", symbol: "touchid", action: .lockApp, style: .function)],
         [ch("6", "^", fn: .function(6)), ch("7", "&", fn: .function(7)), ch("8", "*", fn: .function(8)),
          ch("9", "(", fn: .function(9)), ch("0", ")", fn: .function(10)), ch("-", "_", fn: .function(11)),
          ch("=", "+", fn: .function(12)), fnKey("bs", "⌫", .backspace, fn: .delete, width: 1.5, repeats: true)],
-        [letter("y"), letter("u"), letter("i"), letter("o"), letter("p"), ch("[", "{"), ch("]", "}"), ch("\\", "|")],
-        [letter("h"), letter("j"), letter("k"), letter("l"), ch(";", ":"), ch("'", "\""),
-         KeySpec("send", "return", width: 1.75, action: .send, style: .accent)],
-        [letter("n"), letter("m"), ch(",", "<"), ch(".", ">"), ch("/", "?"),
-         KeySpec("newline", "改行", width: 1.5, action: .newline, style: .function)],
-        [KeySpec("space-r", "", width: 2.5, action: .character(" ", shifted: nil, fn: nil)),
-         KeySpec("switch", "かな", action: .switchKeyboard, style: .function),
-         fnKey("left", "←", .left, fn: .home, sub: "home", repeats: true),
-         fnKey("down", "↓", .down, fn: .pageDown, sub: "pgdn", repeats: true),
-         fnKey("up", "↑", .up, fn: .pageUp, sub: "pgup", repeats: true),
-         fnKey("right", "→", .right, fn: .end, sub: "end", repeats: true)],
-    ])
+        [letter("y"), letter("u"), letter("i"), letter("o"), letter("p"), ch("[", "{"), ch("]", "}"),
+         KeySpec("send", "⏎", width: 1.5, rowSpan: 2, action: .send, style: .function)],
+        [letter("h"), letter("j", homing: true), letter("k"), letter("l"), ch(";", ":"), ch("'", "\""), ch("\\", "|")],
+        [letter("n"), letter("m"), ch(",", "<"), ch(".", ">"), ch("/", "?"), mod(.shift, "⇧", width: 3.5, id: "mod-shift-r")],
+        [pointer(.right), space("space-r", width: 2.25), mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-r"),
+         mod(.option, "option", sub: "⌥", id: "mod-option-r"),
+         fnKey("left", "◀", .left, fn: .home, repeats: true),
+         KeySpec("updown", "", stacked: [fnKey("up", "▲", .up, fn: .pageUp, repeats: true),
+                                         fnKey("down", "▼", .down, fn: .pageDown, repeats: true)],
+                 action: .key(.up, fn: nil, repeats: false), style: .function),
+         fnKey("right", "▶", .right, fn: .end, repeats: true)],
+    ], gridUnits: 8.5, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
 
     // MARK: かなフリック。iOS の 12 キーを左右に 1 面ずつ。上に 1 段足す
 

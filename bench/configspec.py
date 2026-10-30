@@ -45,7 +45,7 @@ def kind_of(key: str, examples: list[str]) -> str:
         return "bool"
     if re.fullmatch(r"#[0-9A-Fa-f]{6}", v):
         return "color"
-    if re.fullmatch(r"\d+(\.\d+)?(ms|s)", v):
+    if re.fullmatch(r"\d+(\.\d+)?(ms|s|m)", v):
         return "duration"
     if re.fullmatch(r"\d+(\.\d+)?[dh]", v):
         return "days"
@@ -114,8 +114,8 @@ def check_value(kind: str, value: str) -> str | None:
         return f"`{value}` は true か false で書きます"
     if kind == "color" and not re.fullmatch(r"#?[0-9A-Fa-f]{6}", value):
         return f"`{value}` は #RRGGBB の色ではありません"
-    if kind == "duration" and not re.fullmatch(r"\d+(\.\d+)?\s*(ms|s)?", value.lower()):
-        return f"`{value}` は時間（例 400ms、60s）ではありません"
+    if kind == "duration" and not re.fullmatch(r"\d+(\.\d+)?\s*(ms|s|m|h)?", value.lower()):
+        return f"`{value}` は時間（例 400ms、60s、15m）ではありません"
     if kind == "days" and not re.fullmatch(r"\d+(\.\d+)?\s*[dh]?", value.lower()):
         return f"`{value}` は日数（例 7d、12h）ではありません"
     if kind == "number" and not re.fullmatch(r"\d+(\.\d+)?", value):
