@@ -12,9 +12,14 @@ protocol SessionPresenter: AnyObject {
 /// （docs/design.md「接続の安定性」: SSH＋tmux＋自動再接続）
 final class TerminalSession {
     let host: HostEntry
+    /// タブの番号。同じ接続先のタブのうち、使われていない最小の番号（`TabSlots`）。
+    /// 1 番は `host.name`、2 番からは `host.name 2`…と呼び、tmux のセッションも `main`・`main-2`…と分ける
+    let slot: Int
     let engine: TerminalEngine
     private(set) var state: ConnectionState = .idle { didSet { onStateChange?() } }
     private(set) var title: String
+    /// 接続先から題名が来ないときの題名（接続先の名前と番号）
+    private let baseTitle: String
     var onStateChange: (() -> Void)?
     /// 画面が変わった（どのスレッドからも呼ぶ）
     var onDisplayNeeded: (@Sendable () -> Void)? {
@@ -39,10 +44,13 @@ final class TerminalSession {
     var scrollTop: Int?
     var selection: TextSelection?
 
-    init(host: HostEntry, config: TermConfig, cols: Int, rows: Int) {
+    init(host: HostEntry, config: TermConfig, cols: Int, rows: Int, slot: Int) {
         self.host = host
+        self.slot = slot
         self.config = config
-        self.title = host.name
+        let base = slot <= 1 ? host.name : "\(host.name) \(slot)"
+        self.baseTitle = base
+        self.title = base
         engine = TerminalEngine(cols: cols, rows: rows, scrollback: config.scrollbackLimit, termName: config.term)
         size.cols = cols
         size.rows = rows
@@ -51,8 +59,8 @@ final class TerminalSession {
         engine.onBacklog = { pause in box.get()?.setReading(!pause) }
         engine.onTitle = { [weak self] t in
             guard let self else { return }
-            // tmux の題名は長いので、接続先の名前を先に
-            self.title = t.isEmpty ? self.host.name : "\(self.host.name) · \(t)"
+            // tmux の題名は長いので、接続先の名前（と番号）を先に
+            self.title = t.isEmpty ? self.baseTitle : "\(self.baseTitle) · \(t)"
             self.onStateChange?()
         }
     }
@@ -68,7 +76,7 @@ final class TerminalSession {
         let host = self.host
         let config = self.config
         let target = SSHTarget(host: host.address, port: host.port, user: host.user, term: config.term,
-                               command: host.startupCommand, keepalive: config.keepalive)
+                               command: host.startupCommand(slot: slot), keepalive: config.keepalive)
         let key: SSHAuthKey
         do {
             key = try DeviceKeyStore.loadOrCreate()
@@ -212,6 +220,20 @@ final class TerminalSession {
         retryWork?.cancel()
     }
 
+    /// 裏に回ってからの猶予（約 30 秒）が切れる。iOS に止められる前に、自分で接続を閉じる。
+    /// 再試行は予約しない（前面に戻ると `becameActive()` がすぐ繋ぎ直し、tmux に戻る）。
+    /// 閉じるのは繋いでいる・繋いでいる途中のタブ。切れているタブと、人の判断が要る `.failed` はそのまま
+    /// （シェルが終わった・自動で繋がない設定のタブも、前面に戻って勝手に繋がない）
+    func suspendForBackground() {
+        retryWork?.cancel()
+        guard isLive else { return }
+        // connection を先に外してから閉じる（close の知らせ `connectionClosed` を、今の接続ではないとして無視させる）
+        let c = connection
+        connection = nil
+        c?.close()
+        state = .disconnected(reason: "裏に回ったので切りました", willRetry: config.reconnect)
+    }
+
     /// 回線が変わった（Wi-Fi ⇄ 5G）。TCP は続かないので、待たずに繋ぎ直す
     func networkChanged() {
         guard appActive else { return }
@@ -232,6 +254,14 @@ final class TerminalSession {
     // MARK: 入出力
 
     var isConnected: Bool { if case .connected = state { return true } else { return false } }
+
+    /// 繋がっている、または繋いでいる途中（裏に回っても、猶予の間は保ちたいタブ）
+    var isLive: Bool {
+        switch state {
+        case .connecting, .connected: return true
+        case .idle, .disconnected, .failed: return false
+        }
+    }
 
     /// メディアを送るのに使う接続（端末を開いて繋がっているときだけ）
     var uploadConnection: SSHConnection? {

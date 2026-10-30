@@ -101,16 +101,17 @@ final class ConfigParserTests: XCTestCase {
         XCTAssertEqual(d, [])
         XCTAssertEqual(c.hosts.count, 3)
         XCTAssertEqual(c.hosts[0], HostEntry(name: "mac", user: "me", address: "my-mac.example.ts.net"))
-        XCTAssertEqual(c.hosts[0].startupCommand,
-                       "exec \"$SHELL\" -lc 'if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s main; "
-                       + "else echo \"tmux が見つかりません。素のシェルを開きます\"; exec \"$SHELL\" -l; fi'")
+        // 生成される 1 行そのものは StartupCommandTests が固定している
+        XCTAssertEqual(c.hosts[0].startupCommand(slot: 1)?.contains("-A -s main\"; fi;"), true)
+        XCTAssertEqual(c.hosts[0].tmuxSessionName(slot: 2), "main-2")
         XCTAssertEqual(c.hosts[1].port, 2222)
         XCTAssertNil(c.hosts[1].tmuxSession)
-        XCTAssertNil(c.hosts[1].startupCommand)
+        XCTAssertNil(c.hosts[1].startupCommand(slot: 1))
         XCTAssertEqual(c.hosts[1].auth, .password)
         XCTAssertEqual(c.hosts[2].address, "fe80::1")
         XCTAssertEqual(c.hosts[2].port, 2200)
         XCTAssertEqual(c.hosts[2].tmuxSession, "work")
+        XCTAssertEqual(c.hosts[2].tmuxSessionName(slot: 3), "work-3")
         XCTAssertEqual(c.autoConnectHost?.name, "pi")
     }
 

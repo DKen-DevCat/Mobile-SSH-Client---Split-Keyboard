@@ -26,3 +26,4 @@
 
 - `(cd ios/TermCore && swift test)`（Mac。TermCore と splitterm）
 - `python3 -m pytest tests`（`test_ios.py` の多くは macOS の道具に頼るので Mac で流す）
+- `python3 scripts/pr_status.py`（このブランチの PR と CI の状態、次の一手）

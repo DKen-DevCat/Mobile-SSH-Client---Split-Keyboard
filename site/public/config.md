@@ -31,7 +31,7 @@ keyboard = kana
 clipboard-clear = 30s
 ```
 
-`host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。
+`host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。タブごとに別のセッションに入る（1 つ目は `main`、2 つ目から `main-2`・`main-3`…）。タブを閉じても tmux のセッションは残り、次に開いたタブが同じ番号なら戻る。tmux は `/opt/homebrew/bin` や `/usr/local/bin` などの決まった場所を順に探し、見つからなければ知らせて素のシェルを開く。`tmux=none` なら素のシェル。
 
 ## 確かめ方
 
@@ -46,7 +46,7 @@ splitterm config check --file path/to/config
 
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
-| `host` | なし（何度でも書ける） | 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名\|none] [auth=key\|password] tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main） tmux=none なら素のシェル |
+| `host` | なし（何度でも書ける） | 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名\|none] [auth=key\|password] tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）。 タブごとに別のセッションに入る（1 つ目は main、2 つ目から main-2、main-3…）。タブを閉じても tmux は残る tmux=none なら素のシェル |
 | `auto-connect` | 空 | 起動時につなぐ host の名前。空なら最初の host、none ならつながない |
 | `term` | `xterm-256color` | 接続先に伝える端末の種類 |
 | `keepalive` | `15s` | TCP の keepalive の間隔（切れた接続を早く見つける）。0 で使わない |

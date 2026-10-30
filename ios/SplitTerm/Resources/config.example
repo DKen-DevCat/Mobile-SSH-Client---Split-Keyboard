@@ -17,7 +17,8 @@
 
 # ─── 接続 ───────────────────────────────────────────────
 # 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]
-#   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）
+#   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）。
+#   タブごとに別のセッションに入る（1 つ目は main、2 つ目から main-2、main-3…）。タブを閉じても tmux は残る
 #   tmux=none なら素のシェル
 # host = mac me@my-mac.example.ts.net tmux=main
 # host = pi pi@192.168.1.20:2222 tmux=none
