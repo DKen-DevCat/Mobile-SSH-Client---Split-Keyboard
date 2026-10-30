@@ -22,6 +22,7 @@ final class MediaSender {
     }
 
     /// 裏に回っても、区切りまでは送る（iOS が許す間だけ）
+    @MainActor
     private final class BackgroundTask {
         var id = UIBackgroundTaskIdentifier.invalid
         func end() {

@@ -80,38 +80,41 @@ final class TerminalSession {
             return
         }
         let allowPassword = config.passwordAuth || host.auth == .password
-        let conn = SSHConnection(
-            target: target, key: key,
-            hostKeyCheck: { [weak self] presented in
-                let stored: String?
-                do {
-                    stored = try HostKeyStore.load(for: host.endpointID)
-                } catch {
-                    // 読めないのを「鍵が変わった」と取り違えない。繋がずに止める
-                    return false
-                }
-                let verdict = HostKeyVerdict.judge(stored: stored, presented: presented)
-                if verdict == .trusted { return true }
-                guard let presenter = await self?.presenter else { return false }
-                let ok = await presenter.confirmHostKey(host: host, verdict: verdict)
-                guard ok, case .unknown = verdict else { return false }
-                // 確かめている間に、別の接続が鍵を保存したかもしれない。まだ無いときだけ保存し、あれば照合し直す
-                if let now = try? HostKeyStore.load(for: host.endpointID) { return now == presented }
-                do {
-                    try HostKeyStore.save(presented, for: host.endpointID)
-                    return true
-                } catch {
-                    return false
-                }
-            },
-            passwordPrompt: allowPassword ? { [weak self] in
+        // 閉包の型を先に決める（async の閉包を三項演算子に入れると、型を推し量れない）
+        let hostKeyCheck: SSHConnection.HostKeyCheck = { [weak self] presented in
+            let stored: String?
+            do {
+                stored = try HostKeyStore.load(for: host.endpointID)
+            } catch {
+                // 読めないのを「鍵が変わった」と取り違えない。繋がずに止める
+                return false
+            }
+            let verdict = HostKeyVerdict.judge(stored: stored, presented: presented)
+            if verdict == .trusted { return true }
+            guard let presenter = await self?.presenter else { return false }
+            let ok = await presenter.confirmHostKey(host: host, verdict: verdict)
+            guard ok, case .unknown = verdict else { return false }
+            // 確かめている間に、別の接続が鍵を保存したかもしれない。まだ無いときだけ保存し、あれば照合し直す
+            if let now = try? HostKeyStore.load(for: host.endpointID) { return now == presented }
+            do {
+                try HostKeyStore.save(presented, for: host.endpointID)
+                return true
+            } catch {
+                return false
+            }
+        }
+        var passwordPrompt: SSHConnection.PasswordPrompt?
+        if allowPassword {
+            passwordPrompt = { [weak self] in
                 guard let presenter = await self?.presenter else { return nil }
                 return await presenter.askPassword(host: host)
-            } : nil)
+            }
+        }
+        let conn = SSHConnection(target: target, key: key, hostKeyCheck: hostKeyCheck, passwordPrompt: passwordPrompt)
         let engine = self.engine
         conn.onData = { bytes in engine.feed(bytes) }
         // conn を強く持たない（持つと onClose → conn の循環で、接続ごとに NIO のチャンネルが残る）
-        conn.onClose = { [weak self, weak conn] reason in
+        conn.onClose = { [weak self, weak conn] (reason: SSHCloseReason) in
             DispatchQueue.main.async { [weak self, weak conn] in
                 guard let conn else { return }
                 self?.connectionClosed(reason, conn)
