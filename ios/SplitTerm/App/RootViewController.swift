@@ -399,7 +399,7 @@ final class RootViewController: UIViewController {
             label.font = .systemFont(ofSize: 11, weight: .bold)
             label.adjustsFontSizeToFitWidth = true
             label.minimumScaleFactor = 0.5
-            label.lineBreakMode = .byClip
+            label.lineBreakMode = .byClipping
         }
         keyboardButton.layer.cornerRadius = LayoutEngine.cornerButtonSize / 2
         keyboardButton.showsMenuAsPrimaryAction = true
