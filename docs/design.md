@@ -29,6 +29,7 @@ iPhone と iPad 向けに、SSH 先のシェルを操作するネイティブの
 | 7 | Get Started を Cloudflare Pages（無料、`mobile-ssh-client---split-keyboard.pages.dev`）で配信し、設定と運用はエージェントが Mac の `splitterm`（CLI と MCP）で実行できるようにする。サイトは日本語＋英語（トップ・Get Started・llms.txt） | 設計案 `docs/proposal-2026-10-30.md`（2026-10-30 承認） |
 | 8 | 写真・動画・音声（撮影・録音も）を、同じ SSH の接続で Mac の受け取り箱へ原本のまま送る。動画を読めないエージェントには、12 枚のコンタクトシート（1,568px）と端末の中での文字起こしにする。位置情報は既定で外す。Gemini CLI は確かめるまで画像だけのエージェントとして扱う | 同上 |
 | 9 | アプリの名前は「Mobile-SSH-Client---Split-Keyboard」。コマンド・フォルダの短い名前は `splitterm` / `SplitTerm`（内部） | 同上 |
+| 10 | 見た目は利用者のデザイン（05-A Mono Landscape。#0B0B0B と #F2F2EE、JetBrains Mono）。favicon とアプリアイコンは確定、トップのメインビジュアルは土台（変わる前提）。トップ（LP）はまず PC だけ。HTML-in-Canvas は今は使わない | 利用者のデザイン（2026-10-30）。手作りのアイコンを置き換えた（「サイトと AIO」の「見た目」） |
 | 6 | 最低 OS を iOS / iPadOS 17 にする。古い OS に合わせて操作感を落としたり、保守の止まった版や非公式の依存を抱えたりしない | iPad 第 5 世代（iPadOS 16 まで）を外した。かな漢字変換（AzooKey の最新版）を今回組み込んだ。SSH は Citadel ではなく Apple 公式の swift-nio-ssh を維持した（「技術スタックと段階計画」） |
 
 ## 設計原則と性能目標
@@ -445,6 +446,14 @@ Ghostty と同じく、**config ファイル 1 枚**ですべてを決める。�
 ### サイトと AIO
 
 `site/`（Markdown から標準ライブラリだけの `site/build.py` で作り、生成物も git に入れる。Cloudflare 側ではビルドしない）。すべてのページに Markdown の双子、`llms.txt`・`llms-full.txt`、JSON-LD、`robots.txt`（AI のクローラを許す）、`sitemap.xml`、安全なヘッダー（`_headers`）。費用は 0 円（Cloudflare Pages の無料枠、公開リポジトリの GitHub Actions）。ベンチマークは `bench/`（A: 静的な検査を CI で毎回、B: 手元の `claude -p` に課題を解かせる、C: AI 検索での見え方を手で記録）。詳細は `site/README.md` と `docs/proposal-2026-10-30.md`。
+
+#### 見た目
+
+- **元の絵**：`brand/app-icon.svg`（1024px。角丸は iOS が付ける。文字は JetBrains Mono Bold を輪郭にしてあり、フォントが無くても同じに描ける）と `brand/favicon.svg`。PNG・ICO は `node scripts/gen_brand.cjs` で作る（Chromium で描く）。PNG を直接いじらない
+- **トップのメインビジュアル**：デザイン（1600×900）の寸法を `calc(N * var(--u))` でそのまま書き、画面の幅と高さに合わせて縮める（コンテナの単位 `cqw`。JavaScript は使わない）。デザインが変わったら数字を写すだけでよい。文字は画像にせず HTML のまま（検索と AI が読める）
+- **フォント**：JetBrains Mono（OFL）をサイトから配る（ラテン文字だけ、可変の太さ、約 31KB）。日本語は OS のゴシック（ヒラギノ・游ゴシック など）。外のフォント配信（Google Fonts）は読まない（外へのリクエスト 0）
+- **HTML-in-Canvas を使わない理由**：Chrome でもまだ試験中（フラグか Origin Trial。Chrome 150・155 で API が変わる）で、Safari と Firefox には無い。メインビジュアルは文字・SVG・CSS でできていて、HTML のままでどの大きさでもくっきり描ける。効果（シェーダーなど）を足したくなったら、メインビジュアルは 1 つの区画にまとめてあるので、その区画だけを canvas へ移す
+- **PC だけ**：モバイル向けの調整は後で（利用者の指示、2026-10-30）
 
 ## 拡張：エージェントハーネス
 

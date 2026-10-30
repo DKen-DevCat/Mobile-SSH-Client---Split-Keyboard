@@ -72,7 +72,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | エージェントに MCP を足す | `claude mcp add splitterm -- "$PWD/ios/TermCore/.build/release/splitterm" mcp` |
 | スクリプトのテスト | `python3 -m pytest tests` |
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
-| アイコンを作り直す | `python3 scripts/gen_icon.py`（Pillow が要る） |
+| アイコン・favicon を作り直す | `node scripts/gen_brand.cjs`（Playwright が要る。元の絵は `brand/`。`--og` で OGP 画像も） |
 
 ### 環境変数
 
