@@ -71,14 +71,14 @@ final class ConfigParserTests: XCTestCase {
 
     func testHosts() {
         let (c, d) = ConfigParser.parse("""
-        host = mac dken@s-macbook-air.tail65f907.ts.net
+        host = mac me@my-mac.example.ts.net
         host = pi pi@192.168.1.5:2222 tmux=none auth=password
         host = v6 me@[fe80::1]:2200 tmux=work
         auto-connect = pi
         """)
         XCTAssertEqual(d, [])
         XCTAssertEqual(c.hosts.count, 3)
-        XCTAssertEqual(c.hosts[0], HostEntry(name: "mac", user: "dken", address: "s-macbook-air.tail65f907.ts.net"))
+        XCTAssertEqual(c.hosts[0], HostEntry(name: "mac", user: "me", address: "my-mac.example.ts.net"))
         XCTAssertEqual(c.hosts[0].startupCommand,
                        "exec \"$SHELL\" -lc 'if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s main; "
                        + "else echo \"tmux が見つかりません。素のシェルを開きます\"; exec \"$SHELL\" -l; fi'")

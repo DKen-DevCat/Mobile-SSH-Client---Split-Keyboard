@@ -419,7 +419,7 @@ splitterm config check --file path/to/config
 | `palette` | `0=#1C2128` `1=#FF5F6D` `2=#3FE08A` `3=#FFB454` `4=#2F81F7` `5=#FF6AC1` `6=#5CE1E6` `7=#C9D1D9` `8=#545D68` `9=#FF8A94` `10=#7BF0B0` `11=#FFCC85` `12=#6CA6FF` `13=#FF9AD6` `14=#8EEFF2` `15=#FFFFFF`（番号ごとに上書きできる） | 16 色のパレット（番号=色） |
 | `minimum-contrast` | `4.5` | 文字と背景のコントラスト比がこれを下回ると、文字色の明るさを補正する。1 で補正しない |
 | `cursor-style` | `block` | カーソル: block / bar / underline |
-| `cursor-blink` | `false` | カーソル: block / bar / underline |
+| `cursor-blink` | `false` | カーソルを点滅させる |
 | `scrollback-limit` | `10000` | スクロールバックの行数（メモリの上だけに置く） |
 
 ## キーボード

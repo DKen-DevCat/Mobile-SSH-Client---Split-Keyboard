@@ -355,7 +355,7 @@ Ghostty と同じく、**config ファイル 1 枚**ですべてを決める。�
 
 使うのは自分 1 人なので、lfm3-vl-server の iPhone アプリ（同リポジトリの `docs/native-app.md` §9）と同じく、無料の Apple ID（Xcode の Personal Team）で署名し、Mac から入れ直す。有料登録をしないので、App Store・TestFlight・Web から入れる OTA は使わない。
 
-- 無料の署名の制約：アプリは 7 日で起動できなくなる（入れ直しが要る）、1 台に入れられるのは 3 本まで、App ID は 7 日に 10 個まで。Bundle ID（`io.github.dken-devcat.splitterm`）は変えない（キーチェーンの鍵もこれに付く）。
+- 無料の署名の制約：アプリは 7 日で起動できなくなる（入れ直しが要る）、1 台に入れられるのは 3 本まで、App ID は 7 日に 10 個まで。Bundle ID（`io.github.dken-devcat.mobile-ssh-client-split-keyboard`）は変えない（キーチェーンの鍵もこれに付く）。
 - Team は git に入れない（`ios/Config/Local.xcconfig`。スクリプトは Xcode の設定から無料の Team を読む）。
 
 準備（1 回だけ。コマンドは README）：

@@ -46,7 +46,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
    scripts/ios_pubkey.sh
    ```
 
-6. 自動の入れ直しを登録する（リポジトリを `~/Mobile-SSH-Client---Split-Keyboard` 以外に置いたら、plist の 3 か所のパスを直す）
+6. 自動の入れ直しを登録する（リポジトリを `~/Mobile-SSH-Client---Split-Keyboard` 以外に置いたら、plist の 4 か所のパスを直す）
 
    ```bash
    cp launchd/com.dken.splitterm-ios.plist ~/Library/LaunchAgents/

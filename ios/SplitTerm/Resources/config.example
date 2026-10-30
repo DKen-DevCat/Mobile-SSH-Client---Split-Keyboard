@@ -19,7 +19,7 @@
 # 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]
 #   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）
 #   tmux=none なら素のシェル
-# host = mac dken@s-macbook-air.tail65f907.ts.net tmux=main
+# host = mac me@my-mac.example.ts.net tmux=main
 # host = pi pi@192.168.1.20:2222 tmux=none
 
 # 起動時につなぐ host の名前。空なら最初の host、none ならつながない
@@ -81,6 +81,8 @@
 
 # カーソル: block / bar / underline
 # cursor-style = block
+
+# カーソルを点滅させる
 # cursor-blink = false
 
 # スクロールバックの行数（メモリの上だけに置く）
