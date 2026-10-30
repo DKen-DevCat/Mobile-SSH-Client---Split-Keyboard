@@ -51,11 +51,11 @@ jobs:
           swift --version
       - name: TermCore と splitterm のテスト
         run: swift test --package-path ios/TermCore
-      - name: アプリをビルドする（シミュレータ向け、arm64 だけ、署名なし）
+      - name: アプリをビルドする（入れ直しと同じ Release、シミュレータ向け、arm64 だけ、署名なし）
         run: |
           set +e
           xcodebuild -quiet -project ios/SplitTerm.xcodeproj -scheme SplitTerm \
-            -destination 'generic/platform=iOS Simulator' -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -configuration Release \
             -skipPackagePluginValidation -skipMacroValidation \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1
           code=$?
