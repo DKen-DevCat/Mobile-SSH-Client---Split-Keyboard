@@ -27,6 +27,7 @@ final class SplitKeyboardView: UIView {
     /// F と J（ホームポジション）は少し強く
     private let homingFeedback = UIImpactFeedbackGenerator(style: .medium)
 
+    @MainActor
     private final class TouchState {
         let key: KeySpec
         let frame: CGRect

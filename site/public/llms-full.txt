@@ -426,11 +426,11 @@ splitterm config check --file path/to/config
 
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
-| `keyboard` | `us` | 起動時のキーボード: us / kana |
+| `keyboard` | `us` | 起動時のキーボード: us（英語。Mac の英国式の配列）/ kana（かなフリック） |
 | `keyboard-pitch` | `auto` | キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50） |
 | `key-repeat-delay` | `400ms` | ⌫ と矢印の長押しリピート |
 | `key-repeat-interval` | `50ms` | ⌫ と矢印の長押しリピート |
-| `option-as-meta` | `true` | option を meta（ESC を前に付ける）として送る |
+| `option-as-meta` | `true` | option を meta（ESC を前に付ける）として送る（キーに刷ってある option の文字 € と # は、こちらより先に効く） |
 | `haptics` | `true` | キーに触れたときの振動 |
 | `newline` | `auto` | 改行キーが送るもの ・`auto`: 接続先が括弧付きペーストを有効にしていれば改行を貼り付けとして、無効なら ESC+CR ・`paste`: auto と同じ ・`esc-cr`: いつも ESC+CR（zsh・Claude Code の Option+Enter と同じ） ・`ctrl-j`: LF。bash・zsh では実行と同じ扱いになるので注意 |
 | `soft-keyboard-with-hardware` | `false` | ハードウェアキーボードがつながっていても、画面のキーボードを出し続ける（iPad） |

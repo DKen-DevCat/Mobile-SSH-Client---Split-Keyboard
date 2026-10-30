@@ -58,7 +58,8 @@ final class PointerStick {
             suppressClick = true
             if haptics {
                 deep.impactOccurred(intensity: 1)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { [weak self] in
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 70_000_000)
                     self?.click.impactOccurred(intensity: 0.7)
                 }
             }

@@ -89,7 +89,7 @@
 # scrollback-limit = 10000
 
 # ─── キーボード ─────────────────────────────────────────
-# 起動時のキーボード: us / kana
+# 起動時のキーボード: us（英語。Mac の英国式の配列）/ kana（かなフリック）
 # keyboard = us
 
 # キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50）
@@ -99,7 +99,7 @@
 # key-repeat-delay = 400ms
 # key-repeat-interval = 50ms
 
-# option を meta（ESC を前に付ける）として送る
+# option を meta（ESC を前に付ける）として送る（キーに刷ってある option の文字 € と # は、こちらより先に効く）
 # option-as-meta = true
 
 # キーに触れたときの振動
