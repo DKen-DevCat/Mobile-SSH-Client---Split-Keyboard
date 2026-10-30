@@ -69,24 +69,34 @@ final class TerminalSession {
         let config = self.config
         let target = SSHTarget(host: host.address, port: host.port, user: host.user, term: config.term,
                                command: host.startupCommand, keepalive: config.keepalive)
-        let key: SSHAuthKey?
+        let key: SSHAuthKey
         do {
             key = try DeviceKeyStore.loadOrCreate()
         } catch {
-            key = nil
+            // 鍵が読めないのに繋ぐと「認証に失敗」に見えて原因が隠れる。原因を出して止める（タブのタップで繋ぎ直す）
             Perf.log.error("鍵を読めません: \(error.localizedDescription, privacy: .public)")
+            Perf.end(.reconnect, perf)
+            state = .failed(reason: "端末の鍵を読めません（\(error.localizedDescription)）。ロックを解いてから、タブをタップして繋ぎ直してください")
+            return
         }
         let allowPassword = config.passwordAuth || host.auth == .password
         let conn = SSHConnection(
             target: target, key: key,
             hostKeyCheck: { [weak self] presented in
-                let verdict = HostKeyStore.verdict(for: host.endpointID, presented: presented)
+                let stored: String?
+                do {
+                    stored = try HostKeyStore.load(for: host.endpointID)
+                } catch {
+                    // 読めないのを「鍵が変わった」と取り違えない。繋がずに止める
+                    return false
+                }
+                let verdict = HostKeyVerdict.judge(stored: stored, presented: presented)
                 if verdict == .trusted { return true }
                 guard let presenter = await self?.presenter else { return false }
                 let ok = await presenter.confirmHostKey(host: host, verdict: verdict)
                 guard ok, case .unknown = verdict else { return false }
                 // 確かめている間に、別の接続が鍵を保存したかもしれない。まだ無いときだけ保存し、あれば照合し直す
-                if let stored = HostKeyStore.stored(for: host.endpointID) { return stored == presented }
+                if let now = try? HostKeyStore.load(for: host.endpointID) { return now == presented }
                 do {
                     try HostKeyStore.save(presented, for: host.endpointID)
                     return true
@@ -116,6 +126,8 @@ final class TerminalSession {
                 guard let self, self.connection === conn else { return }
                 self.attempt = 0
                 self.state = .connected
+                // 前の接続で解析待ちが溜まって受信を止めていたら、新しい接続も止めておく（解析が追いつけば再開する）
+                if self.engine.isBacklogged { conn.setReading(false) }
                 Perf.log.info("接続しました: \(host.name, privacy: .public)")
                 // つないでいる間に窓の大きさが変わっていたら知らせる
                 if self.size != size { conn.resize(self.size) }

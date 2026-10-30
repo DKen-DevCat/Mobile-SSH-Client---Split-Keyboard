@@ -30,13 +30,21 @@ xcrun devicectl device copy from --device "$UDID" --timeout 60 \
   --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
   --source Documents/splitterm.pub --destination "$PUB" > "$DIR/pubkey.log" 2>&1 \
   || { echo "公開鍵を取れませんでした（${DIR}/pubkey.log）。Mobile-SSH-Client---Split-Keyboard を一度開いてから、もう一度試してください" >&2; exit 1; }
-line="$(head -n 1 "$PUB")"
+# 中身は 1 行だけ（2 行目以降に別の鍵を混ぜて、見せる指紋と足す鍵を食い違わせないため）
+if [ "$(grep -c . "$PUB")" != 1 ]; then
+  echo "公開鍵のファイルが 1 行ではありません。足しません" >&2
+  exit 1
+fi
+line="$(grep . "$PUB")"
 # 鍵の種類と本体（base64）だけを受け付ける。オプション（command= など）や余計な語は通さない
 if ! printf '%s' "$line" | grep -Eq '^ecdsa-sha2-nistp256 [A-Za-z0-9+/]+=* splitterm$'; then
   echo "公開鍵の形が違います: ${line}" >&2
   exit 1
 fi
-fp="$(ssh-keygen -lf "$PUB" | awk '{print $2}')"
+# 指紋は、確かめたこの 1 行から計算する（足すのもこの 1 行）
+CHECKED="$DIR/splitterm.checked.pub"
+printf '%s\n' "$line" > "$CHECKED"
+fp="$(ssh-keygen -lf "$CHECKED" | awk '{print $2}')"
 case "$fp" in SHA256:*) ;; *) echo "指紋を計算できませんでした" >&2; exit 1 ;; esac
 echo "$line"
 echo "指紋: ${fp}"
@@ -57,7 +65,14 @@ mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 key="$(printf '%s' "$line" | awk '{print $2}')"
 if [ -f "$AUTH" ] && grep -qF "$key" "$AUTH"; then
-  echo "もう登録してあります: ${AUTH}"
+  if grep -F "$key" "$AUTH" | grep -qv '^restrict,pty '; then
+    # 前に restrict,pty なしで足した行は、付けた行に替える
+    awk -v k="$key" -v l="restrict,pty $line" 'index($0, k) && $0 !~ /^restrict,pty / { print l; next } { print }' \
+      "$AUTH" > "$AUTH.tmp" && chmod 600 "$AUTH.tmp" && mv "$AUTH.tmp" "$AUTH"
+    echo "登録してあった行に restrict,pty を付けました: ${AUTH}"
+  else
+    echo "もう登録してあります: ${AUTH}"
+  fi
   exit 0
 fi
 printf 'restrict,pty %s\n' "$line" >> "$AUTH"

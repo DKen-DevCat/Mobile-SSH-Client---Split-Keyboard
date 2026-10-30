@@ -155,6 +155,8 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
     private let state = NSLock()
     private var pendingBytes = 0
     private var paused = false
+    /// 受信を止めているか（接続を替えたとき、新しい接続も止めておくのに使う）
+    public var isBacklogged: Bool { state.withLock { paused } }
     static let backlogHigh = 8 * 1024 * 1024
     static let backlogLow = 1 * 1024 * 1024
     // 題名・ベル・モードの知らせは、接続先が連打してもメインスレッドへは 1 回にまとめる

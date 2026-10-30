@@ -216,6 +216,27 @@ def test_pubkey_rejects_anything_but_the_apps_key_line(rig: Rig, line: str):
     assert not (rig.home / ".ssh/authorized_keys").exists()
 
 
+def test_pubkey_file_with_two_lines_is_refused(rig: Rig):
+    # 1 行目に他人の鍵、2 行目に本物を置いて、見せる指紋と足す鍵を食い違わせる手を止める
+    other = "ecdsa-sha2-nistp256 AAAAOTHERKEY splitterm"
+    put_pub(rig, other + "\n" + KEY)
+    r = rig.run("ios_pubkey.sh", "--fingerprint", fingerprint(KEY))
+    assert r.returncode == 1
+    assert "1 行ではありません" in r.stderr
+    assert not (rig.home / ".ssh/authorized_keys").exists()
+
+
+def test_an_old_unrestricted_line_gets_restricted(rig: Rig):
+    put_pub(rig, KEY)
+    ssh = rig.home / ".ssh"
+    ssh.mkdir()
+    (ssh / "authorized_keys").write_text("ssh-ed25519 AAAAothers me@mac\n" + KEY + "\n")
+    r = rig.run("ios_pubkey.sh", "--fingerprint", fingerprint(KEY))
+    assert r.returncode == 0, r.stderr
+    assert (ssh / "authorized_keys").read_text() == "ssh-ed25519 AAAAothers me@mac\nrestrict,pty " + KEY + "\n"
+    assert "restrict,pty を付けました" in r.stdout
+
+
 def test_pubkey_missing_on_device(rig: Rig):
     r = rig.run("ios_pubkey.sh")
     assert r.returncode == 1

@@ -11,7 +11,8 @@ TARGETED_DEVICE_FAMILY = 1,2
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 PRODUCT_NAME = SplitTerm
-// 無料の Team は 7 日に作れる App ID が 10 個まで。キーチェーンの鍵（Secure Enclave の鍵・ホスト鍵）も Bundle ID に付くので変えない
+// 無料の Team は 7 日に作れる App ID が 10 個まで。キーチェーンの鍵（Secure Enclave の鍵・ホスト鍵）も Bundle ID に付くので、
+// 一度入れたら変えない（2026-10-30、まだ一度も入れていないうちに、アプリの名前に合わせて決めた）
 PRODUCT_BUNDLE_IDENTIFIER = io.github.dken-devcat.mobile-ssh-client-split-keyboard
 MARKETING_VERSION = 0.1
 // scripts/ios_reinstall.sh が作った日時（yyyyMMddHHmm）で上書きする

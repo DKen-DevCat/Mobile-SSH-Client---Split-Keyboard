@@ -123,14 +123,10 @@ public enum DeviceKeyStore {
 public enum HostKeyStore {
     static let service = "io.github.dken-devcat.splitterm.host-keys"
 
-    /// 保存したホスト鍵。読めなければ（キーチェーンの失敗）、初めての接続先と取り違えないよう、空の文字列を返す
-    /// （どの鍵とも一致しないので、照合は「変わっている」になり、接続を止める）
-    public static func stored(for endpoint: String) -> String? {
-        do {
-            return try Keychain.read(service: service, account: endpoint).flatMap { String(data: $0, encoding: .utf8) }
-        } catch {
-            return ""
-        }
+    /// 保存したホスト鍵。無ければ nil。読めなければ（キーチェーンの失敗）投げる
+    /// （初めての接続先とも、鍵が変わったとも取り違えない。呼ぶ側は接続を止める）
+    public static func load(for endpoint: String) throws -> String? {
+        try Keychain.read(service: service, account: endpoint).flatMap { String(data: $0, encoding: .utf8) }
     }
 
     public static func save(_ openSSHKey: String, for endpoint: String) throws {
@@ -141,7 +137,5 @@ public enum HostKeyStore {
         Keychain.delete(service: service, account: endpoint)
     }
 
-    public static func verdict(for endpoint: String, presented: String) -> HostKeyVerdict {
-        HostKeyVerdict.judge(stored: stored(for: endpoint), presented: presented)
-    }
+
 }

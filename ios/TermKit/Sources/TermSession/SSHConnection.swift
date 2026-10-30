@@ -172,6 +172,7 @@ public final class SSHConnection: @unchecked Sendable {
         if cancelled {
             lock.withLock { reported = true }
             root.close(promise: nil)
+            clearCallbacks()
             throw SSHError.cancelled
         }
         root.closeFuture.whenComplete { [weak self] _ in self?.reportClose() }
@@ -233,29 +234,39 @@ public final class SSHConnection: @unchecked Sendable {
     }
 
     private var handshakeDone = false
+    /// 時間切れの見張りの世代。人に聞き終わるたびに新しい 20 秒を始め、古い見張りは何もしない
+    private var deadlineGeneration = 0
 
     private func humanBegan() { lock.withLock { waitingForHuman += 1 } }
-    private func humanEnded() { lock.withLock { waitingForHuman -= 1 } }
+
+    /// 人に聞き終わった。残りの握手に、改めて 20 秒を与える（聞いていた時間を数えない）
+    private func humanEnded() {
+        let root: Channel? = lock.withLock {
+            waitingForHuman -= 1
+            return waitingForHuman == 0 ? self.root : nil
+        }
+        if let root { scheduleHandshakeTimeout(root, after: Self.handshakeTimeout) }
+    }
 
     private func record(_ error: Error) {
         lock.withLock { if firstError == nil { firstError = error } }
     }
 
-    /// 握手が終わらなければ閉じる。人に聞いている間は待ち直す
+    /// 握手が終わらなければ閉じる。人に聞いている間は数えない（聞き終わったら humanEnded が新しく始める）
     private func scheduleHandshakeTimeout(_ root: Channel, after seconds: TimeInterval) {
+        let generation: Int = lock.withLock {
+            deadlineGeneration += 1
+            return deadlineGeneration
+        }
         root.eventLoop.scheduleTask(in: .milliseconds(Int64(seconds * 1000))) { [weak self] in
             guard let self else { return }
-            let action: Int = self.lock.withLock {
-                if self.handshakeDone || self.reported { return 0 }
-                if self.waitingForHuman > 0 { return 1 }
+            let expired: Bool = self.lock.withLock {
+                guard generation == self.deadlineGeneration, !self.handshakeDone, !self.reported,
+                      self.waitingForHuman == 0 else { return false }
                 if self.firstError == nil { self.firstError = SSHError.timedOut }
-                return 2
+                return true
             }
-            switch action {
-            case 1: self.scheduleHandshakeTimeout(root, after: 5)
-            case 2: root.close(promise: nil)
-            default: break
-            }
+            if expired { root.close(promise: nil) }
         }
     }
 
