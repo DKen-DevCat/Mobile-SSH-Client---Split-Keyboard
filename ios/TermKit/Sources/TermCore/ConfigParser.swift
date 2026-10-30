@@ -166,10 +166,13 @@ public enum ConfigParser {
         let (num, unit): (Substring, Unit) =
             t.hasSuffix("ms") ? (t.dropLast(2), .ms) :
             t.hasSuffix("s") ? (t.dropLast(1), .s) : (Substring(t), defaultUnit)
-        guard let v = Double(num.trimmingCharacters(in: .whitespaces)), v >= 0 else {
+        guard let v = Double(num.trimmingCharacters(in: .whitespaces)), v.isFinite, v >= 0 else {
             throw ConfigError("`\(s)` は時間（例 400ms、60s）ではありません")
         }
-        return unit == .ms ? v / 1000 : v
+        let seconds = unit == .ms ? v / 1000 : v
+        // 1 日を上限にする（大きすぎる値で整数への変換が落ちないように）
+        guard seconds <= 86_400 else { throw ConfigError("`\(s)` は長すぎます（1 日まで）") }
+        return seconds
     }
 
     /// 英数と . _ - だけ（tmux のセッション名としてそのままコマンドに渡すため）

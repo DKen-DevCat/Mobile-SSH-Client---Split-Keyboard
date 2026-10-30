@@ -1,5 +1,4 @@
 import GameController
-import LocalAuthentication
 import Network
 import TermCore
 import TermKana
@@ -36,11 +35,10 @@ final class RootViewController: UIViewController {
     private var layout: LayoutResult?
     private var grid = (cols: 80, rows: 24)
 
-    // 安全
-    private var needsUnlock = false
-    private var authenticating = false
-    private var privacyCover: UIView?
-    private var lockCover: UIView?
+    // 安全（ロックと画面の保護は SecurityGate。ロック中は入力をすべて捨てる）
+    private lazy var gate = SecurityGate(colors: colors)
+    /// 起動時の自動接続を、最初にロックを解くまで待たせる
+    private var autoConnectPending = true
     private let pathMonitor = NWPathMonitor()
     private var lastInterface: NWInterface.InterfaceType?
 
@@ -75,9 +73,11 @@ final class RootViewController: UIViewController {
         envBar.onShowDiagnostics = { [weak self] in self?.showDiagnostics() }
         candidateBar.onPick = { [weak self] candidate in self?.pickCandidate(candidate) }
 
+        gate.scene = { [weak self] in self?.view.window?.windowScene }
+        gate.onResume = { [weak self] in self?.resume() }
+        gate.onNotice = { [weak self] message in self?.alert("設定を一部効かせていません", message) }
         store.onChange = { [weak self] c, d in self?.apply(config: c, diagnostics: d) }
         apply(config: store.config, diagnostics: store.diagnostics, initial: true)
-        if config.appLock { needsUnlock = true }
 
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(hardwareKeyboardChanged), name: .GCKeyboardDidConnect, object: nil)
@@ -87,16 +87,15 @@ final class RootViewController: UIViewController {
         nc.addObserver(self, selector: #selector(didActivate), name: UIScene.didActivateNotification, object: nil)
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            let type: NWInterface.InterfaceType? =
-                path.status == .satisfied ? path.availableInterfaces.first?.type : nil
+            // つながっていない間（nil）は前の種類を覚えたままにする（Wi-Fi → 圏外 → 5G も「変わった」と分かるように）
+            guard path.status == .satisfied, let type = path.availableInterfaces.first?.type else { return }
             DispatchQueue.main.async { [weak self] in self?.pathChanged(type) }
         }
         pathMonitor.start(queue: DispatchQueue(label: "splitterm.path"))
 
         // 公開鍵を書類フォルダに置く（Mac の scripts/ios_pubkey.sh が取りにくる）。鍵が無ければここで作る
         if let key = try? DeviceKeyStore.loadOrCreate() { store.writePublicKey(key.authorizedKeysLine) }
-
-        if let host = config.autoConnectHost { openSession(host) }
+        // 自動接続は、ロックを解いてから（resume）
     }
 
     override var prefersStatusBarHidden: Bool { true }
@@ -132,6 +131,8 @@ final class RootViewController: UIViewController {
         terminalView.keyRepeatInterval = c.keyRepeatInterval
         terminalView.cursorBlink = c.cursorBlink
         terminalView.setColorSpace(c.colorSpace)
+        gate.colors = colors
+        gate.request(appLock: c.appLock, privacyBlur: c.privacyBlur)
         if initial || zoom.steps != c.zoomSteps {
             zoom = ZoomSteps(steps: c.zoomSteps, current: initial ? nil : zoom.percent)
         }
@@ -307,6 +308,7 @@ final class RootViewController: UIViewController {
 
     /// キーを接続先へ。command はアプリ内の操作に使う
     private func route(_ key: TermKey, _ mods: KeyModifiers) {
+        guard !gate.isLocked else { return }
         if mods.contains(.command) {
             handleCommand(key)
             return
@@ -389,7 +391,7 @@ final class RootViewController: UIViewController {
     }
 
     private func pasteClipboard() {
-        guard active != nil, let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        guard !gate.isLocked, active != nil, let text = UIPasteboard.general.string, !text.isEmpty else { return }
         if composer.isComposing { commitComposition(nil) }
         let ctx = encodingContext
         guard KeyEncoder.pasteRunsCommands(text, ctx) else {
@@ -403,7 +405,7 @@ final class RootViewController: UIViewController {
                                   preferredStyle: .alert)
         a.addAction(UIAlertAction(title: "やめる", style: .cancel))
         a.addAction(UIAlertAction(title: "貼り付ける", style: .destructive) { [weak self] _ in self?.sendPaste(text, ctx) })
-        present(a, animated: true)
+        topPresenter.present(a, animated: true)
     }
 
     private func sendPaste(_ text: String, _ ctx: EncodingContext) {
@@ -419,7 +421,7 @@ final class RootViewController: UIViewController {
             store.writePublicKey(line)
             UIPasteboard.general.string = line
             let where_ = key.isHardwareBacked ? "Secure Enclave の鍵です（端末から取り出せません）。" : "ソフトウェアの鍵です（シミュレータ）。"
-            alert("公開鍵をコピーしました", "\(where_)\n接続先の ~/.ssh/authorized_keys に足してください。Mac からは scripts/ios_pubkey.sh でも登録できます。\n\n\(line)")
+            alert("公開鍵をコピーしました", "\(where_)\n指紋: \(key.fingerprint)\n\n接続先の ~/.ssh/authorized_keys に足してください。Mac からは scripts/ios_pubkey.sh で登録できます（この指紋と同じか確かめてから）。\n\n\(line)")
         } catch {
             alert("鍵を作れませんでした", error.localizedDescription)
         }
@@ -429,7 +431,7 @@ final class RootViewController: UIViewController {
         let editor = ConfigEditorViewController(store: store)
         let nav = UINavigationController(rootViewController: editor)
         nav.modalPresentationStyle = .fullScreen
-        present(nav, animated: true)
+        topPresenter.present(nav, animated: true)
     }
 
     private func showDiagnostics() {
@@ -440,82 +442,46 @@ final class RootViewController: UIViewController {
     private func alert(_ title: String, _ message: String) {
         let a = UIAlertController(title: title, message: message, preferredStyle: .alert)
         a.addAction(UIAlertAction(title: "OK", style: .default))
-        (presentedViewController ?? self).present(a, animated: true)
+        topPresenter.present(a, animated: true)
+    }
+
+    /// いちばん上に出ている画面（その上に重ねて出す。下の画面から出すと黙って失敗する）
+    private var topPresenter: UIViewController {
+        var top: UIViewController = self
+        while let next = top.presentedViewController, !next.isBeingDismissed { top = next }
+        return top
     }
 
     // MARK: 安全（ロック・画面の保護）と、前面・裏の切り替え
 
     @objc private func willDeactivate() {
-        guard !authenticating, config.privacyBlur, privacyCover == nil else { return }
-        // アプリスイッチャーではターミナルの内容をぼかす
-        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterialDark))
-        blur.frame = view.bounds
-        blur.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(blur)
-        privacyCover = blur
+        gate.willDeactivate()
     }
 
     @objc private func didEnterBackground() {
-        if config.appLock { needsUnlock = true }
+        gate.didEnterBackground()
         for s in sessions { s.resignedActive() }
     }
 
     @objc private func didActivate() {
-        guard !authenticating else { return }
-        if needsUnlock {
-            unlock()
-            return
-        }
-        resume()
+        gate.didActivate()
     }
 
+    /// ロックを解いた、またはロックの無いまま前面に戻った
     private func resume() {
-        privacyCover?.removeFromSuperview()
-        privacyCover = nil
-        lockCover?.removeFromSuperview()
-        lockCover = nil
         store.reload()
+        if autoConnectPending {
+            autoConnectPending = false
+            if let host = config.autoConnectHost { openSession(host) }
+        }
         for s in sessions { s.becameActive() }
         terminalView.becomeFirstResponder()
         terminalView.requestRender()
     }
 
-    private func unlock() {
-        if lockCover == nil {
-            let cover = UIView(frame: view.bounds)
-            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            cover.backgroundColor = colors.background
-            let icon = UIImageView(image: UIImage(systemName: "lock.fill"))
-            icon.tintColor = colors.subText
-            icon.frame = CGRect(x: cover.bounds.midX - 16, y: cover.bounds.midY - 16, width: 32, height: 32)
-            icon.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin, .flexibleTopMargin, .flexibleBottomMargin]
-            cover.addSubview(icon)
-            let tap = UITapGestureRecognizer(target: self, action: #selector(retryUnlock))
-            cover.addGestureRecognizer(tap)
-            view.addSubview(cover)
-            lockCover = cover
-        }
-        authenticating = true
-        let ctx = LAContext()
-        ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "ターミナルを開く") { ok, _ in
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.authenticating = false
-                if ok {
-                    self.needsUnlock = false
-                    self.resume()
-                }
-            }
-        }
-    }
-
-    @objc private func retryUnlock() {
-        if !authenticating { unlock() }
-    }
-
-    private func pathChanged(_ type: NWInterface.InterfaceType?) {
+    private func pathChanged(_ type: NWInterface.InterfaceType) {
         defer { lastInterface = type }
-        guard let type, let last = lastInterface, type != last else { return }
+        guard let last = lastInterface, type != last else { return }
         for s in sessions { s.networkChanged() }
     }
 }
@@ -524,6 +490,7 @@ final class RootViewController: UIViewController {
 
 extension RootViewController: KeyboardOutput {
     func keyboard(_ emit: KeyboardEmit) {
+        guard !gate.isLocked else { return }
         switch emit {
         case .key(let k, let mods):
             if keyboardKind == .kana, composer.isComposing, case .text(" ") = k, mods.isEmpty {
@@ -568,7 +535,7 @@ extension RootViewController: TerminalViewDelegate {
     }
 
     func terminalView(_ view: TerminalView, tappedAt cell: GridPoint, location: CGPoint) {
-        guard let s = active else { return }
+        guard !gate.isLocked, let s = active else { return }
         if s.selection != nil {
             s.selection = nil
             view.requestRender()
@@ -589,7 +556,7 @@ extension RootViewController: TerminalViewDelegate {
     }
 
     func terminalView(_ view: TerminalView, doubleTappedAt cell: GridPoint) {
-        guard let s = active else { return }
+        guard !gate.isLocked, let s = active else { return }
         if gestureMode == .mouse {
             // 1 回目はタップで送っているので、もう 1 回でダブルクリックになる
             s.send(MouseEncoder.click(.left, col: cell.col, row: cell.row))
@@ -605,7 +572,7 @@ extension RootViewController: TerminalViewDelegate {
     }
 
     func terminalView(_ view: TerminalView, twoFingerTappedAt cell: GridPoint, location: CGPoint) {
-        guard let s = active else { return }
+        guard !gate.isLocked, let s = active else { return }
         if gestureMode == .mouse {
             s.send(MouseEncoder.click(.right, col: cell.col, row: cell.row))
         } else {
@@ -614,7 +581,7 @@ extension RootViewController: TerminalViewDelegate {
     }
 
     func terminalView(_ view: TerminalView, scrollLines lines: Int, at cell: GridPoint) {
-        guard let s = active else { return }
+        guard !gate.isLocked, let s = active else { return }
         switch gestureMode {
         case .mouse:
             let b: MouseEncoder.Button = lines > 0 ? .wheelUp : .wheelDown
@@ -682,7 +649,7 @@ extension RootViewController: TerminalViewDelegate {
         let (a, b) = sel.ordered
         let text = s.engine.text(from: (a.row, a.col), to: (b.row, b.col))
         guard !text.isEmpty else { return }
-        present(UIReferenceLibraryViewController(term: text), animated: true)
+        topPresenter.present(UIReferenceLibraryViewController(term: text), animated: true)
     }
 }
 
@@ -711,7 +678,7 @@ extension RootViewController: SessionPresenter {
                         preferredStyle: .alert)
                     a.addAction(UIAlertAction(title: "OK", style: .cancel) { _ in cont.resume(returning: false) })
                 }
-                (self.presentedViewController ?? self).present(a, animated: true)
+                self.topPresenter.present(a, animated: true)
             }
         }
     }
@@ -729,7 +696,7 @@ extension RootViewController: SessionPresenter {
                 a.addAction(UIAlertAction(title: "接続する", style: .default) { [weak a] _ in
                     cont.resume(returning: a?.textFields?.first?.text ?? "")
                 })
-                (self.presentedViewController ?? self).present(a, animated: true)
+                self.topPresenter.present(a, animated: true)
             }
         }
     }

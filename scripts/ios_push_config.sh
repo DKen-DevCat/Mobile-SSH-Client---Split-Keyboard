@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mac の設定ファイル 1 枚を、iPhone・iPad の SplitTerm へ送る（docs/design.md「設定ファイル」）。
+# Mac の設定ファイル 1 枚を、iPhone・iPad の Mobile-SSH-Client---Split-Keyboard へ送る（docs/design.md「設定ファイル」）。
 # アプリはファイルが変わったのを見て、すぐ読み直す（開いていなければ次に開いたとき）。
 # 使い方: scripts/ios_push_config.sh [--init]
 #   --init  設定ファイルが無ければ、全項目の説明付きの見本から作る（送らない）
@@ -35,5 +35,5 @@ pick_device
 xcrun devicectl device copy to --device "$UDID" --timeout 60 \
   --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
   --source "$CONFIG" --destination Documents/config > "$DIR/push_config.log" 2>&1 \
-  || { echo "送れませんでした（${DIR}/push_config.log）。SplitTerm を一度開いてから、もう一度試してください" >&2; exit 1; }
+  || { echo "送れませんでした（${DIR}/push_config.log）。Mobile-SSH-Client---Split-Keyboard を一度開いてから、もう一度試してください" >&2; exit 1; }
 echo "送りました: ${CONFIG} → ${UDID}"

@@ -43,18 +43,34 @@ public enum SSHCloseReason: Sendable {
     case remoteExit(status: Int?)
     /// 通信の失敗（回線の切り替え・バックグラウンドで止められた など）。自動で再接続する
     case failure(String)
+    /// 人の判断が要る失敗（ホスト鍵を受け入れなかった・認証に失敗した）。自動で再接続しない
+    case rejected(String)
 }
 
 public enum SSHError: LocalizedError {
     case hostKeyRejected
+    case authenticationFailed
     case channelRejected
+    case timedOut
+    case cancelled
     case notConnected
 
     public var errorDescription: String? {
         switch self {
         case .hostKeyRejected: return "ホスト鍵を受け入れませんでした"
+        case .authenticationFailed: return "認証に失敗しました（公開鍵が接続先に登録されているか確かめてください）"
         case .channelRejected: return "接続先が端末を開きませんでした"
+        case .timedOut: return "接続できませんでした（時間切れ）"
+        case .cancelled: return "接続をやめました"
         case .notConnected: return "接続していません"
+        }
+    }
+
+    /// 繋ぎ直しても同じ結果になる失敗（人の判断が要る）
+    public var needsHuman: Bool {
+        switch self {
+        case .hostKeyRejected, .authenticationFailed: return true
+        default: return false
         }
     }
 }
@@ -73,9 +89,9 @@ public final class SSHConnection: @unchecked Sendable {
     let hostKeyCheck: HostKeyCheck
     let passwordPrompt: PasswordPrompt?
 
-    /// 受信。NIO のスレッドから呼ぶ
+    /// 受信。NIO のスレッドから呼ぶ。connect の前に 1 度だけ設定する（切れた後は外す）
     public var onData: (@Sendable ([UInt8]) -> Void)?
-    /// 切れた。1 回だけ、NIO のスレッドから呼ぶ
+    /// 切れた。1 回だけ、NIO のスレッドから呼ぶ。connect の前に 1 度だけ設定する
     public var onClose: (@Sendable (SSHCloseReason) -> Void)?
 
     private let lock = NSLock()
@@ -85,6 +101,12 @@ public final class SSHConnection: @unchecked Sendable {
     private var exitStatus: Int?
     private var exited = false
     private var reported = false
+    /// 最初に起きたエラー（ホスト鍵の拒否・認証の失敗を、後に続く EOF などで上書きしない）
+    private var firstError: Error?
+    /// 人に聞いている間（ホスト鍵の確認・パスワード）は、握手の時間切れを数えない
+    private var waitingForHuman = 0
+    /// 握手（TCP・鍵交換・認証・PTY）の時間切れ。人に聞いている時間は含めない
+    static let handshakeTimeout: TimeInterval = 20
 
     public init(target: SSHTarget, key: SSHAuthKey?, hostKeyCheck: @escaping HostKeyCheck,
                 passwordPrompt: PasswordPrompt?) {
@@ -96,16 +118,33 @@ public final class SSHConnection: @unchecked Sendable {
 
     /// つないで、端末を開くまで待つ
     public func connect(size: PTYSize) async throws {
-        let userAuth = UserAuthDelegate(user: target.user, key: key?.nio, passwordPrompt: passwordPrompt)
-        let serverAuth = HostKeyDelegate(check: hostKeyCheck)
+        // 人に聞いている間（ホスト鍵の確認・パスワード）は、握手の時間切れを止める
+        let hostKeyCheck = self.hostKeyCheck
+        let passwordPrompt = self.passwordPrompt
+        let userAuth = UserAuthDelegate(
+            user: target.user, key: key?.nio,
+            passwordPrompt: passwordPrompt.map { prompt -> PasswordPrompt in
+                { [weak self] in
+                    self?.humanBegan()
+                    defer { self?.humanEnded() }
+                    return await prompt()
+                }
+            })
+        let serverAuth = HostKeyDelegate(check: { [weak self] presented in
+            self?.humanBegan()
+            defer { self?.humanEnded() }
+            return await hostKeyCheck(presented)
+        })
 
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
         tcp.connectionTimeout = 10
         if target.keepalive > 0 {
+            // config の値は読むときに上限で切っているが、ここでも整数に収める
+            let interval = Int(min(max(target.keepalive, 1), 3600))
             tcp.enableKeepalive = true
-            tcp.keepaliveIdle = max(1, Int(target.keepalive))
-            tcp.keepaliveInterval = max(1, Int(target.keepalive))
+            tcp.keepaliveIdle = interval
+            tcp.keepaliveInterval = interval
             tcp.keepaliveCount = 3
         }
 
@@ -118,18 +157,34 @@ public final class SSHConnection: @unchecked Sendable {
                         role: .client(.init(userAuthDelegate: userAuth, serverAuthDelegate: serverAuth)),
                         allocator: channel.allocator, inboundChildChannelInitializer: nil)
                     try channel.pipeline.syncOperations.addHandler(ssh)
-                    try channel.pipeline.syncOperations.addHandler(CloseOnErrorHandler())
+                    try channel.pipeline.syncOperations.addHandler(CloseOnErrorHandler { [weak self] error in
+                        self?.record(error)
+                    })
                 }
             }
 
         let root = try await bootstrap.connect(host: target.host, port: target.port).get()
-        lock.withLock { self.root = root }
-        root.closeFuture.whenComplete { [weak self] _ in self?.reportClose(nil) }
+        let cancelled: Bool = lock.withLock {
+            self.root = root
+            return closedByUser
+        }
+        // つないでいる間にタブを閉じた。ここで止める（止めないと、閉じたタブの tmux のクライアントが残る）
+        if cancelled {
+            lock.withLock { reported = true }
+            root.close(promise: nil)
+            throw SSHError.cancelled
+        }
+        root.closeFuture.whenComplete { [weak self] _ in self?.reportClose() }
+        scheduleHandshakeTimeout(root, after: Self.handshakeTimeout)
 
         let ready = root.eventLoop.makePromise(of: Void.self)
         let handler = SessionHandler(
             target: target, size: size, ready: ready,
-            onData: { [weak self] bytes in self?.onData?(bytes) },
+            onData: { [weak self] bytes in
+                guard let self else { return }
+                let cb = self.lock.withLock { self.onData }
+                cb?(bytes)
+            },
             onExit: { [weak self] status in
                 guard let self else { return }
                 self.lock.withLock {
@@ -156,10 +211,66 @@ public final class SSHConnection: @unchecked Sendable {
                 self.lock.withLock { self.root }?.close(promise: nil)
             }
             try await ready.futureResult.get()
+            let stop: Bool = lock.withLock {
+                handshakeDone = true
+                return closedByUser
+            }
+            if stop {
+                lock.withLock { reported = true }
+                root.close(promise: nil)
+                throw SSHError.cancelled
+            }
         } catch {
-            lock.withLock { reported = true }
+            // 後に続く EOF などではなく、最初の原因（ホスト鍵の拒否・認証の失敗）を返す
+            let cause: Error = lock.withLock {
+                reported = true
+                return closedByUser ? SSHError.cancelled : (firstError ?? error)
+            }
             root.close(promise: nil)
-            throw error
+            clearCallbacks()
+            throw cause
+        }
+    }
+
+    private var handshakeDone = false
+
+    private func humanBegan() { lock.withLock { waitingForHuman += 1 } }
+    private func humanEnded() { lock.withLock { waitingForHuman -= 1 } }
+
+    private func record(_ error: Error) {
+        lock.withLock { if firstError == nil { firstError = error } }
+    }
+
+    /// 握手が終わらなければ閉じる。人に聞いている間は待ち直す
+    private func scheduleHandshakeTimeout(_ root: Channel, after seconds: TimeInterval) {
+        root.eventLoop.scheduleTask(in: .milliseconds(Int64(seconds * 1000))) { [weak self] in
+            guard let self else { return }
+            let action: Int = self.lock.withLock {
+                if self.handshakeDone || self.reported { return 0 }
+                if self.waitingForHuman > 0 { return 1 }
+                if self.firstError == nil { self.firstError = SSHError.timedOut }
+                return 2
+            }
+            switch action {
+            case 1: self.scheduleHandshakeTimeout(root, after: 5)
+            case 2: root.close(promise: nil)
+            default: break
+            }
+        }
+    }
+
+    private func clearCallbacks() {
+        lock.withLock {
+            onData = nil
+            onClose = nil
+        }
+    }
+
+    /// 受信を止める・再開する（解析が追いつかないときに、接続先からの送信を待たせる）
+    public func setReading(_ on: Bool) {
+        guard let s = lock.withLock({ session }) else { return }
+        s.setOption(ChannelOptions.autoRead, value: on).whenComplete { _ in
+            if on { s.read() }
         }
     }
 
@@ -188,15 +299,18 @@ public final class SSHConnection: @unchecked Sendable {
         r?.close(promise: nil)
     }
 
-    private func reportClose(_ error: Error?) {
-        let reason: SSHCloseReason? = lock.withLock {
-            guard !reported else { return nil }
+    private func reportClose() {
+        let (reason, callback): (SSHCloseReason?, (@Sendable (SSHCloseReason) -> Void)?) = lock.withLock {
+            guard !reported else { return (nil, nil) }
             reported = true
-            if closedByUser { return .user }
-            if exited { return .remoteExit(status: exitStatus) }
-            return .failure(error?.localizedDescription ?? "接続が切れました")
+            let cb = onClose
+            if closedByUser { return (.user, cb) }
+            if exited { return (.remoteExit(status: exitStatus), cb) }
+            if let e = firstError as? SSHError, e.needsHuman { return (.rejected(e.localizedDescription), cb) }
+            return (.failure(firstError?.localizedDescription ?? "接続が切れました"), cb)
         }
-        if let reason { onClose?(reason) }
+        if let reason { callback?(reason) }
+        clearCallbacks()
     }
 }
 
@@ -228,13 +342,13 @@ final class UserAuthDelegate: NIOSSHClientUserAuthenticationDelegate {
                 if let pw = await prompt() {
                     nextChallengePromise.succeed(.init(username: user, serviceName: "", offer: .password(.init(password: pw))))
                 } else {
-                    nextChallengePromise.succeed(nil)
+                    nextChallengePromise.fail(SSHError.authenticationFailed)
                 }
             }
             return
         }
-        // 試せるものが尽きた。接続は認証の失敗で終わる
-        nextChallengePromise.succeed(nil)
+        // 試せるものが尽きた。nil を返すと swift-nio-ssh は何もせず、接続先の時間切れまで待たされるので、失敗にする
+        nextChallengePromise.fail(SSHError.authenticationFailed)
     }
 }
 
@@ -259,10 +373,17 @@ final class HostKeyDelegate: NIOSSHClientServerAuthenticationDelegate {
     }
 }
 
+/// パイプラインのエラーを記録して閉じる（最初の原因を接続に残す）
 final class CloseOnErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Any
+    let onError: (Error) -> Void
+
+    init(onError: @escaping (Error) -> Void) {
+        self.onError = onError
+    }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
+        onError(error)
         context.close(promise: nil)
     }
 }

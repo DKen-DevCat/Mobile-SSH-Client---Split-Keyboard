@@ -38,6 +38,31 @@ esac
 """
 
 
+FAKE_SSH_KEYGEN = """#!/usr/bin/env python3
+# 偽の ssh-keygen -lf: 鍵の本体の SHA-256 を ssh-keygen と同じ形で出す
+import base64, hashlib, sys
+line = open(sys.argv[-1]).readline().split()
+blob = line[1].encode()
+try:
+    blob = base64.b64decode(line[1] + "=" * (-len(line[1]) % 4))
+except Exception:
+    pass
+fp = base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+print(f"256 SHA256:{fp} splitterm (ECDSA)")
+"""
+
+
+def fingerprint(line: str) -> str:
+    import base64
+    import hashlib
+    b = line.split()[1]
+    try:
+        blob = base64.b64decode(b + "=" * (-len(b) % 4))
+    except Exception:
+        blob = b.encode()
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
 def device(udid: str) -> dict:
     return {"properties": {
         "hardware": {"udid": udid, "platform": "iOS", "reality": "physical"},
@@ -53,9 +78,10 @@ class Rig:
         self.home = tmp / "home"
         for d in (self.fake, self.bin, self.home):
             d.mkdir()
-        xcrun = self.bin / "xcrun"
-        xcrun.write_text(FAKE_XCRUN)
-        xcrun.chmod(0o755)
+        for name, body in (("xcrun", FAKE_XCRUN), ("ssh-keygen", FAKE_SSH_KEYGEN)):
+            f = self.bin / name
+            f.write_text(body)
+            f.chmod(0o755)
         self.devices([UDID])
 
     def devices(self, udids: list[str]) -> None:
@@ -70,7 +96,9 @@ class Rig:
             "LANG": "en_US.UTF-8",
         }
         e.update(env)
-        return subprocess.run([str(ROOT / "scripts" / script), *args], env=e, capture_output=True, text=True)
+        # stdin は tty でない（エージェントや MCP から動かすのと同じ）
+        return subprocess.run([str(ROOT / "scripts" / script), *args], env=e, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL)
 
     def calls(self) -> list[str]:
         p = self.fake / "calls"
@@ -103,7 +131,7 @@ def test_push_copies_into_the_app_documents(rig: Rig):
     assert (rig.fake / "device/Documents/config").read_text() == "font-size = 11\n"
     copy = [c for c in rig.calls() if "copy to" in c][0]
     assert f"--device {UDID}" in copy
-    assert "--domain-type appDataContainer --domain-identifier io.github.dken-devcat.splitterm" in copy
+    assert "--domain-type appDataContainer --domain-identifier io.github.dken-devcat.mobile-ssh-client-split-keyboard" in copy
 
 
 def test_push_without_a_config_says_how_to_make_one(rig: Rig):
@@ -132,32 +160,58 @@ def test_push_failure_is_reported(rig: Rig):
     assert "送れませんでした" in r.stderr
 
 
-def test_pubkey_is_added_once(rig: Rig):
-    (rig.fake / "device/Documents").mkdir(parents=True)
-    (rig.fake / "device/Documents/splitterm.pub").write_text(KEY + "\n")
-    r = rig.run("ios_pubkey.sh")
+def put_pub(rig: Rig, line: str) -> None:
+    (rig.fake / "device/Documents").mkdir(parents=True, exist_ok=True)
+    (rig.fake / "device/Documents/splitterm.pub").write_text(line + "\n")
+
+
+def test_pubkey_is_added_once_with_the_matching_fingerprint(rig: Rig):
+    put_pub(rig, KEY)
+    r = rig.run("ios_pubkey.sh", "--fingerprint", fingerprint(KEY))
     assert r.returncode == 0, r.stderr
     auth = rig.home / ".ssh/authorized_keys"
-    assert auth.read_text() == KEY + "\n"
+    # 端末だけを許す（ポート転送・エージェント転送などは止める）
+    assert auth.read_text() == "restrict,pty " + KEY + "\n"
     assert oct(auth.stat().st_mode & 0o777) == "0o600"
-    r = rig.run("ios_pubkey.sh")
+    r = rig.run("ios_pubkey.sh", "--fingerprint", fingerprint(KEY))
     assert "もう登録してあります" in r.stdout
-    assert auth.read_text() == KEY + "\n"
+    assert auth.read_text() == "restrict,pty " + KEY + "\n"
 
 
-def test_pubkey_print_does_not_touch_authorized_keys(rig: Rig):
-    (rig.fake / "device/Documents").mkdir(parents=True)
-    (rig.fake / "device/Documents/splitterm.pub").write_text(KEY + "\n")
-    r = rig.run("ios_pubkey.sh", "--print")
-    assert r.returncode == 0
-    assert r.stdout.strip() == KEY
+def test_pubkey_with_a_different_fingerprint_is_refused(rig: Rig):
+    # 「ファイル」アプリで splitterm.pub を他人の鍵に替えられても、アプリの指紋と違えば足さない
+    put_pub(rig, KEY)
+    r = rig.run("ios_pubkey.sh", "--fingerprint", "SHA256:somethingelse")
+    assert r.returncode == 1
+    assert "違います" in r.stderr
     assert not (rig.home / ".ssh/authorized_keys").exists()
 
 
-def test_pubkey_rejects_anything_but_an_ecdsa_key(rig: Rig):
-    (rig.fake / "device/Documents").mkdir(parents=True)
-    (rig.fake / "device/Documents/splitterm.pub").write_text("command=\"rm -rf ~\" ssh-ed25519 AAAA\n")
+def test_pubkey_without_a_way_to_confirm_is_not_added(rig: Rig):
+    put_pub(rig, KEY)
     r = rig.run("ios_pubkey.sh")
+    assert r.returncode == 1
+    assert "--fingerprint" in r.stderr
+    assert not (rig.home / ".ssh/authorized_keys").exists()
+
+
+def test_pubkey_print_shows_the_fingerprint_and_does_not_touch_authorized_keys(rig: Rig):
+    put_pub(rig, KEY)
+    r = rig.run("ios_pubkey.sh", "--print")
+    assert r.returncode == 0
+    assert r.stdout.splitlines() == [KEY, "指紋: " + fingerprint(KEY)]
+    assert not (rig.home / ".ssh/authorized_keys").exists()
+
+
+@pytest.mark.parametrize("line", [
+    'command="rm -rf ~" ecdsa-sha2-nistp256 AAAA splitterm',
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA splitterm",
+    "ecdsa-sha2-nistp256 AAAA splitterm extra",
+    "ecdsa-sha2-nistp256 AAAA attacker",
+])
+def test_pubkey_rejects_anything_but_the_apps_key_line(rig: Rig, line: str):
+    put_pub(rig, line)
+    r = rig.run("ios_pubkey.sh", "--fingerprint", fingerprint(line) if len(line.split()) > 1 else "x")
     assert r.returncode == 1
     assert not (rig.home / ".ssh/authorized_keys").exists()
 
@@ -165,4 +219,8 @@ def test_pubkey_rejects_anything_but_an_ecdsa_key(rig: Rig):
 def test_pubkey_missing_on_device(rig: Rig):
     r = rig.run("ios_pubkey.sh")
     assert r.returncode == 1
-    assert "SplitTerm を一度開いてから" in r.stderr
+    assert "Mobile-SSH-Client---Split-Keyboard を一度開いてから" in r.stderr
+
+
+def test_fingerprint_option_needs_a_value(rig: Rig):
+    assert rig.run("ios_pubkey.sh", "--fingerprint").returncode == 2

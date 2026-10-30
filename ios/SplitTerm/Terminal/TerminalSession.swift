@@ -23,7 +23,11 @@ final class TerminalSession {
     weak var presenter: SessionPresenter?
 
     var config: TermConfig
-    private var connection: SSHConnection?
+    private var connection: SSHConnection? {
+        didSet { connectionBox.set(connection) }
+    }
+    /// 解析のキューから今の接続へ応答を送るための箱（接続を差し替えるたびに engine の閉包を書き換えない）
+    private let connectionBox = ConnectionBox()
     private var size = PTYSize(cols: 80, rows: 24, pixelWidth: 0, pixelHeight: 0)
     private var attempt = 0
     private var retryWork: DispatchWorkItem?
@@ -42,6 +46,9 @@ final class TerminalSession {
         engine = TerminalEngine(cols: cols, rows: rows, scrollback: config.scrollbackLimit, termName: config.term)
         size.cols = cols
         size.rows = rows
+        let box = connectionBox
+        engine.onResponse = { bytes in box.get()?.send(bytes) }
+        engine.onBacklog = { pause in box.get()?.setReading(!pause) }
         engine.onTitle = { [weak self] t in
             guard let self else { return }
             // tmux の題名は長いので、接続先の名前を先に
@@ -77,8 +84,15 @@ final class TerminalSession {
                 if verdict == .trusted { return true }
                 guard let presenter = await self?.presenter else { return false }
                 let ok = await presenter.confirmHostKey(host: host, verdict: verdict)
-                if ok, case .unknown = verdict { try? HostKeyStore.save(presented, for: host.endpointID) }
-                return ok
+                guard ok, case .unknown = verdict else { return false }
+                // 確かめている間に、別の接続が鍵を保存したかもしれない。まだ無いときだけ保存し、あれば照合し直す
+                if let stored = HostKeyStore.stored(for: host.endpointID) { return stored == presented }
+                do {
+                    try HostKeyStore.save(presented, for: host.endpointID)
+                    return true
+                } catch {
+                    return false
+                }
             },
             passwordPrompt: allowPassword ? { [weak self] in
                 guard let presenter = await self?.presenter else { return nil }
@@ -86,7 +100,6 @@ final class TerminalSession {
             } : nil)
         let engine = self.engine
         conn.onData = { bytes in engine.feed(bytes) }
-        engine.onResponse = { [weak conn] bytes in conn?.send(bytes) }
         // conn を強く持たない（持つと onClose → conn の循環で、接続ごとに NIO のチャンネルが残る）
         conn.onClose = { [weak self, weak conn] reason in
             DispatchQueue.main.async { [weak self, weak conn] in
@@ -117,13 +130,16 @@ final class TerminalSession {
 
     private func handleFailure(_ error: Error) {
         let message = Self.describe(error)
-        if case SSHError.hostKeyRejected = error {
-            state = .failed(reason: message)
-            return
-        }
-        if message.contains("認証") {
-            state = .failed(reason: message)
-            return
+        if let e = error as? SSHError {
+            if e.needsHuman {
+                // ホスト鍵の拒否・認証の失敗は、繋ぎ直しても同じ。人が直すまで止める（タブのタップで繋ぎ直す）
+                state = .failed(reason: message)
+                return
+            }
+            if case .cancelled = e {
+                state = .idle
+                return
+            }
         }
         scheduleRetry(reason: message)
     }
@@ -139,6 +155,8 @@ final class TerminalSession {
         case .failure(let message):
             Perf.log.info("切れました: \(message, privacy: .public)")
             scheduleRetry(reason: message)
+        case .rejected(let message):
+            state = .failed(reason: message)
         }
     }
 
@@ -210,8 +228,16 @@ final class TerminalSession {
     static func describe(_ error: Error) -> String {
         if let e = error as? LocalizedError, let d = e.errorDescription { return d }
         let s = String(describing: error)
-        if s.contains("allAuthenticationOptionsFailed") || s.contains("userAuth") { return "認証に失敗しました（鍵が登録されているか確かめてください）" }
         if s.contains("timeout") || s.contains("Timeout") { return "接続できませんでした（時間切れ）" }
         return s
     }
+}
+
+/// 今の接続を、どのスレッドからでも読めるように持つ
+final class ConnectionBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var value: SSHConnection?
+
+    func set(_ c: SSHConnection?) { lock.withLock { value = c } }
+    func get() -> SSHConnection? { lock.withLock { value } }
 }

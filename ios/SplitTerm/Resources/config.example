@@ -1,4 +1,4 @@
-# SplitTerm の設定（Ghostty と同じく、このファイル 1 枚ですべてを決める）
+# Mobile-SSH-Client---Split-Keyboard の設定（Ghostty と同じく、このファイル 1 枚ですべてを決める）
 #
 # 書き方
 #   key = value      1 行に 1 つ。# で始まる行は読み飛ばす
@@ -7,7 +7,7 @@
 #   palette と host は何度でも書ける
 #
 # 置き場所
-#   iPhone / iPad: 「ファイル」アプリ > この iPhone 内 > SplitTerm > config
+#   iPhone / iPad: 「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config
 #                  （アプリの ＋ →「設定を編集」でも直せる）
 #   Mac:           ~/.config/splitterm/config を scripts/ios_push_config.sh で送る
 # 保存した瞬間に読み直して効く。読めない行は飛ばし、画面の ⚠ に行番号を出す。

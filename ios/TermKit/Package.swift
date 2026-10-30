@@ -1,5 +1,5 @@
 // swift-tools-version: 6.2
-// SplitTerm のうち、画面に頼らない部分（docs/design.md「技術スタック」）。
+// Mobile-SSH-Client---Split-Keyboard（内部の短い名前は SplitTerm）のうち、画面に頼らない部分（docs/design.md「技術スタック」）。
 // TermCore: 設定・レイアウト・キーの変換など。依存なし。Mac で `swift test` できる
 // TermSession: SSH（swift-nio-ssh）と端末の解釈（SwiftTerm）。アプリから使う
 // TermKana: かな漢字変換（AzooKey）。辞書が大きいので、ほかと分ける

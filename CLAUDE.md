@@ -1,4 +1,6 @@
-# SplitTerm（Mobile-SSH-Client---Split-Keyboard）
+# Mobile-SSH-Client---Split-Keyboard
+
+アプリの名前は「Mobile-SSH-Client---Split-Keyboard」（2026-10-30 決定）。人とエージェントに見える所（表示名・サイト・文書・メッセージ）はこの名前にそろえる。コマンド・フォルダ・ターゲットの短い名前は `splitterm` / `SplitTerm`（内部の名前で、表には出さない）
 
 開発運用ルールはグローバル `~/.claude/CLAUDE.md` を正本とする。ここにはこのプロジェクト固有の事項だけを置く。
 

@@ -1,4 +1,5 @@
-// SplitTerm の共通設定（docs/design.md「配布」）。lfm3-vl-server の iPhone アプリと同じ作り。
+// Mobile-SSH-Client---Split-Keyboard の共通設定（docs/design.md「配布」）。lfm3-vl-server の iPhone アプリと同じ作り。
+// アプリの名前は表示名（CFBundleDisplayName）。PRODUCT_NAME（.app と実行ファイル）は内部の短い名前として SplitTerm のまま
 // Team は git に入れない: ios/Config/Local.xcconfig に DEVELOPMENT_TEAM を書く（Local.xcconfig.example）。
 // scripts/ios_reinstall.sh は Xcode の設定から無料の Team を読んで、コマンドで渡す
 
@@ -11,7 +12,7 @@ IPHONEOS_DEPLOYMENT_TARGET = 17.0
 
 PRODUCT_NAME = SplitTerm
 // 無料の Team は 7 日に作れる App ID が 10 個まで。キーチェーンの鍵（Secure Enclave の鍵・ホスト鍵）も Bundle ID に付くので変えない
-PRODUCT_BUNDLE_IDENTIFIER = io.github.dken-devcat.splitterm
+PRODUCT_BUNDLE_IDENTIFIER = io.github.dken-devcat.mobile-ssh-client-split-keyboard
 MARKETING_VERSION = 0.1
 // scripts/ios_reinstall.sh が作った日時（yyyyMMddHHmm）で上書きする
 CURRENT_PROJECT_VERSION = 1
@@ -28,7 +29,7 @@ MTL_FAST_MATH = YES
 GENERATE_INFOPLIST_FILE = YES
 // 生成される Info.plist に足すもの（シーン、ファイル共有、120Hz）だけを書いたファイル
 INFOPLIST_FILE = Config/Info.plist
-INFOPLIST_KEY_CFBundleDisplayName = SplitTerm
+INFOPLIST_KEY_CFBundleDisplayName = Mobile-SSH-Client---Split-Keyboard
 INFOPLIST_KEY_NSFaceIDUsageDescription = 起動時と復帰時にターミナルのロックを解くため
 INFOPLIST_KEY_NSLocalNetworkUsageDescription = 同じネットワークの SSH の接続先につなぐため
 INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES
