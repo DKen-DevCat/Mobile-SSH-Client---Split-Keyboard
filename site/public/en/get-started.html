@@ -65,14 +65,14 @@
    "@type": "HowToStep",
    "position": 2,
    "name": "Check Xcode and the tools",
-   "text": "Run: xcodebuild -version jq --version tmux -V nc -z 127.0.0.1 22 && echo \"SSH OK\" Verify: all four print a version or SSH OK. If something is missing: jq or tmux: brew install jq tmux No xcodebuild, or it says \"requires Xcode\": HUMAN-ONLY. Install Xcode from the App Store and open it once. Then the human runs sudo xcode-select -s /Applications/Xcode.app/Contents/Developer No SSH OK: HUMAN-ONLY. Turn on System Settings > General > Sharing > Remote Login",
+   "text": "Run: xcodebuild -version jq --version tmux -V nc -z 127.0.0.1 22 && echo \"SSH OK\" Verify: all four print a version or SSH OK. If something is missing: jq or tmux: brew install jq tmux. No xcodebuild, or it says \"requires Xcode\": HUMAN-ONLY. Install Xcode from the App Store and open it once. Then the human runs sudo xcode-select -s /Applications/Xcode.app/Contents/Developer. No SSH OK: HUMAN-ONLY. Turn on System Settings > General > Sharing > Remote Login.",
    "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#tools"
   },
   {
    "@type": "HowToStep",
    "position": 3,
    "name": "Build the splitterm command",
-   "text": "A command that runs on the Mac and lets an agent handle the config (it is also an MCP server). It has no third-party dependencies. Run: swift build -c release --package-path ios/TermCore ios/TermCore/.build/release/splitterm doctor Verify: the build ends with Build complete!, and doctor prints what it checked and how to fix what is missing. At this point it is fine if the Team, the device and the app are reported missing; later steps fill them in. To use it over MCP, register it now: claude mcp add splitterm -- \"$PWD/ios/TermCore/.build/release/splitterm\" mcp (details on the MCP page, in Japanese) If your checkout has no ios/TermCore, skip this step. The later steps also work with the scripts/ commands",
+   "text": "A command that runs on the Mac and lets an agent handle the config (it is also an MCP server). It has no third-party dependencies. Run: swift build -c release --package-path ios/TermCore ios/TermCore/.build/release/splitterm doctor Verify: the build ends with Build complete!, and doctor prints what it checked and how to fix what is missing. At this point it is fine if the Team, the device and the app are reported missing; later steps fill them in. To use it over MCP, register it now: claude mcp add splitterm -- \"$PWD/ios/TermCore/.build/release/splitterm\" mcp (details on the MCP page, in Japanese). If your checkout has no ios/TermCore, skip this step. The later steps also work with the scripts/ commands.",
    "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#cli"
   },
   {
@@ -100,7 +100,7 @@
    "@type": "HowToStep",
    "position": 7,
    "name": "Install the app",
-   "text": "The first run creates the signing certificate, registers the device, and creates the App ID and provisioning profile automatically. Run: scripts/ios_reinstall.sh Verify: exit code 0, and the last line is 入れ直しました（ビルド …）。次の期限は … (\"re-installed (build …); next expiry …\"). With splitterm built, ios/TermCore/.build/release/splitterm install does the same. Over MCP, use app_install Exit code 1: read the message and the logs (logs/ios_build.log, logs/ios_install.log). 無料の Team が分かりません (\"cannot find the free Team\") means go back to step 4 Exit code 3: the Mac is short on memory. Close other apps, or run scripts/ios_reinstall.sh --force Exit code 5: the device cannot be reached. Reconnect the USB cable and unlock the device",
+   "text": "The first run creates the signing certificate, registers the device, and creates the App ID and provisioning profile automatically. Run: scripts/ios_reinstall.sh Verify: exit code 0, and the last line is 入れ直しました（ビルド …）。次の期限は … (\"re-installed (build …); next expiry …\"). With splitterm built, ios/TermCore/.build/release/splitterm install does the same. Over MCP, use app_install. Exit code 1: read the message and the logs (logs/ios_build.log, logs/ios_install.log). 無料の Team が分かりません (\"cannot find the free Team\") means go back to step 4. Exit code 3: the Mac is short on memory. Close other apps, or run scripts/ios_reinstall.sh --force. Exit code 5: the device cannot be reached. Reconnect the USB cable and unlock the device.",
    "url": "https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started#install"
   },
   {

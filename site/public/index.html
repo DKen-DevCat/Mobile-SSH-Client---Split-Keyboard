@@ -57,7 +57,7 @@
 <h2 id="one-line">エージェントに渡す 1 行</h2>
 <p>Mac で動くエージェント（Claude Code など）に、次の 1 行を渡す。エージェントは手順書を読んでコマンドを実行し、人の手が要る所だけを頼んでくる。</p>
 <pre tabindex="0"><code class="language-text">https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md を読んで、この Mac と iPhone に Mobile-SSH-Client---Split-Keyboard を入れて設定して</code></pre>
-<p>人の手が要るのは 5 つ: Xcode に Apple ID でサインインする、端末を USB でつないで「信頼」する、デベロッパモードをオンにする、端末で開発元を信頼する、鍵の指紋をアプリの表示と見比べる。</p>
+<p>人の手が要るのは主に 5 つ: Xcode に Apple ID でサインインする、端末を USB でつないで「信頼」する、デベロッパモードをオンにする、端末で開発元を信頼する、鍵の指紋をアプリの表示と見比べる。</p>
 <h2 id="flow">流れ</h2>
 <ol><li>Mac のエージェントに、上の 1 行を渡す</li><li>エージェントがリポジトリを取ってきて、道具を確かめ、アプリをビルドして端末に入れる</li><li>人は、頼まれた所だけを手で行う</li><li>エージェントが config に接続先を書いて端末へ送り、公開鍵を Mac に登録し、自動の入れ直しを登録する</li><li>アプリを開き、ホスト鍵の指紋を確かめてつなぐ</li></ol>
 <p>手で進めるときも、同じ<a href="/get-started">手順</a>をそのまま読めばよい。</p>

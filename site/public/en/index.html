@@ -58,7 +58,7 @@
 <h2 id="one-line">The one line to give your agent</h2>
 <p>Give this line to an agent on your Mac (Claude Code or similar). It reads the runbook, runs the commands, and asks you only for the steps that need a human.</p>
 <pre tabindex="0"><code class="language-text">Read https://mobile-ssh-client---split-keyboard.pages.dev/en/get-started.md and install and set up Mobile-SSH-Client---Split-Keyboard on this Mac and iPhone.</code></pre>
-<p>Five steps need a human: signing in to Xcode with an Apple ID, connecting the device by USB and tapping &quot;Trust&quot;, turning on Developer Mode, trusting the developer profile on the device, and comparing key fingerprints with what the app shows.</p>
+<p>Mainly five steps need a human: signing in to Xcode with an Apple ID, connecting the device by USB and tapping &quot;Trust&quot;, turning on Developer Mode, trusting the developer profile on the device, and comparing key fingerprints with what the app shows.</p>
 <h2 id="flow">How it goes</h2>
 <ol><li>Give the line above to the agent on your Mac</li><li>The agent clones the repository, checks the tools, builds the app and installs it on the device</li><li>You do only the steps it asks you to do</li><li>The agent writes your host into the config, sends it to the device, registers the app&#x27;s public key on the Mac, and schedules the automatic re-install</li><li>Open the app, check the host key fingerprint, and connect</li></ol>
 <h2 id="features">What it does</h2>

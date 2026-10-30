@@ -378,19 +378,23 @@ class Renderer:
                 f"<thead><tr>{ths}</tr></thead><tbody>{''.join(body)}</tbody></table></div>")
 
 
-def plain_block(lines: list[str]) -> str:
-    """Markdown の行を、飾りを外した 1 つの文に（JSON-LD 用）"""
+def plain_block(lines: list[str], lang: str = "ja") -> str:
+    """Markdown の行を、飾りを外した 1 つの文に（JSON-LD 用）。リストの項目は句点で区切る"""
     out = []
     for line in lines:
         s = line.strip()
         if not s or FENCE.match(s) or TABLE_SEP.match(s):
             continue
         s = re.sub(r"^(>\s?)+", "", s)
+        item = bool(LIST_ITEM.match(s))
         s = re.sub(r"^(#{1,4}\s+|[-*]\s+|\d+\.\s+)", "", s)
         s = re.sub(r"\s+\{#[a-z0-9-]+\}$", "", s)
         if s.startswith("|"):
             s = " / ".join(split_row(s))
-        out.append(plain_inline(s))
+        s = plain_inline(s)
+        if item and s and not s.endswith(tuple("。.!?！？:：")):
+            s += "。" if lang == "ja" else "."
+        out.append(s)
     return " ".join(x for x in out if x)
 
 
@@ -463,7 +467,7 @@ def json_ld(page: Page, meta: dict, body: str, site: dict, ios: str) -> dict:
             if not hid:
                 raise BuildError(f"{page.src}: 手順の見出し「{title}」に {{#id}} を付けてください")
             steps.append({"@type": "HowToStep", "position": int(m.group(1)), "name": plain_inline(m.group(2)),
-                          "text": plain_block(lines), "url": f"{url}#{hid}"})
+                          "text": plain_block(lines, page.lang), "url": f"{url}#{hid}"})
         if not steps:
             raise BuildError(f"{page.src}: 手順（## 1. …）がありません")
         return {
@@ -482,7 +486,7 @@ def json_ld(page: Page, meta: dict, body: str, site: dict, ios: str) -> dict:
         }
     if page.schema == "FAQPage":
         qs = [{"@type": "Question", "name": plain_inline(title),
-               "acceptedAnswer": {"@type": "Answer", "text": plain_block(lines)}}
+               "acceptedAnswer": {"@type": "Answer", "text": plain_block(lines, page.lang)}}
               for title, _, lines in h2_sections(body)]
         return {"@context": "https://schema.org", "@type": "FAQPage", "inLanguage": page.lang,
                 "url": url, "mainEntity": qs, "dateModified": meta["updated"]}

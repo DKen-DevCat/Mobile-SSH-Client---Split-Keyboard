@@ -23,7 +23,7 @@ Give this line to an agent on your Mac (Claude Code or similar). It reads the ru
 Read {{base}}/en/get-started.md and install and set up Mobile-SSH-Client---Split-Keyboard on this Mac and iPhone.
 ```
 
-Five steps need a human: signing in to Xcode with an Apple ID, connecting the device by USB and tapping "Trust", turning on Developer Mode, trusting the developer profile on the device, and comparing key fingerprints with what the app shows.
+Mainly five steps need a human: signing in to Xcode with an Apple ID, connecting the device by USB and tapping "Trust", turning on Developer Mode, trusting the developer profile on the device, and comparing key fingerprints with what the app shows.
 
 ## How it goes {#flow}
 

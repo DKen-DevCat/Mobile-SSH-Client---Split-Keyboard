@@ -65,14 +65,14 @@
    "@type": "HowToStep",
    "position": 2,
    "name": "Xcode と道具を確かめる",
-   "text": "実行する: xcodebuild -version jq --version tmux -V nc -z 127.0.0.1 22 && echo \"SSH OK\" 成功の確かめ方: 4 つとも版か SSH OK を出す。 足りないとき: jq・tmux: brew install jq tmux xcodebuild が無い、または「requires Xcode」と出る: 人の手が要る（HUMAN-ONLY）。App Store から Xcode を入れて一度開く。そのあと sudo xcode-select -s /Applications/Xcode.app/Contents/Developer を人が実行する SSH OK が出ない: 人の手が要る（HUMAN-ONLY）。「システム設定 > 一般 > 共有 > リモートログイン」をオンにする",
+   "text": "実行する: xcodebuild -version jq --version tmux -V nc -z 127.0.0.1 22 && echo \"SSH OK\" 成功の確かめ方: 4 つとも版か SSH OK を出す。 足りないとき: jq・tmux: brew install jq tmux。 xcodebuild が無い、または「requires Xcode」と出る: 人の手が要る（HUMAN-ONLY）。App Store から Xcode を入れて一度開く。そのあと sudo xcode-select -s /Applications/Xcode.app/Contents/Developer を人が実行する。 SSH OK が出ない: 人の手が要る（HUMAN-ONLY）。「システム設定 > 一般 > 共有 > リモートログイン」をオンにする。",
    "url": "https://mobile-ssh-client---split-keyboard.pages.dev/get-started#tools"
   },
   {
    "@type": "HowToStep",
    "position": 3,
    "name": "splitterm コマンドを作る",
-   "text": "エージェントが config を扱うための、Mac で動くコマンド（MCP サーバーにもなる）。外の依存は無い。 実行する: swift build -c release --package-path ios/TermCore ios/TermCore/.build/release/splitterm doctor 成功の確かめ方: ビルドが Build complete! で終わり、doctor が調べた結果と、足りないものの直し方を出す。この時点では Team・端末・アプリが足りないと出てよい（以降の段で埋まる）。 MCP で使うなら、ここで登録する: claude mcp add splitterm -- \"$PWD/ios/TermCore/.build/release/splitterm\" mcp（詳しくは MCP） ios/TermCore が無い版のリポジトリなら、この段を飛ばす。以降の段は scripts/ のコマンドで進められる",
+   "text": "エージェントが config を扱うための、Mac で動くコマンド（MCP サーバーにもなる）。外の依存は無い。 実行する: swift build -c release --package-path ios/TermCore ios/TermCore/.build/release/splitterm doctor 成功の確かめ方: ビルドが Build complete! で終わり、doctor が調べた結果と、足りないものの直し方を出す。この時点では Team・端末・アプリが足りないと出てよい（以降の段で埋まる）。 MCP で使うなら、ここで登録する: claude mcp add splitterm -- \"$PWD/ios/TermCore/.build/release/splitterm\" mcp（詳しくは MCP）。 ios/TermCore が無い版のリポジトリなら、この段を飛ばす。以降の段は scripts/ のコマンドで進められる。",
    "url": "https://mobile-ssh-client---split-keyboard.pages.dev/get-started#cli"
   },
   {
@@ -100,7 +100,7 @@
    "@type": "HowToStep",
    "position": 7,
    "name": "アプリを入れる",
-   "text": "初回は、署名の証明書・端末の登録・App ID・プロファイルが自動で作られる。 実行する: scripts/ios_reinstall.sh 成功の確かめ方: 終了コードが 0 で、最後に 入れ直しました（ビルド …）。次の期限は … と出る。 splitterm を作ったなら ios/TermCore/.build/release/splitterm install でも同じ。MCP なら app_install 終了コード 1: 出たメッセージとログ（logs/ios_build.log・logs/ios_install.log）を見る。「無料の Team が分かりません」なら段 4 へ戻る 終了コード 3: Mac のメモリに余裕が無い。ほかのアプリを閉じるか、scripts/ios_reinstall.sh --force 終了コード 5: 端末に届かない。USB でつなぎ直し、ロックを解く",
+   "text": "初回は、署名の証明書・端末の登録・App ID・プロファイルが自動で作られる。 実行する: scripts/ios_reinstall.sh 成功の確かめ方: 終了コードが 0 で、最後に 入れ直しました（ビルド …）。次の期限は … と出る。 splitterm を作ったなら ios/TermCore/.build/release/splitterm install でも同じ。MCP なら app_install。 終了コード 1: 出たメッセージとログ（logs/ios_build.log・logs/ios_install.log）を見る。「無料の Team が分かりません」なら段 4 へ戻る。 終了コード 3: Mac のメモリに余裕が無い。ほかのアプリを閉じるか、scripts/ios_reinstall.sh --force。 終了コード 5: 端末に届かない。USB でつなぎ直し、ロックを解く。",
    "url": "https://mobile-ssh-client---split-keyboard.pages.dev/get-started#install"
   },
   {
