@@ -71,7 +71,7 @@ iPhone と iPad 向けに、SSH 先のシェルを操作するネイティブの
 
 | 層 | 場所 | 中身 | 確かめ方 |
 | --- | --- | --- | --- |
-| TermCore | `ios/TermKit/Sources/TermCore` | 設定ファイルの読み方、レイアウトの算出、キーの変換、マウスの形、キーボードの配置、かな入力、ホスト鍵の指紋、再接続の間隔。画面にも通信にも頼らない | Mac で `swift test`（`ios/TermKit/Tests`） |
+| TermCore | `ios/TermCore/Sources/TermCore`（依存の無いパッケージ。Mac の `splitterm` コマンドもここ） | 設定ファイルの読み方、レイアウトの算出、キーの変換、マウスの形、キーボードの配置、かな入力、ホスト鍵の指紋、再接続の間隔。画面にも通信にも頼らない | Mac で `swift test`（`ios/TermKit/Tests`） |
 | TermSession | `ios/TermKit/Sources/TermSession` | SSH の接続、エミュレータの包み（別スレッドでの解釈と画面の写し）、キーチェーン（Secure Enclave の鍵・ホスト鍵） | 実機 |
 | アプリ | `ios/SplitTerm`（内部の短い名前） | UIKit の画面、Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） | 実機 |
 

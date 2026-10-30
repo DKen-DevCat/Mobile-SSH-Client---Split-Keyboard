@@ -1,6 +1,6 @@
 // swift-tools-version: 6.2
-// Mobile-SSH-Client---Split-Keyboard（内部の短い名前は SplitTerm）のうち、画面に頼らない部分（docs/design.md「技術スタック」）。
-// TermCore: 設定・レイアウト・キーの変換など。依存なし。Mac で `swift test` できる
+// Mobile-SSH-Client---Split-Keyboard（内部の短い名前は SplitTerm）のうち、画面に頼らず、外の依存を持つ部分
+// （docs/design.md「技術スタック」）。依存の無い TermCore は ../TermCore にある
 // TermSession: SSH（swift-nio-ssh）と端末の解釈（SwiftTerm）。アプリから使う
 // TermKana: かな漢字変換（AzooKey）。辞書が大きいので、ほかと分ける
 import PackageDescription
@@ -9,11 +9,11 @@ let package = Package(
     name: "TermKit",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "TermCore", targets: ["TermCore"]),
         .library(name: "TermSession", targets: ["TermSession"]),
         .library(name: "TermKana", targets: ["TermKana"]),
     ],
     dependencies: [
+        .package(path: "../TermCore"),
         .package(url: "https://github.com/apple/swift-nio-ssh.git", .upToNextMinor(from: "0.15.1")),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.81.0"),
         .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.28.0"),
@@ -24,11 +24,10 @@ let package = Package(
         .package(url: "https://github.com/azooKey/AzooKeyKanaKanjiConverter.git", .upToNextMinor(from: "0.11.2")),
     ],
     targets: [
-        .target(name: "TermCore"),
         .target(
             name: "TermSession",
             dependencies: [
-                "TermCore",
+                .product(name: "TermCore", package: "TermCore"),
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
@@ -41,12 +40,11 @@ let package = Package(
         .target(
             name: "TermKana",
             dependencies: [
-                "TermCore",
+                .product(name: "TermCore", package: "TermCore"),
                 .product(name: "KanaKanjiConverterModuleWithDefaultDictionary", package: "AzooKeyKanaKanjiConverter"),
             ],
             // 変換器（KanaKanjiConverter）は Sendable でないので、1 本のキューに閉じ込めて使う
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        .testTarget(name: "TermCoreTests", dependencies: ["TermCore"]),
     ]
 )

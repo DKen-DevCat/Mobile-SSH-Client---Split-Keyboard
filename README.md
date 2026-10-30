@@ -9,7 +9,8 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | 場所 | 中身 |
 |---|---|
 | `ios/SplitTerm/` | アプリ（UIKit）。Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） |
-| `ios/TermKit/` | Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など、Mac で `swift test`）、`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
+| `ios/TermCore/` | 依存の無い Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など）と、Mac で動く `splitterm` コマンド・MCP サーバー |
+| `ios/TermKit/` | 外の依存を持つ Swift パッケージ。`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
 | `ios/SplitTerm/Resources/config.example` | config の見本（全項目の説明付き。値はすべて既定値） |
 | `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`） |
 | `launchd/com.dken.splitterm-ios.plist` | 1 時間ごとに期限を見て入れ直す |
@@ -66,7 +67,9 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | コードを変えたので入れ直す | `scripts/ios_reinstall.sh` |
 | 設定を変える（Mac で） | `~/.config/splitterm/config` を直して `scripts/ios_push_config.sh`。開いているアプリにもすぐ効く |
 | 設定を変える（端末で） | ＋ →「設定を編集」、または「ファイル」アプリ > この iPhone 内 > Mobile-SSH-Client---Split-Keyboard > config |
-| 画面に頼らない部分のテスト（Mac） | `(cd ios/TermKit && swift test)` |
+| 画面に頼らない部分のテスト（Mac） | `(cd ios/TermCore && swift test)` |
+| `splitterm` を作る（Mac） | `swift build -c release --package-path ios/TermCore`（できるのは `ios/TermCore/.build/release/splitterm`） |
+| エージェントに MCP を足す | `claude mcp add splitterm -- "$PWD/ios/TermCore/.build/release/splitterm" mcp` |
 | スクリプトのテスト | `python3 -m pytest tests` |
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
 | アイコンを作り直す | `python3 scripts/gen_icon.py`（Pillow が要る） |

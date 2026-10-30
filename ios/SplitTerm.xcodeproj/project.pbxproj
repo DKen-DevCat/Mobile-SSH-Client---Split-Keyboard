@@ -120,6 +120,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B20000000000000000000013 /* XCLocalSwiftPackageReference "TermKit" */,
+				B2000000000000000000001A /* XCLocalSwiftPackageReference "TermCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B20000000000000000000005 /* Products */;
@@ -213,6 +214,10 @@
 		B20000000000000000000013 /* XCLocalSwiftPackageReference "TermKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = TermKit;
+		};
+		B2000000000000000000001A /* XCLocalSwiftPackageReference "TermCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = TermCore;
 		};
 /* End XCLocalSwiftPackageReference section */
 
