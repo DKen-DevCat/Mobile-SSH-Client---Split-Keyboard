@@ -17,6 +17,7 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | `tests/` | スクリプトとプロジェクトの設定のテスト（pytest） |
 | `site/` | 公開サイト（Get Started・llms.txt）。`site/src` の Markdown から `site/build.py` で `site/public` を作り、Cloudflare Pages が配る（`site/README.md`・`docs/site.md`） |
 | `bench/` | AIO のベンチマーク。静的な検査（`aio_check.py`、CI）、エージェントの課題（`agent_bench.py`、手元の `claude -p`）、AI 検索の見え方（`visibility.md`） |
+| `.github/workflows/ci.yml` | push のたびに、Linux でサイトの検査とテスト、Mac で `TermCore`・`splitterm` のテストとアプリ全体のビルド（Release、シミュレータ向け）。公開リポジトリなので無料 |
 
 ## 準備（1 回だけ）
 

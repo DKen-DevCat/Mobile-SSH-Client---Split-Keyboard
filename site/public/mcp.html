@@ -51,7 +51,7 @@
 <main id="main">
 <h1 id="mcp-splitterm">MCP（splitterm コマンド）</h1>
 <p>Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動く <code>splitterm</code> コマンドがある。MCP サーバー（stdio）にもなる。Claude Code に登録すると、エージェントが config の検査・変更・送信、公開鍵の登録、アプリの入れ直し、受け取り箱の片付けを実行できる。ネットには出ない。</p>
-<ul><li>config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない</li><li>端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く</li><li>状態: 実装中。<code>ios/TermCore</code> が無い版では、<a href="/get-started">Get Started</a> の <code>scripts/</code> の手順で同じことができる</li></ul>
+<ul><li>config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない</li><li>端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く</li><li>状態: 実装済み（Mac の CI でビルドとテストを通している）。<code>ios/TermCore</code> が無い版では、<a href="/get-started">Get Started</a> の <code>scripts/</code> の手順で同じことができる</li></ul>
 <h2 id="build">作る</h2>
 <p>リポジトリの最上位で実行する。要るのは Mac の Xcode（Swift）だけで、外の依存は無い。</p>
 <pre tabindex="0"><code class="language-bash">swift build -c release --package-path ios/TermCore</code></pre>

@@ -120,7 +120,7 @@
    "name": "動画を Claude Code に見せるには？",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。1 分の動画が約 1,400 トークンの画像 1 枚になる（12 枚を別々に送るより約 16 分の 1）。処理は端末の中で行う。詳しくは メディアを送る（実装中）。"
+    "text": "📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。1 分の動画が約 1,400 トークンの画像 1 枚になる（12 枚を別々に送るより約 16 分の 1）。処理は端末の中で行う。詳しくは メディアを送る。"
    }
   },
   {
@@ -152,7 +152,7 @@
    "name": "今使えますか？",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "開発中（2026-10-30 時点）。設計どおりに実装を進めており、実機での確認はまだ済んでいない。メディアの送信は実装中。"
+    "text": "開発中（2026-10-30 時点）。メディアの送信を含めて実装し、Mac の CI（GitHub Actions）でアプリ全体のビルドとテストを通している。実機での確認はまだ済んでいない。"
    }
   }
  ],
@@ -186,7 +186,7 @@
 <h2 id="agents">どのエージェントで使えますか？</h2>
 <p>ターミナルなので、接続先の tmux の中で動くものなら何でも使える（Claude Code、Codex など）。メディアを送るときの形式は、config の <code>agent</code> で <code>claude-code</code>（既定）・<code>codex</code>・<code>generic</code> から選ぶ。Gemini CLI は、動画・音声を読めるかをまだ確かめていないので、画像だけのエージェントとして扱う。設定用の MCP サーバー（<code>splitterm mcp</code>）は Claude Code に登録でき、ほかの MCP クライアントも同じ stdio で使える。</p>
 <h2 id="video">動画を Claude Code に見せるには？</h2>
-<p>📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。1 分の動画が約 1,400 トークンの画像 1 枚になる（12 枚を別々に送るより約 16 分の 1）。処理は端末の中で行う。詳しくは <a href="/media">メディアを送る</a>（実装中）。</p>
+<p>📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。1 分の動画が約 1,400 トークンの画像 1 枚になる（12 枚を別々に送るより約 16 分の 1）。処理は端末の中で行う。詳しくは <a href="/media">メディアを送る</a>。</p>
 <h2 id="mcp">MCP はありますか？</h2>
 <p>ある。Mac で <code>swift build -c release --package-path ios/TermCore</code> で作り、<code>claude mcp add splitterm -- &lt;repo&gt;/ios/TermCore/.build/release/splitterm mcp</code> で Claude Code に登録する。config の検査・変更・送信、公開鍵の登録、入れ直し、受け取り箱の片付けができる。詳しくは <a href="/mcp">MCP</a>。</p>
 <h2 id="hosts">Mac 以外にもつなげますか？</h2>
@@ -194,7 +194,7 @@
 <h2 id="limitations">できないことは？</h2>
 <ul><li>縦持ちと、iOS のシステムキーボード（横持ちの自前のキーボードだけ）</li><li>App Store・TestFlight での配布。Android 版も無い</li><li>SFTP・ポート転送</li><li>アプリ内の AI 機能・クラウド同期</li><li>iPad のハードウェアキーボードでの日本語入力（後で足す）</li><li>mosh などの方式（今は SSH＋tmux＋自動の繋ぎ直し）</li><li>無料の署名の制約: 7 日ごとの入れ直し（自動）、1 台に入れられるのは 3 本まで</li></ul>
 <h2 id="status">今使えますか？</h2>
-<p>開発中（2026-10-30 時点）。設計どおりに実装を進めており、実機での確認はまだ済んでいない。メディアの送信は実装中。</p>
+<p>開発中（2026-10-30 時点）。メディアの送信を含めて実装し、Mac の CI（GitHub Actions）でアプリ全体のビルドとテストを通している。実機での確認はまだ済んでいない。</p>
 </main>
 <footer><p>このページの Markdown: <a href="/faq.md" type="text/markdown">/faq.md</a> · <a href="/llms.txt" type="text/plain">llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">ソースコード（GitHub）</a></p><p>更新: <time datetime="2026-10-30">2026-10-30</time></p></footer>
 </body>

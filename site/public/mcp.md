@@ -4,7 +4,7 @@ Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動�
 
 - config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない
 - 端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く
-- 状態: 実装中。`ios/TermCore` が無い版では、[Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md) の `scripts/` の手順で同じことができる
+- 状態: 実装済み（Mac の CI でビルドとテストを通している）。`ios/TermCore` が無い版では、[Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md) の `scripts/` の手順で同じことができる
 
 ## 作る
 

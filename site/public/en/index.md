@@ -33,7 +33,7 @@ Mainly five steps need a human: signing in to Xcode with an Apple ID, connecting
 - **iPad hardware keyboards**: connect one and the on-screen keyboard disappears; the shell fills the screen
 - **Survives disconnects**: reconnects automatically when the app returns to the foreground, the network changes, or the connection drops, and re-attaches to your tmux session
 - **Touch**: drag vertically to scroll back, long-press to select, pinch to zoom. When vim, tmux or htop ask for the mouse, touches are sent as mouse events
-- **Send media** (in development): send photos, videos and audio to an inbox on your Mac and put the paths on the command line. Videos become one image (a contact sheet) plus a transcript to save tokens. See [media (Japanese)](https://mobile-ssh-client---split-keyboard.pages.dev/media.md)
+- **Send media**: send photos, videos and audio to an inbox on your Mac and put the paths on the command line. Videos become one image (a contact sheet) plus a transcript to save tokens. See [media (Japanese)](https://mobile-ssh-client---split-keyboard.pages.dev/media.md)
 - **Agent-driven setup**: a `splitterm` command and MCP server on the Mac let an agent check, edit and push the config, register the public key and re-install the app. See [MCP (Japanese)](https://mobile-ssh-client---split-keyboard.pages.dev/mcp.md)
 
 ## Who it is for
@@ -73,7 +73,7 @@ It is not on the App Store or TestFlight. You build it from source with Xcode on
 
 ## Status
 
-In development (as of 2026-10-30). The implementation follows the design but has not been verified on a real device yet. Media sending is in development.
+In development (as of 2026-10-30). Everything, including media sending, is implemented, and the whole app builds and passes its tests on a Mac in CI (GitHub Actions). It has not been verified on a real device yet.
 
 ## Read next
 

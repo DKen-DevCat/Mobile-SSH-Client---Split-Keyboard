@@ -41,7 +41,7 @@ https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md を読んで
 - **iPad のハードウェアキーボード**: つなぐと画面のキーボードが消え、シェルが全面になる
 - **切れても続く**: 前面に戻ったとき・回線が変わったとき・通信が切れたときに自動で繋ぎ直し、tmux のセッションに戻る
 - **タッチ操作**: 縦ドラッグでスクロールバック、長押しで選択、ピンチで倍率。vim・tmux・htop がマウスを求めたら、マウスとして送る
-- **メディアを送る**（実装中）: 写真・動画・音声を Mac の受け取り箱へ送り、パスを入力行に入れる。動画は 1 枚の画像（コンタクトシート）と文字起こしにして、トークンを抑える。→ [メディアを送る](https://mobile-ssh-client---split-keyboard.pages.dev/media.md)
+- **メディアを送る**: 写真・動画・音声を Mac の受け取り箱へ送り、パスを入力行に入れる。動画は 1 枚の画像（コンタクトシート）と文字起こしにして、トークンを抑える。→ [メディアを送る](https://mobile-ssh-client---split-keyboard.pages.dev/media.md)
 - **エージェントで設定と運用**: Mac で動く `splitterm` コマンドと MCP サーバーで、config の検査・変更・送信、公開鍵の登録、入れ直しをエージェントが実行できる。→ [MCP](https://mobile-ssh-client---split-keyboard.pages.dev/mcp.md)
 
 ## 誰向けか
@@ -81,7 +81,7 @@ App Store・TestFlight では配っていない。Mac の Xcode でソースか�
 
 ## 状態
 
-開発中（2026-10-30 時点）。設計どおりに実装を進めており、実機での確認はまだ済んでいない。メディアの送信は実装中。
+開発中（2026-10-30 時点）。メディアの送信を含めて実装し、Mac の CI（GitHub Actions）でアプリ全体のビルドとテストを通している。実機での確認はまだ済んでいない。
 
 ## 次に読む
 
@@ -477,7 +477,7 @@ Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動�
 
 - config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない
 - 端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く
-- 状態: 実装中。`ios/TermCore` が無い版では、[Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md) の `scripts/` の手順で同じことができる
+- 状態: 実装済み（Mac の CI でビルドとテストを通している）。`ios/TermCore` が無い版では、[Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md) の `scripts/` の手順で同じことができる
 
 ## 作る
 
@@ -580,7 +580,7 @@ MCP と同じことを、コマンドでも実行できる。
 
 Mobile-SSH-Client---Split-Keyboard で選んだり撮ったりした写真・動画・音声を、同じ SSH の接続で Mac の受け取り箱（`~/.splitterm/inbox`）へ原本のまま送り、ファイルのパスを入力行に入れる（Enter は押さない）。エージェントが読めない形式のときだけ変換する。動画は、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声は端末の中で文字にして添える。
 
-> 状態: 設計は決まり、config の項目まで入っている。送る機能（環境バーの 📎）は実装中（2026-10-30 時点）。
+> 状態: 実装済み（環境バーの 📎）。Mac の CI でビルドを通しているが、実機での確認はまだ（2026-10-30 時点）。
 
 ## 流れ
 
@@ -720,7 +720,7 @@ Mac では `~/.config/splitterm/config`（`scripts/ios_push_config.sh` か `spli
 
 ## 動画を Claude Code に見せるには？
 
-📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。1 分の動画が約 1,400 トークンの画像 1 枚になる（12 枚を別々に送るより約 16 分の 1）。処理は端末の中で行う。詳しくは [メディアを送る](https://mobile-ssh-client---split-keyboard.pages.dev/media.md)（実装中）。
+📎 で動画を選ぶと、Claude Code は動画を読めないので、場面の変わり目から選んだ 12 枚を時刻付きの 1 枚の画像（コンタクトシート）にし、音声の文字起こしを添えて送る。1 分の動画が約 1,400 トークンの画像 1 枚になる（12 枚を別々に送るより約 16 分の 1）。処理は端末の中で行う。詳しくは [メディアを送る](https://mobile-ssh-client---split-keyboard.pages.dev/media.md)。
 
 ## MCP はありますか？
 
@@ -742,4 +742,4 @@ SSH で届く機械ならつなげる（例: Raspberry Pi）。ただし、ア�
 
 ## 今使えますか？
 
-開発中（2026-10-30 時点）。設計どおりに実装を進めており、実機での確認はまだ済んでいない。メディアの送信は実装中。
+開発中（2026-10-30 時点）。メディアの送信を含めて実装し、Mac の CI（GitHub Actions）でアプリ全体のビルドとテストを通している。実機での確認はまだ済んでいない。
