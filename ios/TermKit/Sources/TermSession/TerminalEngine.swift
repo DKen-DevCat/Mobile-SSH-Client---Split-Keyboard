@@ -322,6 +322,16 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
         }
     }
 
+    /// 見えている画面（最下部）の中のカーソルの位置（桁と行）。カーソルが隠れていても返す。
+    /// 変換中の読みと先行表示を重ねる位置で、カーソルを隠す画面（Claude Code など）でも出せるようにする
+    public func cursorPosition() -> (col: Int, row: Int) {
+        terminal.terminalLock.withLock {
+            let t = terminal!
+            // 行の終わりに書いた直後は、桁が幅と同じになる（次の文字で折り返す）。画面の中に収める
+            return (col: min(t.buffer.x, max(0, t.cols - 1)), row: min(t.buffer.y, max(0, t.rows - 1)))
+        }
+    }
+
     /// 単語の範囲（ダブルタップ）。通し番号の行と桁
     public func wordRange(row: Int, col: Int) -> (start: Int, end: Int)? {
         terminal.terminalLock.withLock {

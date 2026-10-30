@@ -334,17 +334,30 @@ final class TabRow: TopRow {
     }
 }
 
-/// 変換候補バー（かな入力のときだけ）。読みと候補を並べ、タップで確定する
+/// 変換候補バー（かな入力のときだけ）。読みと候補を並べ、タップで確定する。
+/// ボタンは使い回す（打つたびに作り直さない。候補が増えたときだけ作る）
 final class CandidateBar: UIView {
     var onPick: ((KanaCandidate) -> Void)?
     private let stack = UIStackView()
     private let scroll = UIScrollView()
     private var colors: KeyboardColors?
+    /// ローマ字のまだかなにならない英字（先頭に薄く出す）
+    private let pendingLabel = UILabel()
+    private var buttons: [UIButton] = []
+    /// いまボタンに出ている題（同じなら書き換えない）
+    private var titles: [String] = []
+    /// 見た目を付け終えたボタンの数（色を変えたら 0 に戻す）。それ以降は題だけ書き換える
+    private var styled = 0
+    /// ボタンが指す候補（ボタンの番号 = 候補の番号）
+    private var candidates: [KanaCandidate] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         stack.axis = .horizontal
         stack.spacing = 6
+        pendingLabel.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
+        pendingLabel.isHidden = true
+        stack.addArrangedSubview(pendingLabel)
         scroll.showsHorizontalScrollIndicator = false
         scroll.addSubview(stack)
         addSubview(scroll)
@@ -355,38 +368,64 @@ final class CandidateBar: UIView {
     func apply(colors: KeyboardColors) {
         self.colors = colors
         backgroundColor = colors.functionKey
+        pendingLabel.textColor = colors.subText
+        // 次の update で、色を付け直す
+        titles.removeAll()
+        styled = 0
     }
 
     /// 候補を並べる。pending はローマ字のまだかなにならない英字（先頭に薄く出す）
     func update(candidates: [KanaCandidate], pending: String = "") {
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if !pending.isEmpty {
-            let l = UILabel()
-            l.text = pending
-            l.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
-            l.textColor = colors?.subText ?? .lightGray
-            stack.addArrangedSubview(l)
-        }
+        if pendingLabel.text != pending { pendingLabel.text = pending }
+        pendingLabel.isHidden = pending.isEmpty
+        self.candidates = candidates
         for (i, c) in candidates.enumerated() {
-            let b = UIButton(type: .system)
-            var cfg = UIButton.Configuration.plain()
-            cfg.title = c.text
-            cfg.baseForegroundColor = colors?.text ?? .white
-            cfg.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10)
-            if i == 0 {
-                cfg.background.backgroundColor = colors?.key
-                cfg.background.cornerRadius = 6
+            let b = i < buttons.count ? buttons[i] : makeButton()
+            b.isHidden = false
+            // 出ている題と同じなら、何もしない
+            if i < titles.count, titles[i] == c.text { continue }
+            if i < styled {
+                b.configuration?.title = c.text
+            } else {
+                style(b, title: c.text, first: i == 0)
+                styled = i + 1
             }
-            cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
-                var a = a
-                a.font = UIFont.systemFont(ofSize: 16)
-                return a
-            }
-            b.configuration = cfg
-            b.addAction(UIAction { [weak self] _ in self?.onPick?(c) }, for: .touchUpInside)
-            stack.addArrangedSubview(b)
+            if i < titles.count { titles[i] = c.text } else { titles.append(c.text) }
         }
+        // 余ったボタンは隠す（スタックは隠れたものを詰める）
+        for b in buttons.dropFirst(candidates.count) { b.isHidden = true }
         setNeedsLayout()
+    }
+
+    private func makeButton() -> UIButton {
+        let i = buttons.count
+        let b = UIButton(type: .system)
+        b.addAction(UIAction { [weak self] _ in self?.pick(i) }, for: .touchUpInside)
+        stack.addArrangedSubview(b)
+        buttons.append(b)
+        return b
+    }
+
+    private func pick(_ i: Int) {
+        guard candidates.indices.contains(i) else { return }
+        onPick?(candidates[i])
+    }
+
+    private func style(_ b: UIButton, title: String, first: Bool) {
+        var cfg = UIButton.Configuration.plain()
+        cfg.title = title
+        cfg.baseForegroundColor = colors?.text ?? .white
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10)
+        if first {
+            cfg.background.backgroundColor = colors?.key
+            cfg.background.cornerRadius = 6
+        }
+        cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
+            var a = a
+            a.font = UIFont.systemFont(ofSize: 16)
+            return a
+        }
+        b.configuration = cfg
     }
 
     override func layoutSubviews() {

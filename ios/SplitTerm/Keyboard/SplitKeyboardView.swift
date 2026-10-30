@@ -3,7 +3,9 @@ import UIKit
 
 /// 分割キーボードの片側。指ごとに独立して追跡し、両手で同時に押しても取りこぼさない。
 /// 文字は指を離した時点で確定する（出力順はその確定順）。⌫ と矢印は長押しでリピートする。
-/// 修飾キーは押している間だけ効き、長押ししてもリピートしない。スペースの横の赤い丸はポインタ（PointerStick）
+/// 修飾キーは押している間だけ効き、長押ししてもリピートしない。スペースの横の赤い丸はポインタ（PointerStick）。
+/// フリックは押した瞬間にキーの上と上下左右へ文字の四角を出し（`FlickGuide`）、空白は 0.5 秒の長押しでキーボード全体が
+/// トラックパッドになる（docs/design.md「フリックの分割」「同時入力」）
 final class SplitKeyboardView: UIView {
     let model: KeyboardModel
     var face: KeyboardFace { didSet { relayout() } }
@@ -15,10 +17,11 @@ final class SplitKeyboardView: UIView {
     var haptics = true {
         didSet { model.pointer.haptics = haptics }
     }
-    /// フリックとみなす移動量（pt）
-    var flickThreshold: CGFloat = 14
     /// 🌐 を長押しとみなす時間
     static let globeHoldTime: TimeInterval = 0.45
+    /// 空白を長押しして、トラックパッドに入る時間と、待つ間に動いてよい距離（これ以上動いたら、離したときに空白を打つ）
+    static let trackpadHoldTime: TimeInterval = 0.5
+    static let trackpadSlop: CGFloat = 6
 
     /// ThinkPad の TrackPoint の赤
     static let pointerRed = UIColor(red: 0.86, green: 0.13, blue: 0.11, alpha: 1)
@@ -26,23 +29,49 @@ final class SplitKeyboardView: UIView {
     private var keys: [(key: KeySpec, frame: CGRect)] = []
     private var active: [ObjectIdentifier: TouchState] = [:]
     private let feedback = UIImpactFeedbackGenerator(style: .light)
-    /// F と J（ホームポジション）は少し強く
+    /// F と J（ホームポジション）は少し強く。トラックパッドに入ったときの手応えも同じ（medium）
     private let homingFeedback = UIImpactFeedbackGenerator(style: .medium)
+    /// 使い終わったフリックのガイド（押すたびに作らず、使い回す）
+    private var guidePool: [FlickGuide] = []
+
+    /// その指が何をしているか
+    private enum Role {
+        /// 普通のキー
+        case key
+        /// 赤い丸（ポインタ）
+        case stick
+        /// 空白を長押しして、キーボード全体をトラックパッドにしている指
+        case trackpad
+        /// トラックパッドの間に触れたほかの指（タップで右クリック。キーは打たない）
+        case tap
+    }
 
     @MainActor
     private final class TouchState {
         let key: KeySpec
         let frame: CGRect
+        /// キーボードの座標での、触れた点
         let start: CGPoint
         let highlight: CALayer
-        var popup: UILabel?
+        /// フリックの方向を決める移動量（キーの大きさから）
+        let threshold: CGFloat
+        var role = Role.key
+        /// ウィンドウの座標での、今の点（トラックパッドに入るとき、ポインタに渡す）
+        var windowPoint: CGPoint
+        /// トラックパッドに入った点（ウィンドウの座標）
+        var trackpadOrigin: CGPoint = .zero
+        /// トラックパッドに入ってから、タップの範囲を超えて動かしたか
+        var moved = false
+        var guide: FlickGuide?
         var timer: Timer?
         var repeated = false
-        init(key: KeySpec, frame: CGRect, start: CGPoint, highlight: CALayer) {
+        init(key: KeySpec, frame: CGRect, start: CGPoint, windowPoint: CGPoint, highlight: CALayer, threshold: CGFloat = 0) {
             self.key = key
             self.frame = frame
             self.start = start
+            self.windowPoint = windowPoint
             self.highlight = highlight
+            self.threshold = threshold
         }
     }
 
@@ -75,6 +104,9 @@ final class SplitKeyboardView: UIView {
         UIRectFill(bounds)
         let activeMods = model.active
         let gap: CGFloat = max(2, rowHeight * 0.06)
+        // トラックパッドの間は、文字と絵を薄くして、キーの面だけに見せる（iOS 標準のキーボードと同じ）
+        let dim = model.trackpadMode
+        let g = UIGraphicsGetCurrentContext()
         for (key, frame) in keys {
             let r = frame.insetBy(dx: gap / 2, dy: gap / 2)
             let path = UIBezierPath(roundedRect: r, cornerRadius: min(6, r.height * 0.18))
@@ -83,13 +115,16 @@ final class SplitKeyboardView: UIView {
             if case .modifier(let m) = key.action, activeMods.contains(m) { fill = colors.accent }
             fill.setFill()
             path.fill()
+            if dim { g?.setAlpha(key.style == .pointer ? 0.3 : 0.18) }
             if case .pointer = key.action {
                 drawPointer(in: r)
+                if dim { g?.setAlpha(1) }
                 continue
             }
             if case .capsLock = key.action { drawCapsLight(in: r, on: model.capsLock) }
             drawLabel(key, in: r)
             if key.homing { drawHomingBar(in: r) }
+            if dim { g?.setAlpha(1) }
         }
     }
 
@@ -191,14 +226,25 @@ final class SplitKeyboardView: UIView {
             let p = t.location(in: self)
             guard let hit = key(at: p) else { continue }
             let id = ObjectIdentifier(t)
+            let wp = t.location(in: nil)
+            if model.trackpadMode {
+                // トラックパッドの間は、ほかの指のタップが右クリック（キーは打たない）
+                let state = TouchState(key: hit.key, frame: hit.frame, start: p, windowPoint: wp, highlight: CALayer())
+                state.role = .tap
+                active[id] = state
+                model.pointer.down(id, at: wp, time: t.timestamp)
+                continue
+            }
             if case .pointer = hit.key.action {
                 // ポインタ: ずれはウィンドウの座標で測る（左右の面をまたいでも同じ尺度）
-                let state = TouchState(key: hit.key, frame: hit.frame, start: p, highlight: CALayer())
+                let state = TouchState(key: hit.key, frame: hit.frame, start: p, windowPoint: wp, highlight: CALayer())
+                state.role = .stick
                 active[id] = state
-                model.pointer.down(id, at: t.location(in: nil), time: t.timestamp)
+                model.pointer.down(id, at: wp, time: t.timestamp)
                 setNeedsDisplay(hit.frame)
                 continue
             }
+            // 振動とハイライトは、何よりも先に（押した感触を遅らせない）
             if haptics {
                 if hit.key.homing { homingFeedback.impactOccurred(intensity: 1) } else { feedback.impactOccurred(intensity: 0.6) }
             }
@@ -212,7 +258,8 @@ final class SplitKeyboardView: UIView {
             CATransaction.setDisableActions(true)
             layer.addSublayer(hl)
             CATransaction.commit()
-            let state = TouchState(key: hit.key, frame: hit.frame, start: p, highlight: hl)
+            let state = TouchState(key: hit.key, frame: hit.frame, start: p, windowPoint: wp, highlight: hl,
+                                   threshold: FlickDirection.threshold(keySize: hit.frame.size))
             active[id] = state
             switch hit.key.action {
             case .modifier(let m):
@@ -223,7 +270,9 @@ final class SplitKeyboardView: UIView {
             case .key(_, _, true):
                 startRepeat(state)
             case .flick(let set):
-                showPopup(state, text: set.center)
+                showGuide(state, set: set)
+            case .character(" ", _, _):
+                startTrackpadHold(state, id: id)
             default:
                 break
             }
@@ -234,16 +283,35 @@ final class SplitKeyboardView: UIView {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            guard let s = active[ObjectIdentifier(t)] else { continue }
-            switch s.key.action {
-            case .pointer:
-                model.pointer.moved(ObjectIdentifier(t), to: t.location(in: nil), time: t.timestamp)
-            case .flick(let set):
-                let p = t.location(in: self)
-                let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: flickThreshold)
-                showPopup(s, text: set.character(d))
-            default:
+            let id = ObjectIdentifier(t)
+            guard let s = active[id] else { continue }
+            s.windowPoint = t.location(in: nil)
+            switch s.role {
+            case .stick:
+                model.pointer.moved(id, to: s.windowPoint, time: t.timestamp)
+            case .trackpad:
+                if hypot(s.windowPoint.x - s.trackpadOrigin.x, s.windowPoint.y - s.trackpadOrigin.y) > Self.trackpadSlop {
+                    s.moved = true
+                }
+                model.pointer.moved(id, to: s.windowPoint, time: t.timestamp)
+            case .tap:
                 break
+            case .key:
+                let p = t.location(in: self)
+                switch s.key.action {
+                case .flick(let set):
+                    let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: s.threshold)
+                    // 文字の無い方向は、中央の文字になる
+                    s.guide?.select(set.assigned(d) == nil ? .center : d, colors: colors)
+                case .character(" ", _, _):
+                    // 待つ間に動いたら、トラックパッドには入らない（離したら空白）
+                    if s.timer != nil, hypot(p.x - s.start.x, p.y - s.start.y) >= Self.trackpadSlop {
+                        s.timer?.invalidate()
+                        s.timer = nil
+                    }
+                default:
+                    break
+                }
             }
         }
     }
@@ -255,20 +323,27 @@ final class SplitKeyboardView: UIView {
             guard let s = active.removeValue(forKey: id) else { continue }
             finish(s)
             let start = Perf.begin(.keyToSend)
-            switch s.key.action {
-            case .pointer:
+            switch s.role {
+            case .stick:
                 model.pointer.up(id, at: t.location(in: nil), time: t.timestamp)
                 setNeedsDisplay(s.frame)
-            case .modifier(let m):
-                model.modifierUp(m)
-            case .capsLock:
-                break
-            case .flick:
-                let p = t.location(in: self)
-                let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: flickThreshold)
-                model.commit(s.key, direction: d)
-            default:
-                if !s.repeated { model.commit(s.key) }
+            case .trackpad:
+                endTrackpad(s, id: id, at: t.location(in: nil), time: t.timestamp)
+            case .tap:
+                model.pointer.up(id, at: t.location(in: nil), time: t.timestamp)
+            case .key:
+                switch s.key.action {
+                case .modifier(let m):
+                    model.modifierUp(m)
+                case .capsLock:
+                    break
+                case .flick:
+                    let p = t.location(in: self)
+                    let d = FlickDirection.resolve(dx: p.x - s.start.x, dy: p.y - s.start.y, threshold: s.threshold)
+                    model.commit(s.key, direction: d)
+                default:
+                    if !s.repeated { model.commit(s.key) }
+                }
             }
             Perf.end(.keyToSend, start)
         }
@@ -279,21 +354,29 @@ final class SplitKeyboardView: UIView {
             let id = ObjectIdentifier(t)
             guard let s = active.removeValue(forKey: id) else { continue }
             finish(s)
-            switch s.key.action {
-            case .modifier(let m): model.modifierUp(m, cancelled: true)
-            case .pointer: model.pointer.cancel(id)
-            default: break
+            switch s.role {
+            case .stick, .tap:
+                model.pointer.cancel(id)
+            case .trackpad:
+                endTrackpad(s, id: id, at: s.windowPoint, time: t.timestamp, cancelled: true)
+            case .key:
+                if case .modifier(let m) = s.key.action { model.modifierUp(m, cancelled: true) }
             }
         }
     }
 
     private func finish(_ s: TouchState) {
         s.timer?.invalidate()
+        s.timer = nil
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         s.highlight.removeFromSuperlayer()
         CATransaction.commit()
-        s.popup?.removeFromSuperview()
+        if let g = s.guide {
+            g.hide()
+            guidePool.append(g)
+            s.guide = nil
+        }
     }
 
     /// 🌐 を押したまま少し待ったら、キーボードを選ぶ吹き出しを出す（ほかのキーを押していなければ）
@@ -322,24 +405,151 @@ final class SplitKeyboardView: UIView {
         }
     }
 
-    /// フリックの候補をキーの上に出す
-    private func showPopup(_ s: TouchState, text: String) {
-        let label: UILabel
-        if let l = s.popup {
-            label = l
-        } else {
-            label = UILabel()
-            label.textAlignment = .center
-            label.font = .systemFont(ofSize: min(30, s.frame.height * 0.6), weight: .medium)
-            label.textColor = colors.text
-            label.backgroundColor = colors.pressed
-            label.layer.cornerRadius = 8
-            label.layer.masksToBounds = true
-            let w = max(s.frame.width, 44), h = max(s.frame.height * 0.9, 40)
-            label.frame = CGRect(x: s.frame.midX - w / 2, y: s.frame.minY - h - 4, width: w, height: h)
-            addSubview(label)
-            s.popup = label
+    // MARK: 空白の長押し → トラックパッド
+
+    /// 空白を押したまま、動かさずに 0.5 秒待ったら、キーボード全体がトラックパッドになる（iOS 標準のキーボードと同じ）。
+    /// その指の動きはポインタに流れ、離したら元に戻る（空白は打たない）。0.5 秒より前に離せば、今までどおり空白
+    private func startTrackpadHold(_ s: TouchState, id: ObjectIdentifier) {
+        s.timer = Timer.scheduledTimer(withTimeInterval: Self.trackpadHoldTime, repeats: false) { [weak self, weak s] _ in
+            MainActor.assumeIsolated {
+                guard let self, let s, s.role == .key, self.active[id] === s else { return }
+                // 赤い丸を使っている間は入らない（ポインタを横取りして、右クリックと取り違えるため）
+                guard !self.model.pointer.isActive, !self.model.trackpadMode else { return }
+                s.timer = nil
+                s.role = .trackpad
+                s.trackpadOrigin = s.windowPoint
+                s.moved = false
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                s.highlight.removeFromSuperlayer()
+                CATransaction.commit()
+                self.model.trackpadMode = true
+                if self.haptics { self.homingFeedback.impactOccurred(intensity: 1) }
+                self.model.pointer.down(id, at: s.windowPoint, time: ProcessInfo.processInfo.systemUptime)
+            }
         }
-        label.text = text
     }
+
+    /// トラックパッドの指が離れた（取り消された）。動かさずに離したときは、クリックにしない
+    private func endTrackpad(_ s: TouchState, id: ObjectIdentifier, at p: CGPoint, time: TimeInterval, cancelled: Bool = false) {
+        if cancelled || !s.moved {
+            model.pointer.cancel(id)
+        } else {
+            model.pointer.up(id, at: p, time: time)
+        }
+        model.trackpadMode = false
+    }
+
+    // MARK: フリックのガイド
+
+    /// ガイドを足す層。キーボードの外のシェルや上のバーの前面まで出すので、ウィンドウの全面を覆う、タッチを受けない層に置く。
+    /// 画面のビューに四角を足し引き・並べ替えすると画面全体の配置をやり直させてしまうので、層は 1 度だけ足して使い回す
+    private func guideHost() -> FlickGuideHost? {
+        guard let window else { return nil }
+        if let host = window.subviews.first(where: { $0 is FlickGuideHost }) as? FlickGuideHost { return host }
+        let host = FlickGuideHost(frame: window.bounds)
+        window.addSubview(host)
+        return host
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // 最初の 1 打から遅れないよう、先に作っておく
+        _ = guideHost()
+    }
+
+    /// フリックのキーを押した瞬間に、そのキーの上と上下左右へ同じ大きさの四角を十字に出す
+    private func showGuide(_ s: TouchState, set: FlickSet) {
+        guard let host = guideHost() else { return }
+        // ウィンドウの上の層なので、シェルや上のバーより前面。ほかの層が後から足されていたときだけ、前に出す
+        if host.superview?.subviews.last !== host { host.superview?.bringSubviewToFront(host) }
+        let guide = guidePool.popLast() ?? FlickGuide(host: host)
+        // 英字は a/A（caps lock）か shift で大文字（commit と同じ条件）
+        let upper = model.capsLock || model.modifiers.contains(.shift)
+        guide.show(set: set, upper: upper, keyFrame: convert(s.frame, to: nil), limit: window?.bounds ?? host.bounds,
+                   colors: colors)
+        s.guide = guide
+    }
+
+    /// フリックのガイド（iOS のフリックと同じ形）。キーの上と上下左右（その方向に文字があるものだけ）に、キーと同じ大きさの
+    /// 四角を出し、指の向きの四角をアクセント色、ほかを押した色にする。画面（ウィンドウ）の外にはみ出す四角は内側へずらす
+    @MainActor
+    private final class FlickGuide {
+        private let host: UIView
+        private var labels: [FlickDirection: UILabel] = [:]
+        private var selected = FlickDirection.center
+
+        init(host: UIView) {
+            self.host = host
+            // 中央を最後に足す（いちばん上に重なる）
+            for d in [FlickDirection.left, .up, .right, .down, .center] {
+                let label = UILabel()
+                label.textAlignment = .center
+                label.layer.cornerRadius = 6
+                label.layer.masksToBounds = true
+                label.isHidden = true
+                host.addSubview(label)
+                labels[d] = label
+            }
+        }
+
+        /// keyFrame・limit はウィンドウの座標
+        func show(set: FlickSet, upper: Bool, keyFrame: CGRect, limit: CGRect, colors: KeyboardColors) {
+            let w = keyFrame.width, h = keyFrame.height
+            let font = UIFont.systemFont(ofSize: min(28, min(w, h) * 0.55), weight: .medium)
+            let offsets: [(FlickDirection, CGFloat, CGFloat)] = [
+                (.left, -w, 0), (.up, 0, -h), (.right, w, 0), (.down, 0, h), (.center, 0, 0),
+            ]
+            selected = .center
+            for (d, dx, dy) in offsets {
+                guard let label = labels[d] else { continue }
+                guard let text = set.assigned(d) else {
+                    label.isHidden = true
+                    continue
+                }
+                label.text = upper ? text.uppercased() : text
+                label.font = font
+                label.textColor = colors.text
+                label.backgroundColor = d == .center ? colors.accent : colors.pressed
+                let r = Self.inside(keyFrame.offsetBy(dx: dx, dy: dy).insetBy(dx: 1, dy: 1), limit)
+                label.frame = host.convert(r, from: nil)
+                label.isHidden = false
+                host.bringSubviewToFront(label)
+            }
+        }
+
+        /// 指の向きの四角を、アクセント色にして前面に出す
+        func select(_ d: FlickDirection, colors: KeyboardColors) {
+            guard d != selected, let next = labels[d], !next.isHidden else { return }
+            labels[selected]?.backgroundColor = colors.pressed
+            next.backgroundColor = colors.accent
+            host.bringSubviewToFront(next)
+            selected = d
+        }
+
+        func hide() {
+            for label in labels.values { label.isHidden = true }
+        }
+
+        /// 範囲の外にはみ出していたら、内側へずらす
+        static func inside(_ r: CGRect, _ limit: CGRect) -> CGRect {
+            var r = r
+            if r.maxX > limit.maxX { r.origin.x = limit.maxX - r.width }
+            if r.minX < limit.minX { r.origin.x = limit.minX }
+            if r.maxY > limit.maxY { r.origin.y = limit.maxY - r.height }
+            if r.minY < limit.minY { r.origin.y = limit.minY }
+            return r
+        }
+    }
+}
+
+/// フリックのガイドを置く層。ウィンドウの全面を覆い、タッチは受けない（下のシェルやキーボードへ通す）
+private final class FlickGuideHost: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }

@@ -23,7 +23,7 @@ protocol KeyboardOutput: AnyObject {
     func keyboard(_ emit: KeyboardEmit)
 }
 
-/// 左右の面で共有する状態（修飾キー・caps lock・ポインタ）。docs/design.md「同時入力」:
+/// 左右の面で共有する状態（修飾キー・caps lock・ポインタ・トラックパッド）。docs/design.md「同時入力」:
 /// 修飾キーは Mac のキーボードと同じく、押している間だけ効く（離すと外れる。長押ししても 1 回）
 @MainActor
 final class KeyboardModel {
@@ -32,6 +32,11 @@ final class KeyboardModel {
     var onChange: (() -> Void)?
     /// スペースの横の赤い丸（左右で 1 つを共有する）
     let pointer = PointerStick()
+    /// 空白の長押しで、キーボード全体がトラックパッドになっている（文字と絵を薄くし、キーの面だけにする）。
+    /// その指の動きはポインタ（`pointer`）に流れ、空白は打たない。変わったら両方の面を描き直す
+    var trackpadMode = false {
+        didSet { if trackpadMode != oldValue { onChange?() } }
+    }
 
     /// 押している指の数
     private var held: [ModifierKey: Int] = [:]
@@ -76,6 +81,7 @@ final class KeyboardModel {
         held.removeAll()
         usedWhileHeld.removeAll()
         pointer.reset()
+        trackpadMode = false
         onChange?()
     }
 
