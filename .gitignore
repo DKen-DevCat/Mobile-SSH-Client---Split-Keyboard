@@ -1,0 +1,11 @@
+tmp/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+# iPhone アプリ: 自分の Team（Local.xcconfig）、Xcode の個人設定、Swift パッケージのビルド
+ios/Config/Local.xcconfig
+xcuserdata/
+ios/TermKit/.build/
+ios/TermKit/.swiftpm/

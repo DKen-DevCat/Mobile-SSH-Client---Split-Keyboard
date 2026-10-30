@@ -1,0 +1,128 @@
+# SplitTerm の設定（Ghostty と同じく、このファイル 1 枚ですべてを決める）
+#
+# 書き方
+#   key = value      1 行に 1 つ。# で始まる行は読み飛ばす
+#   key =            値を空にすると既定値に戻る
+#   "..."            空白を残したい値は引用符で囲む
+#   palette と host は何度でも書ける
+#
+# 置き場所
+#   iPhone / iPad: 「ファイル」アプリ > この iPhone 内 > SplitTerm > config
+#                  （アプリの ＋ →「設定を編集」でも直せる）
+#   Mac:           ~/.config/splitterm/config を scripts/ios_push_config.sh で送る
+# 保存した瞬間に読み直して効く。読めない行は飛ばし、画面の ⚠ に行番号を出す。
+# 鍵やパスワードはここに書かない（鍵は Secure Enclave、ホスト鍵はキーチェーン）。
+#
+# 下の値はすべて既定値。変えたい行の先頭の # を外す。
+
+# ─── 接続 ───────────────────────────────────────────────
+# 形: host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]
+#   tmux を指定すると、接続時に `tmux new-session -A -s <名前>` で続きに戻る（既定 main）
+#   tmux=none なら素のシェル
+# host = mac dken@s-macbook-air.tail65f907.ts.net tmux=main
+# host = pi pi@192.168.1.20:2222 tmux=none
+
+# 起動時につなぐ host の名前。空なら最初の host、none ならつながない
+# auto-connect =
+
+# 接続先に伝える端末の種類
+# term = xterm-256color
+
+# TCP の keepalive の間隔（切れた接続を早く見つける）。0 で使わない
+# keepalive = 15s
+
+# 切れたら自動で繋ぎ直す（バックグラウンドからの復帰・回線の切り替え）
+# reconnect = true
+
+# パスワード認証を許す（既定は公開鍵だけ。パスワードは毎回聞き、保存しない）
+# password-auth = false
+
+# ─── 表示 ───────────────────────────────────────────────
+# 等幅の英字フォント。system-mono は iOS の SF Mono。Menlo・Courier New なども使える
+# font-family = system-mono
+
+# 日本語のフォールバック
+# font-family-cjk = Hiragino Sans
+
+# 100% 表示のときの文字の大きさ（pt）
+# font-size = 10
+
+# 表示倍率の段（%）。ピンチ・倍率ボタン・command + − / = はこの段で止まる。先頭が起動時
+# zoom-steps = 85, 100
+
+# 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）
+# color-space = display-p3
+# background = #07090D
+# foreground = #E6EDF3
+# cursor-color = #2F81F7
+# accent = #2F81F7
+# selection-background = #264F78
+
+# 16 色のパレット（番号=色）
+# palette = 0=#1C2128
+# palette = 1=#FF5F6D
+# palette = 2=#3FE08A
+# palette = 3=#FFB454
+# palette = 4=#2F81F7
+# palette = 5=#FF6AC1
+# palette = 6=#5CE1E6
+# palette = 7=#C9D1D9
+# palette = 8=#545D68
+# palette = 9=#FF8A94
+# palette = 10=#7BF0B0
+# palette = 11=#FFCC85
+# palette = 12=#6CA6FF
+# palette = 13=#FF9AD6
+# palette = 14=#8EEFF2
+# palette = 15=#FFFFFF
+
+# 文字と背景のコントラスト比がこれを下回ると、文字色の明るさを補正する。1 で補正しない
+# minimum-contrast = 4.5
+
+# カーソル: block / bar / underline
+# cursor-style = block
+# cursor-blink = false
+
+# スクロールバックの行数（メモリの上だけに置く）
+# scrollback-limit = 10000
+
+# ─── キーボード ─────────────────────────────────────────
+# 起動時のキーボード: us / kana
+# keyboard = us
+
+# キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50）
+# keyboard-pitch = auto
+
+# ⌫ と矢印の長押しリピート
+# key-repeat-delay = 400ms
+# key-repeat-interval = 50ms
+
+# option を meta（ESC を前に付ける）として送る
+# option-as-meta = true
+
+# キーに触れたときの振動
+# haptics = true
+
+# 改行キーが送るもの
+#   auto    接続先が括弧付きペーストを有効にしていれば改行を貼り付けとして、無効なら ESC+CR
+#   paste   auto と同じ
+#   esc-cr  いつも ESC+CR（zsh・Claude Code の Option+Enter と同じ）
+#   ctrl-j  LF。bash・zsh では実行と同じ扱いになるので注意
+# newline = auto
+
+# ハードウェアキーボードがつながっていても、画面のキーボードを出し続ける（iPad）
+# soft-keyboard-with-hardware = false
+
+# ─── 操作 ───────────────────────────────────────────────
+# vim・tmux・htop などがマウスを求めたら、タップやスクロールをマウスとして送る
+# mouse-reporting = true
+
+# ─── 安全 ───────────────────────────────────────────────
+# 起動時と、バックグラウンドからの復帰時に Face ID（かパスコード）を求める
+# app-lock = true
+
+# アプリスイッチャーでターミナルの内容をぼかす
+# privacy-blur = true
+
+# アプリからコピーした内容を消すまでの時間。0 で消さない
+# clipboard-clear = 60s

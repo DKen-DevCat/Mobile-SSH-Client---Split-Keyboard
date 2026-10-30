@@ -1,0 +1,5 @@
+// Local.xcconfig にコピーして使う（git に入れない）。Xcode でプロジェクトを開いて動かすときに要る。
+// Team ID は Xcode > Settings > Accounts の Personal Team か、次で分かる:
+//   defaults export com.apple.dt.Xcode - | plutil -extract IDEProvisioningTeamByIdentifier json -o - - \
+//     | jq -r '[.[][] | select(.isFreeProvisioningTeam == true) | .teamID] | unique[]'
+DEVELOPMENT_TEAM = XXXXXXXXXX

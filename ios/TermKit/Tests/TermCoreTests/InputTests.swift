@@ -1,0 +1,246 @@
+import CoreGraphics
+import XCTest
+@testable import TermCore
+
+final class KeyEncoderTests: XCTestCase {
+    let ctx = EncodingContext()
+
+    func s(_ b: [UInt8]) -> String { String(decoding: b, as: UTF8.self) }
+
+    func testPlainAndControl() {
+        XCTAssertEqual(KeyEncoder.encode(.text("a"), [], ctx), [0x61])
+        XCTAssertEqual(KeyEncoder.encode(.text("c"), .control, ctx), [0x03])
+        XCTAssertEqual(KeyEncoder.encode(.text("C"), .control, ctx), [0x03])
+        XCTAssertEqual(KeyEncoder.encode(.text("["), .control, ctx), [0x1b])
+        XCTAssertEqual(KeyEncoder.encode(.text(" "), .control, ctx), [0x00])
+        XCTAssertEqual(KeyEncoder.encode(.text("あ"), [], ctx), Array("あ".utf8))
+    }
+
+    func testOptionAsMeta() {
+        XCTAssertEqual(KeyEncoder.encode(.text("b"), .option, ctx), [0x1b, 0x62])
+        var noMeta = ctx
+        noMeta.optionAsMeta = false
+        XCTAssertEqual(KeyEncoder.encode(.text("b"), .option, noMeta), [0x62])
+        XCTAssertEqual(KeyEncoder.encode(.backspace, .option, ctx), [0x1b, 0x7f])
+    }
+
+    func testCommandIsNeverSent() {
+        XCTAssertEqual(KeyEncoder.encode(.text("c"), .command, ctx), [])
+        XCTAssertEqual(KeyEncoder.encode(.up, [.command, .shift], ctx), [])
+    }
+
+    func testCursorKeys() {
+        XCTAssertEqual(s(KeyEncoder.encode(.up, [], ctx)), "\u{1b}[A")
+        var app = ctx
+        app.applicationCursor = true
+        XCTAssertEqual(s(KeyEncoder.encode(.up, [], app)), "\u{1b}OA")
+        XCTAssertEqual(s(KeyEncoder.encode(.left, .control, app)), "\u{1b}[1;5D")
+        XCTAssertEqual(s(KeyEncoder.encode(.right, [.shift, .option], ctx)), "\u{1b}[1;4C")
+        XCTAssertEqual(s(KeyEncoder.encode(.pageUp, [], ctx)), "\u{1b}[5~")
+        XCTAssertEqual(s(KeyEncoder.encode(.delete, .control, ctx)), "\u{1b}[3;5~")
+        XCTAssertEqual(s(KeyEncoder.encode(.tab, .shift, ctx)), "\u{1b}[Z")
+    }
+
+    func testFunctionKeys() {
+        XCTAssertEqual(s(KeyEncoder.encode(.function(1), [], ctx)), "\u{1b}OP")
+        XCTAssertEqual(s(KeyEncoder.encode(.function(5), [], ctx)), "\u{1b}[15~")
+        XCTAssertEqual(s(KeyEncoder.encode(.function(12), [], ctx)), "\u{1b}[24~")
+        XCTAssertEqual(KeyEncoder.encode(.function(13), [], ctx), [])
+    }
+
+    func testEnterAndNewline() {
+        XCTAssertEqual(KeyEncoder.encode(.enter, [], ctx), [0x0d])
+        // 括弧付きペーストが無効なら ESC+CR
+        XCTAssertEqual(KeyEncoder.encode(.newline, [], ctx), [0x1b, 0x0d])
+        var bp = ctx
+        bp.bracketedPaste = true
+        XCTAssertEqual(s(KeyEncoder.encode(.newline, [], bp)), "\u{1b}[200~\n\u{1b}[201~")
+        bp.newline = .ctrlJ
+        XCTAssertEqual(KeyEncoder.encode(.newline, [], bp), [0x0a])
+        bp.newline = .escCR
+        XCTAssertEqual(KeyEncoder.encode(.newline, [], bp), [0x1b, 0x0d])
+    }
+
+    func testPaste() {
+        XCTAssertEqual(s(KeyEncoder.paste("a\nb\r\nc", ctx)), "a\rb\rc")
+        var bp = ctx
+        bp.bracketedPaste = true
+        XCTAssertEqual(s(KeyEncoder.paste("x\u{1b}[201~y", bp)), "\u{1b}[200~xy\u{1b}[201~")
+    }
+
+    func testHorizontalMoveCountsWideCharsOnce() {
+        // 「aあb」: a(1) あ(2,0) b(1)
+        let widths = [1, 2, 0, 1]
+        XCTAssertEqual(s(KeyEncoder.horizontalMove(from: 0, to: 3, widths: widths, ctx)), "\u{1b}[C\u{1b}[C")
+        XCTAssertEqual(s(KeyEncoder.horizontalMove(from: 3, to: 0, widths: widths, ctx)), "\u{1b}[D\u{1b}[D")
+        XCTAssertEqual(KeyEncoder.horizontalMove(from: 2, to: 2, widths: widths, ctx), [])
+    }
+}
+
+final class GestureTests: XCTestCase {
+    func testModeDecision() {
+        XCTAssertEqual(GestureMode.decide(mouseReporting: true, alternateScreen: true, allowMouse: true), .mouse)
+        XCTAssertEqual(GestureMode.decide(mouseReporting: true, alternateScreen: true, allowMouse: false), .alternateScroll)
+        XCTAssertEqual(GestureMode.decide(mouseReporting: false, alternateScreen: true, allowMouse: true), .alternateScroll)
+        XCTAssertEqual(GestureMode.decide(mouseReporting: false, alternateScreen: false, allowMouse: true), .normal)
+    }
+
+    func testSGR() {
+        let s = { (b: [UInt8]) in String(decoding: b, as: UTF8.self) }
+        XCTAssertEqual(s(MouseEncoder.click(.left, col: 0, row: 0)), "\u{1b}[<0;1;1M\u{1b}[<0;1;1m")
+        XCTAssertEqual(s(MouseEncoder.press(.wheelUp, col: 9, row: 4)), "\u{1b}[<64;10;5M")
+        XCTAssertEqual(s(MouseEncoder.drag(.left, col: 1, row: 1, mods: .control)), "\u{1b}[<48;2;2M")
+    }
+
+    func testScrollAccumulatorCarriesRemainder() {
+        var a = ScrollAccumulator(lineHeight: 10)
+        XCTAssertEqual(a.add(4), 0)
+        XCTAssertEqual(a.add(7), 1)
+        XCTAssertEqual(a.add(-12), -1)
+        XCTAssertEqual(a.add(25), 2)
+    }
+
+    func testZoomSteps() {
+        var z = ZoomSteps(steps: [85, 100])
+        XCTAssertEqual(z.percent, 85)
+        z.zoom(in: true)
+        XCTAssertEqual(z.percent, 100)
+        z.zoom(in: true)
+        XCTAssertEqual(z.percent, 100)
+        z.zoom(in: false)
+        XCTAssertEqual(z.percent, 85)
+        z.cycle()
+        XCTAssertEqual(z.percent, 100)
+        z.cycle()
+        XCTAssertEqual(z.percent, 85)
+    }
+}
+
+final class KeyboardTests: XCTestCase {
+    func testFlickDirection() {
+        XCTAssertEqual(FlickDirection.resolve(dx: 3, dy: -4, threshold: 12), .center)
+        XCTAssertEqual(FlickDirection.resolve(dx: -20, dy: 5, threshold: 12), .left)
+        XCTAssertEqual(FlickDirection.resolve(dx: 2, dy: -30, threshold: 12), .up)
+        XCTAssertEqual(FlickDirection.resolve(dx: 30, dy: 2, threshold: 12), .right)
+        XCTAssertEqual(FlickDirection.resolve(dx: 0, dy: 20, threshold: 12), .down)
+    }
+
+    func testUSFacesFillTheirRect() {
+        let rect = CGRect(x: 44, y: 40, width: 182, height: 314)
+        for face in [KeyboardLayouts.usLeft, KeyboardLayouts.usRight] {
+            let frames = face.frames(in: rect, rowHeight: 62.8)
+            XCTAssertEqual(face.rows.count, LayoutEngine.keyboardRows)
+            for row in 0..<face.rows.count {
+                let inRow = frames.filter { abs($0.frame.minY - (rect.minY + CGFloat(row) * 62.8)) < 0.01 }
+                XCTAssertEqual(inRow.first?.frame.minX ?? 0, rect.minX, accuracy: 0.01)
+                XCTAssertEqual(inRow.last?.frame.maxX ?? 0, rect.maxX, accuracy: 0.01)
+            }
+        }
+    }
+
+    func testKanaTallKeysSpanTwoRows() {
+        let rect = CGRect(x: 0, y: 0, width: 200, height: 300)
+        for face in [KeyboardLayouts.kanaLeft, KeyboardLayouts.kanaRight] {
+            let frames = face.frames(in: rect, rowHeight: 60)
+            let tall = frames.filter { $0.key.rowSpan == 2 }
+            XCTAssertEqual(tall.count, 1)
+            XCTAssertEqual(tall[0].frame, CGRect(x: 160, y: 180, width: 40, height: 120))
+            // 最下段の 4 つのキーは、縦 2 マスのキーとかさならない
+            let bottom = frames.filter { $0.frame.minY == 240 }
+            XCTAssertEqual(bottom.count, 4)
+            XCTAssertTrue(bottom.allSatisfy { !$0.frame.intersects(tall[0].frame) })
+        }
+    }
+
+    /// 送信と改行の位置（docs/design.md の表）
+    func testKanaSendAndNewlinePositions() {
+        let rect = CGRect(x: 0, y: 0, width: 200, height: 300)
+        func at(_ face: KeyboardFace, _ id: String) -> CGRect? {
+            face.frames(in: rect, rowHeight: 60).first { $0.key.id == id }?.frame
+        }
+        XCTAssertEqual(at(KeyboardLayouts.kanaLeft, "newline")?.origin, CGPoint(x: 0, y: 240))
+        XCTAssertEqual(at(KeyboardLayouts.kanaLeft, "send")?.origin, CGPoint(x: 160, y: 180))
+        XCTAssertEqual(at(KeyboardLayouts.kanaRight, "send")?.origin, CGPoint(x: 0, y: 240))
+        XCTAssertEqual(at(KeyboardLayouts.kanaRight, "newline")?.origin, CGPoint(x: 160, y: 180))
+    }
+}
+
+final class KanaComposerTests: XCTestCase {
+    let a = FlickSet("あ", "い", "う", "え", "お")
+    let ka = FlickSet("か", "き", "く", "け", "こ")
+
+    func testFlickAndToggle() {
+        var k = KanaComposer()
+        k.input(keyID: "a", set: a, direction: .up, now: 0)
+        XCTAssertEqual(k.reading, "う")
+        k.input(keyID: "a", set: a, direction: .center, now: 0.1)
+        k.input(keyID: "a", set: a, direction: .center, now: 0.2)
+        XCTAssertEqual(k.reading, "うい")
+        // 間が空いたら新しい文字
+        k.input(keyID: "a", set: a, direction: .center, now: 5)
+        XCTAssertEqual(k.reading, "ういあ")
+        // →で区切ると、同じキーでも新しい文字
+        k.breakToggle()
+        k.input(keyID: "a", set: a, direction: .center, now: 5.1)
+        XCTAssertEqual(k.reading, "ういああ")
+    }
+
+    func testModifyCycles() {
+        var k = KanaComposer()
+        k.input(keyID: "ha", set: FlickSet("は", "ひ", "ふ", "へ", "ほ"), direction: .center, now: 0)
+        k.modifyLast()
+        XCTAssertEqual(k.reading, "ば")
+        k.modifyLast()
+        XCTAssertEqual(k.reading, "ぱ")
+        k.modifyLast()
+        XCTAssertEqual(k.reading, "は")
+        XCTAssertEqual(KanaComposer.nextVariant(of: "つ"), "っ")
+        XCTAssertEqual(KanaComposer.nextVariant(of: "ん"), "ん")
+    }
+
+    func testDeleteAndCommit() {
+        var k = KanaComposer()
+        XCTAssertFalse(k.deleteBackward())
+        k.input(keyID: "ka", set: ka, direction: .center, now: 0)
+        k.input(keyID: "a", set: a, direction: .center, now: 0)
+        XCTAssertTrue(k.deleteBackward())
+        XCTAssertEqual(k.commit(), "か")
+        XCTAssertFalse(k.isComposing)
+    }
+
+    func testCandidates() {
+        XCTAssertEqual(PassthroughConverter().candidates(for: "かな"), ["かな", "カナ"])
+        XCTAssertEqual(PassthroughConverter().candidates(for: "ー"), ["ー"])
+        XCTAssertEqual(KanaComposer.katakana("ゔぁー"), "ヴァー")
+    }
+}
+
+final class ConnectionTests: XCTestCase {
+    // ed25519 の公開鍵（乱数の 32 バイトから作った）と、その SHA256 指紋（Python の hashlib で計算）
+    let key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKe1UsvBTcaJO2s0G9c4XqXNs5LJTYr9IDXbEbQJc677"
+    let other = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGehbAIq7ZrgT/o2+MwOEvS8Fkhr1tFexvtjSy0dQ5bx"
+
+    func testFingerprint() {
+        XCTAssertEqual(HostKeyFingerprint.sha256(openSSHPublicKey: key),
+                       "SHA256:+ikU8C8oD1TcGRmxJDyNnEM/WgNEfrfBZy1HShLPBqQ")
+        XCTAssertEqual(HostKeyFingerprint.sha256(openSSHPublicKey: other + " comment"),
+                       "SHA256:RFwL6QaX5HPHoqUXVmU3kEIMa29nqWTDWD5Lq2agtyI")
+        XCTAssertNil(HostKeyFingerprint.sha256(openSSHPublicKey: "garbage"))
+    }
+
+    func testVerdict() {
+        XCTAssertEqual(HostKeyVerdict.judge(stored: key, presented: key), .trusted)
+        XCTAssertEqual(HostKeyVerdict.judge(stored: nil, presented: key),
+                       .unknown(fingerprint: "SHA256:+ikU8C8oD1TcGRmxJDyNnEM/WgNEfrfBZy1HShLPBqQ"))
+        XCTAssertEqual(HostKeyVerdict.judge(stored: other, presented: key),
+                       .changed(expected: "SHA256:RFwL6QaX5HPHoqUXVmU3kEIMa29nqWTDWD5Lq2agtyI",
+                                actual: "SHA256:+ikU8C8oD1TcGRmxJDyNnEM/WgNEfrfBZy1HShLPBqQ"))
+    }
+
+    func testBackoff() {
+        let p = ReconnectPolicy()
+        XCTAssertEqual(p.delay(forAttempt: 0), 0)
+        XCTAssertEqual(p.delay(forAttempt: 3), 2)
+        XCTAssertEqual(p.delay(forAttempt: 100), 15)
+    }
+}

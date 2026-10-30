@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dken.splitterm-ios</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/ooizumiyou/Mobile-SSH-Client---Split-Keyboard/scripts/ios_reinstall.sh</string>
+    <string>--if-needed</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/ooizumiyou/Mobile-SSH-Client---Split-Keyboard</string>
+  <!-- 1 時間ごとに期限を見る（眠っていた間の分は、起きたときに 1 回）。入れ直すかどうかは
+       ios_reinstall.sh が期限・メモリ・iPhone のロックを見て決める（docs/design.md「配布」） -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- ビルドは作業の邪魔をしないよう低い優先度で -->
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/ooizumiyou/Mobile-SSH-Client---Split-Keyboard/logs/ios_reinstall.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ooizumiyou/Mobile-SSH-Client---Split-Keyboard/logs/ios_reinstall.log</string>
+</dict>
+</plist>
