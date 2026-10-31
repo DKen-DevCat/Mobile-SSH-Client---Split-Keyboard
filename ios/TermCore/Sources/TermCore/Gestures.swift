@@ -96,7 +96,7 @@ public struct ZoomSteps: Sendable, Equatable {
     }
 }
 
-/// スペースの横の赤い丸（ポインタ）の動き（docs/design.md「ポインタ」）。ノートパソコンのトラックパッドと同じ加速:
+/// 空白兼ポインタ（ポインタ）の動き（docs/design.md「ポインタ」）。ノートパソコンのトラックパッドと同じ加速:
 /// 指の動いた分だけ動き、速く動かすほど遠くへ届く。止めれば止まる
 public enum PointerCurve {
     /// これ以下の速さ（pt/秒）では、倍率は最小
