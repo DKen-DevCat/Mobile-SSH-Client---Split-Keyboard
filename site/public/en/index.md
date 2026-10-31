@@ -1,8 +1,8 @@
 # Mobile-SSH-Client---Split-Keyboard
 
-An SSH terminal for iPhone and iPad that you hold in landscape, with the keyboard split into two halves on either side of the shell. It is a front end for driving tmux and Claude Code on your own Mac, and it puts network speed and typing feel first.
+An SSH terminal for iPhone and iPad that you hold in landscape, with the keyboard split into two halves on either side of the shell. In portrait it puts a Mac JIS keyboard at the bottom and turns the shell into a trackpad, so you work the way you do on a Mac. It is a front end for driving tmux and Claude Code on your own Mac, and it puts network speed and typing feel first.
 
-- **Devices**: iPhone and iPad on iOS / iPadOS 17 or later. Landscape only
+- **Devices**: iPhone and iPad on iOS / iPadOS 17 or later. Landscape (split keyboard) and portrait (Mac JIS keyboard and a trackpad)
 - **Price**: ¥0 (free). No paid Apple Developer Program membership needed
 - **Distribution**: not on the App Store or TestFlight. You build it from source with Xcode on a Mac and install it with a free Apple ID
 - **Settings**: one config file (like Ghostty). There is no settings screen

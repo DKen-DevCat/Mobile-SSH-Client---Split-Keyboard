@@ -44,6 +44,12 @@ final class PointerOverlayView: UIView {
         CATransaction.commit()
     }
 
+    /// 隠して、覚えた位置も捨てる（向きを替えたとき。次に動かすとシェルの中央から）
+    func forget() {
+        location = nil
+        hide()
+    }
+
     /// 文字を打ったら隠す（Mac と同じ。位置は覚えておく）
     func hide() {
         guard !arrow.isHidden else { return }

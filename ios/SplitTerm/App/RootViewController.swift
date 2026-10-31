@@ -17,6 +17,12 @@ final class RootViewController: UIViewController {
     private let model = KeyboardModel()
     private lazy var leftKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisLeft, model: model, colors: colors)
     private lazy var rightKeyboard = SplitKeyboardView(face: KeyboardLayouts.jisRight, model: model, colors: colors)
+    /// 縦持ちの JIS の一体型（docs/design.md「JIS の一体型（縦持ち）」）。空白はただの空白（長押しでトラックパッドにしない）
+    private lazy var fullKeyboard: SplitKeyboardView = {
+        let kb = SplitKeyboardView(face: KeyboardLayouts.jisFull, model: model, colors: colors)
+        kb.spaceHoldsTrackpad = false
+        return kb
+    }()
     /// 📎（写真・動画・音声・ファイルを送る）。シェルの左下に置く
     private let clipButton = UIButton(type: .system)
     /// キーボード選択（今のキーボードの短い名前を出す丸いボタン）。シェルの右下に置く。分割のときだけ出す
@@ -54,6 +60,14 @@ final class RootViewController: UIViewController {
     private let kana = KanaConversionQueue()
     private var hardwareKeyboard = GCKeyboard.coalesced != nil
     private var layout: LayoutResult?
+    /// 縦持ちか（窓の高さ > 幅。docs/design.md「縦持ちの配置」）。変わったら orientationChanged
+    private var isPortrait = false
+    /// 向きを替えたときのキーボードの種類（縦持ちは JIS の一体型だけ。横持ちに戻ったら元のフリックへ）
+    private var orientationMemory = KeyboardOrientationMemory()
+    /// 縦持ちのトラックパッドの 2 本指のスクロールを、行にそろえる
+    private var trackpadScroll = ScrollAccumulator(lineHeight: 10)
+    /// 縦持ちのトラックパッドのドラッグで選び始めたセル（画面の上からの行。nil ならドラッグしていない）
+    private var pointerDragAnchor: GridPoint?
     private var grid = (cols: 80, rows: 24)
     /// アプリがクリップボードに載せた文字と、その期限の規則（メモリにだけ持つ）
     private var clipboard = ClipboardLease()
@@ -75,6 +89,7 @@ final class RootViewController: UIViewController {
         view.addSubview(terminalView)
         view.addSubview(leftKeyboard)
         view.addSubview(rightKeyboard)
+        view.addSubview(fullKeyboard)
         view.addSubview(candidateBar)
         notice.font = .systemFont(ofSize: 12, weight: .medium)
         notice.textAlignment = .center
@@ -96,6 +111,7 @@ final class RootViewController: UIViewController {
         model.onChange = { [weak self] in
             self?.leftKeyboard.setNeedsDisplay()
             self?.rightKeyboard.setNeedsDisplay()
+            self?.fullKeyboard.setNeedsDisplay()
         }
         tabRow.onSelectTab = { [weak self] i in self?.selectTab(i) }
         tabRow.onCloseTab = { [weak self] i in self?.closeTab(i) }
@@ -137,12 +153,15 @@ final class RootViewController: UIViewController {
         // 自動接続は、ロックを解いてから（resume）
     }
 
-    // 状態バーは出す（iPad では出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は上の 1 行目に出す）
+    // 状態バーは出す（iPad と縦持ちでは出る。Face ID の iPhone の横持ちでは iOS が隠すので、時計・通信・電池は上の 1 行目に出す）
     override var prefersStatusBarHidden: Bool { false }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     /// キーボードは画面の下端と左右の端に触れるので、システムのジェスチャを後回しにする
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
+    /// 横持ちと縦持ち（docs/design.md「画面構成」）。iPhone は逆さまの縦持ちを除く
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        traitCollection.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
+    }
     override var canBecomeFirstResponder: Bool { true }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -165,6 +184,7 @@ final class RootViewController: UIViewController {
         view.backgroundColor = colors.background
         leftKeyboard.colors = colors
         rightKeyboard.colors = colors
+        fullKeyboard.colors = colors
         statusRow.apply(colors: colors)
         tabRow.apply(colors: colors)
         applyKeyboardButtonColors()
@@ -172,7 +192,7 @@ final class RootViewController: UIViewController {
         candidateBar.apply(colors: colors)
         notice.textColor = colors.subText
         emptyLabel.textColor = colors.subText
-        for kb in [leftKeyboard, rightKeyboard] {
+        for kb in [leftKeyboard, rightKeyboard, fullKeyboard] {
             kb.repeatDelay = c.keyRepeatDelay
             kb.repeatInterval = c.keyRepeatInterval
             kb.haptics = c.haptics
@@ -212,6 +232,9 @@ final class RootViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // 向きが変わった（窓の高さ > 幅で縦持ち）。配置の算出より先に、キーボードの種類とポインタを合わせる
+        let portrait = LayoutEngine.isPortrait(view.bounds.size)
+        if portrait != isPortrait { orientationChanged(toPortrait: portrait) }
         let s = view.safeAreaInsets
         let input = LayoutInput(size: view.bounds.size,
                                 safeArea: Insets(top: s.top, left: s.left, bottom: s.bottom, right: s.right),
@@ -221,10 +244,14 @@ final class RootViewController: UIViewController {
         let r = LayoutEngine.compute(input)
         layout = r
         terminalView.frame = r.shell
+        // 縦持ちはシェルの面がトラックパッド（指で直接触る操作をやめる）
+        terminalView.trackpadMode = r.orientation == .portrait
+        statusRow.compact = r.orientation == .portrait
         statusRow.frame = r.statusRow
         tabRow.frame = r.tabRow
         let faces = KeyboardLayouts.faces(for: keyboardKind)
-        for (kb, frame, face) in [(leftKeyboard, r.leftKeyboard, faces.left), (rightKeyboard, r.rightKeyboard, faces.right)] {
+        for (kb, frame, face) in [(leftKeyboard, r.leftKeyboard, faces.left), (rightKeyboard, r.rightKeyboard, faces.right),
+                                  (fullKeyboard, r.fullKeyboard, KeyboardLayouts.jisFull)] {
             kb.isHidden = frame == nil
             if let frame {
                 kb.frame = frame
@@ -232,6 +259,7 @@ final class RootViewController: UIViewController {
                 if kb.face.rows != face.rows { kb.face = face }
             }
         }
+        fullKeyboard.inputKind = keyboardKind
         candidateBar.isHidden = r.candidateBar == nil
         if let c = r.candidateBar { candidateBar.frame = c }
         notice.isHidden = r.mode != .tooNarrow
@@ -244,9 +272,15 @@ final class RootViewController: UIViewController {
         // 角の丸いボタン: 左下が 📎、右下がキーボード選択（分割のときだけ）。
         // 📎 は画面のキーボードを出している間（split）は隠す（キーボードの左下の 📎 のキーから同じメニューを出す）。
         // ハードウェアキーボード・狭い窓では残る
-        let inset = LayoutEngine.cornerButtonMargin, size = LayoutEngine.cornerButtonSize
-        clipButton.frame = CGRect(x: r.shell.minX + inset, y: r.shell.maxY - inset - size, width: size, height: size)
-        clipButton.isHidden = r.mode == .split
+        if r.orientation == .portrait {
+            // 縦持ち: 📎 はタブの 1 行の右端（シェルの角には置かない。シェルの面はトラックパッド）
+            clipButton.isHidden = false
+            layoutTopBand()
+        } else {
+            let inset = LayoutEngine.cornerButtonMargin, size = LayoutEngine.cornerButtonSize
+            clipButton.frame = CGRect(x: r.shell.minX + inset, y: r.shell.maxY - inset - size, width: size, height: size)
+            clipButton.isHidden = r.mode == .split
+        }
         keyboardButton.isHidden = r.keyboardButton == nil
         if let b = r.keyboardButton { keyboardButton.frame = b }
         pointerOverlay.frame = view.bounds
@@ -257,6 +291,30 @@ final class RootViewController: UIViewController {
         updateEnvBar()
         regrid()
         releaseEdgeTouchDelay()
+    }
+
+    /// 縦持ちのタブの 1 行: 左からタブと＋、右端に 📎、その左に倍率・⚠・進み具合（幅は中身で決める）。
+    /// 何度呼んでもよい（倍率・⚠・進み具合が変わったら呼び直す）
+    private func layoutTopBand() {
+        guard let r = layout, r.orientation == .portrait else { return }
+        let band = r.tabRow.union(r.statusRow)
+        let side = band.height
+        clipButton.frame = CGRect(x: band.maxX - side, y: band.minY, width: side, height: side)
+        let width = statusRow.compactWidth(height: band.height)
+        statusRow.frame = CGRect(x: clipButton.frame.minX - width, y: band.minY, width: width, height: band.height)
+        tabRow.frame = CGRect(x: band.minX, y: band.minY, width: max(0, statusRow.frame.minX - band.minX),
+                              height: band.height)
+    }
+
+    /// 横持ち ⇄ 縦持ち。ポインタの覚えた位置とドラッグを捨て、キーボードの種類を向きに合わせる
+    /// （縦持ちは JIS の一体型だけ。docs/design.md「JIS の一体型（縦持ち）」の「向きとキーボードの種類」）
+    private func orientationChanged(toPortrait portrait: Bool) {
+        isPortrait = portrait
+        pointerOverlay.forget()
+        pointerDragAnchor = nil
+        let next = portrait ? orientationMemory.enterPortrait(current: keyboardKind)
+                            : orientationMemory.enterLandscape(current: keyboardKind)
+        setKeyboard(next)
     }
 
     /// シェルの大きさから桁数と行数を出し、端末と接続先へ知らせる（SSH の window-change）
@@ -330,6 +388,8 @@ final class RootViewController: UIViewController {
         }
         tabRow.update(tabs: tabs)
         statusRow.update(zoomPercent: zoom.percent, diagnostics: store.diagnostics.count)
+        // 縦持ちは、倍率・⚠ の幅が変わるとタブの 1 行の並びが変わる
+        layoutTopBand()
         keyboardButton.setTitle(keyboardKind.shortTitle, for: .normal)
         keyboardButton.isHidden = layout?.keyboardButton == nil
         emptyLabel.isHidden = !sessions.isEmpty
@@ -376,12 +436,14 @@ final class RootViewController: UIViewController {
         updateEnvBar()
     }
 
-    /// 🌐 のタップ: 前のキーボードへ
+    /// 🌐 のタップ: 前のキーボードへ。縦持ちは英語とローマ字を入れ替える（JIS の一体型の 2 つだけ）
     private func switchKeyboard() {
-        setKeyboard(previousKeyboard)
+        setKeyboard(isPortrait ? keyboardKind.portraitSwitched : previousKeyboard)
     }
 
-    private func setKeyboard(_ kind: KeyboardKind) {
+    private func setKeyboard(_ requested: KeyboardKind) {
+        // 縦持ちはフリックを使わない（同じ言葉の JIS にする）
+        let kind = isPortrait ? requested.portraitEquivalent : requested
         guard kind != keyboardKind else { return }
         if composer.isComposing || !romaji.isEmpty { commitComposition(nil) }
         previousKeyboard = keyboardKind
@@ -393,8 +455,10 @@ final class RootViewController: UIViewController {
 
     /// キーボードを選ぶメニューの中身（シェルの右下のボタン・🌐 の長押しの吹き出し）
     private func keyboardMenuElements() -> [UIMenuElement] {
-        KeyboardKind.menuOrder.map { kind in
-            UIAction(title: kind.title, state: kind == keyboardKind ? .on : .off) { [weak self] _ in self?.setKeyboard(kind) }
+        (isPortrait ? KeyboardKind.portraitMenuOrder : KeyboardKind.menuOrder).map { kind in
+            UIAction(title: isPortrait ? kind.portraitTitle : kind.title, state: kind == keyboardKind ? .on : .off) {
+                [weak self] _ in self?.setKeyboard(kind)
+            }
         }
     }
 
@@ -427,7 +491,7 @@ final class RootViewController: UIViewController {
     /// 🌐 の長押し: iOS の吹き出し（ポップオーバー）でキーボードを選ぶ
     private func presentKeyboardMenu(anchor: CGRect) {
         guard !gate.isLocked, presentedViewController == nil else { return }
-        let vc = KeyboardMenuController(current: keyboardKind) { [weak self] kind in self?.setKeyboard(kind) }
+        let vc = KeyboardMenuController(current: keyboardKind, portrait: isPortrait) { [weak self] kind in self?.setKeyboard(kind) }
         presentPopover(vc, anchor: anchor)
     }
 
@@ -729,7 +793,10 @@ final class RootViewController: UIViewController {
         picker.presenter = self
         picker.onPicked = { [weak self] items in self?.sendMedia(items) }
         picker.onError = { [weak self] message in self?.alert("メディア", message) }
-        sender.onStatus = { [weak self] text in self?.statusRow.setProgress(text) }
+        sender.onStatus = { [weak self] text in
+            self?.statusRow.setProgress(text)
+            self?.layoutTopBand()
+        }
         sender.onError = { [weak self] message in self?.alert("メディアを送れませんでした", message) }
         sender.onInsert = { [weak self] text, session in self?.insertMediaPaths(text, into: session) }
         // 開くたびに作る（送っている途中なら「やめる」を出す）
@@ -1001,8 +1068,11 @@ extension RootViewController: KeyboardOutput {
 // MARK: - 空白兼ポインタ → ポインタ（docs/design.md「ポインタ」。シェルと上の 2 行を動き、クリックできる）
 
 extension RootViewController: PointerOutput {
-    /// ポインタが動ける範囲: シェルの枠と、上の 2 行（左右いっぱい）の和
-    private var pointerRects: [CGRect] { [terminalView.frame, statusRow.frame.union(tabRow.frame)] }
+    /// 上の行（横持ちは 2 行、縦持ちはタブの 1 行。左右いっぱい）
+    private var topBand: CGRect { layout.map { $0.statusRow.union($0.tabRow) } ?? statusRow.frame.union(tabRow.frame) }
+
+    /// ポインタが動ける範囲: シェルの枠と、上の行の和
+    private var pointerRects: [CGRect] { [terminalView.frame, topBand] }
 
     /// ポインタの今の位置。まだ動かしていなければシェルの中央
     private var pointerHome: CGPoint {
@@ -1025,17 +1095,22 @@ extension RootViewController: PointerOutput {
         guard !gate.isLocked, presentedViewController == nil else { return }
         let p = PointerArea.clamp(pointerHome, toUnionOf: pointerRects)
         pointerOverlay.show(at: p)
-        // 上の 2 行の上: その下のボタン（タブ・＋・倍率・⚠）を押す。右クリックは何もしない
-        if statusRow.frame.union(tabRow.frame).contains(p), let button = buttonUnderPointer(at: p) {
+        // 📎 の上: メディアのメニューを、📎 を指す吹き出しで出す（📎 のキーと同じ。メニューのボタンは押しても開かないため）。
+        // 右クリックは何もしない
+        if !clipButton.isHidden, clipButton.frame.contains(p) {
+            if !right { presentMediaMenu(anchor: clipButton.convert(clipButton.bounds, to: nil)) }
+            return
+        }
+        // 上の行の上: その下のボタン（タブ・＋・倍率・⚠）を押す。右クリックは何もしない
+        if topBand.contains(p), let button = buttonUnderPointer(at: p) {
             if !right { button.sendActions(for: .touchUpInside) }
             return
         }
-        // キーボード選択のボタンの上: 吹き出しでキーボードを選ぶ。📎 の上は何もしない
+        // キーボード選択のボタンの上: 吹き出しでキーボードを選ぶ
         if !keyboardButton.isHidden, keyboardButton.frame.contains(p) {
             presentKeyboardMenu(anchor: keyboardButton.convert(keyboardButton.bounds, to: nil))
             return
         }
-        if !clipButton.isHidden, clipButton.frame.contains(p) { return }
         // シェルの上: シェルの座標に直して、タップ（左）・2 本指のタップ（右）と同じ扱い
         // （マウス報告・入力行のカーソル移動・編集メニュー）
         guard terminalView.frame.contains(p) else { return }
@@ -1048,6 +1123,49 @@ extension RootViewController: PointerOutput {
         } else {
             delegate.terminalView(terminalView, tappedAt: cell, location: local)
         }
+    }
+
+    /// 点（view の座標）の下のシェルのセル。シェルの外の点は、シェルの中のいちばん近い点にする
+    fileprivate func shellCell(at p: CGPoint) -> GridPoint {
+        terminalView.cell(at: view.convert(PointerArea.clamp(p, to: terminalView.frame), to: terminalView))
+    }
+
+    /// 縦持ちのダブルクリック（続けて 2 回目のタップ）。シェルの上なら、つながった文字列を選んでコピーする（横持ちのダブルタップと同じ）。
+    /// タブの 1 行の上は何もしない（＋を 2 回押さない）
+    fileprivate func pointerDoubleClick() {
+        guard !gate.isLocked, presentedViewController == nil else { return }
+        let p = PointerArea.clamp(pointerHome, toUnionOf: pointerRects)
+        pointerOverlay.show(at: p)
+        guard terminalView.frame.contains(p) else { return }
+        model.pointer.clickFeedback(right: false)
+        let delegate: TerminalViewDelegate = self
+        delegate.terminalView(terminalView, doubleTappedAt: shellCell(at: p))
+    }
+
+    /// 縦持ちのドラッグを始めた: ポインタの位置から選び始める（始めた所がシェルの外なら何もしない）
+    fileprivate func beginPointerDrag() {
+        guard !gate.isLocked, let s = active else { return }
+        let p = PointerArea.clamp(pointerHome, toUnionOf: pointerRects)
+        pointerOverlay.show(at: p)
+        guard terminalView.frame.contains(p) else { return }
+        let anchor = absolute(shellCell(at: p))
+        pointerDragAnchor = anchor
+        s.selection = TextSelection(anchor: anchor, head: anchor)
+        terminalView.requestRender()
+    }
+
+    /// ドラッグの間: 選ぶ範囲をポインタに合わせて広げる（ポインタがシェルの外なら、シェルの中のいちばん近いセルまで）
+    fileprivate func extendPointerDrag() {
+        guard let anchor = pointerDragAnchor, let s = active else { return }
+        s.selection = TextSelection(anchor: anchor, head: absolute(shellCell(at: pointerHome)))
+        terminalView.requestRender()
+    }
+
+    /// ドラッグを終えた。指を離したならコピーする（横持ちの長押し→ドラッグと同じ）。取り消しならコピーしない
+    fileprivate func endPointerDrag(copy: Bool) {
+        guard pointerDragAnchor != nil else { return }
+        pointerDragAnchor = nil
+        if copy { copySelection() }
     }
 
     /// 点の下のビューから上へたどって見つけたボタン（UIControl）
@@ -1076,6 +1194,43 @@ extension RootViewController: TerminalViewDelegate {
         // 描く画面を、先行表示の予測と突き合わせる（本物が出たら予測は消える）
         reconcileEcho(frame, session: s)
         return (frame, theme, s.selection)
+    }
+
+    /// 縦持ちのトラックパッド（docs/design.md「縦持ち：シェルはトラックパッド」）。行き先はポインタの位置で、
+    /// クリック・右クリックは横持ちのポインタと同じ道（`PointerStick.click` → `pointerClick`）
+    func terminalView(_ view: TerminalView, trackpad output: TrackpadGesture.Output) {
+        guard !gate.isLocked else {
+            // ロック中は捨てる。ドラッグの途中なら、コピーせずに終える
+            if case .dragEnded = output { endPointerDrag(copy: false) }
+            return
+        }
+        switch output {
+        case .movePointer(let dx, let dy):
+            pointerMove(dx: dx, dy: dy)
+            extendPointerDrag()
+        case .click(let count):
+            // 2 回目はダブルクリック。3 回目からは何もしない（選んだ範囲を残す）
+            if count == 1 {
+                model.pointer.click(right: false)
+            } else if count == 2 {
+                pointerDoubleClick()
+            }
+        case .rightClick:
+            model.pointer.click(right: true)
+        case .dragBegan:
+            beginPointerDrag()
+        case .dragEnded(let cancelled):
+            endPointerDrag(copy: !cancelled)
+        case .scrollBegan:
+            trackpadScroll = ScrollAccumulator(lineHeight: terminalView.metrics?.heightPt ?? 10)
+        case .scroll(let dy):
+            let lines = trackpadScroll.add(dy)
+            guard lines != 0 else { return }
+            let delegate: TerminalViewDelegate = self
+            delegate.terminalView(terminalView, scrollLines: lines, at: shellCell(at: pointerHome))
+        case .zoom(let zoomIn):
+            changeZoom { $0.zoom(in: zoomIn) }
+        }
     }
 
     func terminalViewCursorCell(_ view: TerminalView) -> (col: Int, row: Int)? {

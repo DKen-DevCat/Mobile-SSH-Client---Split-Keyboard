@@ -35,6 +35,10 @@ final class StatusRow: TopRow {
     private let batteryText = UILabel()
     private var clockTimer: Timer?
     private var networkUp = false
+    /// 縦持ち: タブの 1 行の右端に置く（倍率・⚠・進み具合だけ。時計・通信・電池は iOS の状態バーに任せて出さない）
+    var compact = false {
+        didSet { if compact != oldValue { setNeedsLayout() } }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -148,11 +152,25 @@ final class StatusRow: TopRow {
         setNeedsLayout()
     }
 
+    private var zoomWidth: CGFloat { max(40, (zoom.titleLabel?.intrinsicContentSize.width ?? 30) + 16) }
+
+    private func progressWidth(height h: CGFloat) -> CGFloat {
+        min(110, progress.sizeThatFits(CGSize(width: 200, height: h)).width + 8)
+    }
+
+    /// 縦持ちで、タブの 1 行の右端に置くときに要る幅（倍率・⚠・進み具合）。画面の側がこの幅で置く
+    func compactWidth(height h: CGFloat) -> CGFloat {
+        var w: CGFloat = 6 + zoomWidth
+        if !warning.isHidden { w += 28 }
+        if !progress.isHidden { w += progressWidth(height: h) }
+        return w
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let h = bounds.height
-        // iOS の状態バーが出ているなら、時計・通信・電池は隠す
-        let systemBar = window?.windowScene?.statusBarManager?.isStatusBarHidden == false
+        // iOS の状態バーが出ているなら（縦持ちも）、時計・通信・電池は隠す
+        let systemBar = compact || window?.windowScene?.statusBarManager?.isStatusBarHidden == false
         for v in [clock, network, battery, batteryText] as [UIView] { v.isHidden = systemBar }
         var right = bounds.width - 6
         if !systemBar {
@@ -172,11 +190,11 @@ final class StatusRow: TopRow {
             right -= 28
             warning.frame = CGRect(x: right, y: 0, width: 28, height: h)
         }
-        let zoomW = max(40, (zoom.titleLabel?.intrinsicContentSize.width ?? 30) + 16)
+        let zoomW = zoomWidth
         right -= zoomW
         zoom.frame = CGRect(x: right, y: 0, width: zoomW, height: h)
         if !progress.isHidden {
-            let w = min(110, progress.sizeThatFits(CGSize(width: 200, height: h)).width + 8)
+            let w = progressWidth(height: h)
             right -= w
             progress.frame = CGRect(x: right, y: 0, width: w, height: h)
         }

@@ -26,7 +26,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         w.rootViewController = RootViewController()
         w.makeKeyAndVisible()
         window = w
-        // 横持ちだけ（docs/design.md「画面構成」）
-        ws.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+        // 横持ちと縦持ちの両方（docs/design.md「画面構成」）。向きは端末に任せ、窓の大きさで作りを決める
     }
 }

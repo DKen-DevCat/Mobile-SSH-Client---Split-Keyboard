@@ -40,10 +40,10 @@ INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = 動画や音声を、この�
 INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES
 INFOPLIST_KEY_UILaunchScreen_Generation = YES
 INFOPLIST_KEY_UIStatusBarHidden = YES
-// 横持ちだけ（docs/design.md「画面構成」）。iPad も同じ
-INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-// 横持ちだけの iPad アプリは Split View に入れない。窓の大きさが変わったときは、レイアウトの算出で縮める
+// 横持ちと縦持ち（docs/design.md「画面構成」）。iPhone は逆さまの縦持ちを除く（Face ID の iPhone は逆さまにならない）
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+// iPad は Split View に入れない（全画面）。窓の大きさが変わったときは、レイアウトの算出で縮める（縦長の窓は縦持ちの作り）
 INFOPLIST_KEY_UIRequiresFullScreen = YES
 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 

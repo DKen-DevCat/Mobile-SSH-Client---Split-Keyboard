@@ -1,8 +1,8 @@
 # Mobile-SSH-Client---Split-Keyboard
 
-iPhone と iPad を横持ちにして、左右に分けたキーボードでシェルを挟む SSH ターミナル。自分の Mac の tmux と Claude Code を操作するためのアプリで、通信の速さと操作感を最優先にしている。
+iPhone と iPad を横持ちにして、左右に分けたキーボードでシェルを挟む SSH ターミナル。縦持ちでは Mac の JIS 配列のキーボードを下に置き、シェルの面をトラックパッドにして Mac と同じ手つきで操作する。自分の Mac の tmux と Claude Code を操作するためのアプリで、通信の速さと操作感を最優先にしている。
 
-- **対応**: iOS / iPadOS 17 以上の iPhone と iPad。横持ちだけで使う
+- **対応**: iOS / iPadOS 17 以上の iPhone と iPad。横持ち（分割キーボード）と縦持ち（Mac の JIS 配列とトラックパッド）
 - **料金**: 0 円（¥0）。有料の Apple Developer Program も要らない
 - **配布**: App Store・TestFlight では配っていない。Mac の Xcode でソースからビルドし、無料の Apple ID の署名で入れる
 - **設定**: config ファイル 1 枚（Ghostty と同じ形）。設定画面は無い

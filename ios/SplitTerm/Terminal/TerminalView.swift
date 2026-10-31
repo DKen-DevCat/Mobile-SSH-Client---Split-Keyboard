@@ -21,6 +21,8 @@ protocol TerminalViewDelegate: AnyObject {
     /// 変換中の読みと先行表示を重ねるカーソルのセル（見えている画面の中の桁と行）。カーソルが隠れていても返す。
     /// スクロールバックを見ている間などは nil（重ねない）
     func terminalViewCursorCell(_ view: TerminalView) -> (col: Int, row: Int)?
+    /// 縦持ちのトラックパッドの出力（`TrackpadGesture`）。行き先はポインタの位置で、受け手が決める
+    func terminalView(_ view: TerminalView, trackpad output: TrackpadGesture.Output)
 }
 
 /// CADisplayLink から自分を強く持たないための中継
@@ -56,6 +58,13 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     private var blinkPhaseStart = CACurrentMediaTime()
 
     private var editMenu: UIEditMenuInteraction?
+    /// 横持ちの、シェルを指で直接触る操作（タップ・ダブルタップ・2 本指のタップ・長押し・縦ドラッグ・ピンチ）
+    private var directGestures: [UIGestureRecognizer] = []
+    /// 縦持ちのトラックパッド（docs/design.md「縦持ち：シェルはトラックパッド」）。判定は TermCore の `TrackpadGesture`
+    private var trackpad = TrackpadGesture()
+    /// 触れている指 → トラックパッドに渡す指の ID
+    private var trackpadTouches: [ObjectIdentifier: Int] = [:]
+    private var trackpadSerial = 0
     private var repeatTimer: Timer?
     var keyRepeatDelay: TimeInterval = 0.4
     var keyRepeatInterval: TimeInterval = 0.05
@@ -221,7 +230,64 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         pan.maximumNumberOfTouches = 1
         pan.require(toFail: long)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(onPinch(_:)))
-        for g in [tap, double, two, long, pan, pinch] as [UIGestureRecognizer] { addGestureRecognizer(g) }
+        directGestures = [tap, double, two, long, pan, pinch]
+        for g in directGestures { addGestureRecognizer(g) }
+    }
+
+    // MARK: 縦持ち: シェルはトラックパッド（指で直接触る操作をやめ、ポインタの位置に効かせる）
+
+    /// true なら、シェルの面をトラックパッドにする（縦持ち）。直接触る操作のジェスチャを止め、指の動きを `TrackpadGesture` に渡す。
+    /// 切り替えたら、途中の状態は捨てる（ドラッグは取り消しとして終える）
+    var trackpadMode = false {
+        didSet {
+            guard trackpadMode != oldValue else { return }
+            for g in directGestures { g.isEnabled = !trackpadMode }
+            resetTrackpad()
+        }
+    }
+
+    /// 途中の状態を捨てる（向きを替えた・トラックパッドでなくなった）
+    func resetTrackpad() {
+        trackpadTouches.removeAll()
+        emitTrackpad(trackpad.reset())
+    }
+
+    private func emitTrackpad(_ outputs: [TrackpadGesture.Output]) {
+        for o in outputs { delegate?.terminalView(self, trackpad: o) }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard trackpadMode else { return super.touchesBegan(touches, with: event) }
+        for t in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
+            trackpadSerial += 1
+            trackpadTouches[ObjectIdentifier(t)] = trackpadSerial
+            emitTrackpad(trackpad.touchDown(trackpadSerial, at: t.location(in: self), time: t.timestamp))
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard trackpadMode else { return super.touchesMoved(touches, with: event) }
+        for t in touches {
+            guard let id = trackpadTouches[ObjectIdentifier(t)] else { continue }
+            emitTrackpad(trackpad.touchMoved(id, to: t.location(in: self), time: t.timestamp))
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard trackpadMode else { return super.touchesEnded(touches, with: event) }
+        // 同時に離れた指は、時刻順に
+        for t in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
+            guard let id = trackpadTouches.removeValue(forKey: ObjectIdentifier(t)) else { continue }
+            emitTrackpad(trackpad.touchUp(id, at: t.location(in: self), time: t.timestamp))
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard trackpadMode else { return super.touchesCancelled(touches, with: event) }
+        for t in touches {
+            guard let id = trackpadTouches.removeValue(forKey: ObjectIdentifier(t)) else { continue }
+            emitTrackpad(trackpad.touchCancelled(id))
+        }
     }
 
     @objc private func onTap(_ g: UITapGestureRecognizer) {
