@@ -100,7 +100,7 @@ struct Commands {
         }
     }
 
-    private func missing(_ file: URL?) -> CommandResult {
+    func missing(_ file: URL?) -> CommandResult {
         .fail("config がありません: \((file ?? env.configURL).path)（splitterm config init で見本から作れます）")
     }
 

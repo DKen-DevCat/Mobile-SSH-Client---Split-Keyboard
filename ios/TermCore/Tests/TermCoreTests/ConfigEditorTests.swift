@@ -41,6 +41,42 @@ final class ConfigEditorTests: XCTestCase {
         XCTAssertThrowsError(try ConfigEditor.set("host", "x u@h", in: doc))
     }
 
+    /// palette は番号ごとに 1 色を書き換える（コメントと並びを残す）
+    func testSetPalette() throws {
+        let base = "# 16 色\n# palette = 0=#1C2128\n# palette = 1=#FF5F6D\n\nfont-size = 10\n"
+        // 見本の同じ番号の行の下に足す
+        var out = try ConfigEditor.setPalette(1, RGB(1, 2, 3), in: base)
+        XCTAssertEqual(out, "# 16 色\n# palette = 0=#1C2128\n# palette = 1=#FF5F6D\npalette = 1=#010203\n\nfont-size = 10\n")
+        // 有効な行があれば置き換える
+        out = try ConfigEditor.setPalette(1, RGB(4, 5, 6), in: out)
+        XCTAssertEqual(out, "# 16 色\n# palette = 0=#1C2128\n# palette = 1=#FF5F6D\npalette = 1=#040506\n\nfont-size = 10\n")
+        // 別の番号は、その番号の見本の行の下
+        out = try ConfigEditor.setPalette(0, RGB(7, 8, 9), in: out)
+        XCTAssertEqual(out, "# 16 色\n# palette = 0=#1C2128\npalette = 0=#070809\n# palette = 1=#FF5F6D\npalette = 1=#040506\n\nfont-size = 10\n")
+        let (c, d) = ConfigParser.parse(out)
+        XCTAssertEqual(d, [])
+        XCTAssertEqual(c.palette[0], RGB(7, 8, 9))
+        XCTAssertEqual(c.palette[1], RGB(4, 5, 6))
+        XCTAssertEqual(c.palette[2], TermConfig.defaultPalette[2])
+    }
+
+    func testSetPaletteWhereThereIsNoSample() throws {
+        // 見本の行が無い番号は、最後の palette の行の下
+        var out = try ConfigEditor.setPalette(3, RGB(1, 1, 1), in: "palette = 5=#050505\nfont-size = 10\n")
+        XCTAssertEqual(out, "palette = 5=#050505\npalette = 3=#010101\nfont-size = 10\n")
+        // palette の行が 1 つも無ければ、末尾
+        out = try ConfigEditor.setPalette(3, RGB(1, 1, 1), in: "font-size = 10")
+        XCTAssertEqual(out, "font-size = 10\n\npalette = 3=#010101\n")
+        // 同じ番号が何度も書いてあれば、最後の 1 行を置き換える
+        out = try ConfigEditor.setPalette(5, RGB(9, 9, 9), in: "palette = 5=#000000\npalette = 5=#111111\n")
+        XCTAssertEqual(out, "palette = 5=#000000\npalette = 5=#090909\n")
+    }
+
+    func testSetPaletteRefusesOutOfRangeIndexes() {
+        XCTAssertThrowsError(try ConfigEditor.setPalette(16, RGB(0, 0, 0), in: ""))
+        XCTAssertThrowsError(try ConfigEditor.setPalette(-1, RGB(0, 0, 0), in: ""))
+    }
+
     func testExistingProblemsDoNotBlockOtherEdits() throws {
         let broken = "nonsense line\nfont-size = 10\n"
         let out = try ConfigEditor.set("font-size", "12", in: broken)
