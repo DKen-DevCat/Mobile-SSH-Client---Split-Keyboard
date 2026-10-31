@@ -6,7 +6,7 @@ For agents: the steps to install and set it up on this Mac and an iPhone or iPad
 
 ## Runbook
 
-- [Get Started]({{base}}/en/get-started.md): the runbook an agent can execute (commands, verification, HUMAN-ONLY steps)
+- [Get Started]({{base}}/en/get-started.md): the runbook an agent can execute (commands, verification, HUMAN-ONLY steps), and how to match the colors to Ghostty on your Mac
 - [Overview]({{base}}/en/index.md): what it is, who it is for, requirements, cost, distribution, security and privacy
 
 ## Japanese pages

@@ -14,6 +14,8 @@ enum CLI {
                                             1 項目を書き換える（コメントは残る。値を "" にすると既定値）
       splitterm host add NAME USER@ADDR[:PORT] [--tmux NAME|none] [--auth key|password] [--file F]
       splitterm host remove NAME [--file F]
+      splitterm theme import [--dry-run] [--file F]
+                                            Mac の Ghostty の配色を config に取り込む（--dry-run は書き換える内容を出すだけ）
       splitterm push                        config を端末へ送る
       splitterm pubkey --fingerprint SHA256:...
                                             端末の公開鍵を authorized_keys に足す（アプリに出た指紋が要る）
@@ -78,6 +80,10 @@ enum CLI {
             case ("host", "remove"):
                 guard args.count == 3 else { throw ArgError(message: "host remove NAME") }
                 return c.hostRemove(args[2], file: file)
+            case ("theme", "import"):
+                let dryRun = flag("--dry-run", in: &args)
+                guard args.count == 2 else { throw ArgError(message: "theme import [--dry-run]") }
+                return c.themeImport(dryRun: dryRun, file: file)
             case ("push", _): return c.push()
             case ("pubkey", _):
                 guard let fp = try option("--fingerprint", in: &args) else {

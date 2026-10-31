@@ -10,13 +10,21 @@ struct Environment {
     var home: URL
     var run: (_ executable: String, _ arguments: [String], _ timeout: TimeInterval) -> ProcessResult
     var now: () -> Date = Date.init
+    /// Ghostty.app の場所（`theme import` が実行ファイルとテーマを探す）
+    var ghosttyApp = URL(fileURLWithPath: "/Applications/Ghostty.app")
+    /// `ghostty` を探す PATH の並び（絶対パスのフォルダ）。テストでは空にして、実機の Ghostty を見ない
+    var searchPath: [String] = []
+    /// `$XDG_CONFIG_HOME`（Ghostty の config の置き場所）。無ければ nil
+    var xdgConfigHome: String? = nil
 
     static func live() -> Environment {
         let env = ProcessInfo.processInfo.environment
         let home = URL(fileURLWithPath: env["HOME"] ?? NSHomeDirectory())
         let config = env["SPLITTERM_CONFIG"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
             ?? home.appendingPathComponent(".config/splitterm/config")
-        return Environment(configURL: config, repoRoot: findRepoRoot(env), home: home, run: ProcessRunner.run)
+        return Environment(configURL: config, repoRoot: findRepoRoot(env), home: home, run: ProcessRunner.run,
+                           searchPath: (env["PATH"] ?? "").split(separator: ":").map(String.init),
+                           xdgConfigHome: env["XDG_CONFIG_HOME"])
     }
 
     /// SPLITTERM_REPO、なければ実行ファイルの場所から上へ、scripts/ios_reinstall.sh がある所を探す

@@ -24,6 +24,8 @@ final class GlyphAtlas {
         /// 物理ピクセルでの文字の大きさ
         var pixelSize: CGFloat
         var scale: CGFloat
+        /// 文字の輪郭を細い線でなぞって太らせる（config の font-thicken）。変わったらアトラスを作り直す
+        var thicken: Bool
     }
 
     let device: MTLDevice
@@ -36,6 +38,8 @@ final class GlyphAtlas {
     private(set) var generation = 0
 
     private let size = 2048
+    /// font-thicken の線の太さ = 文字の大きさ（ピクセル）÷ これ。24px の文字で 0.6px
+    private static let thickenDivisor: CGFloat = 40
     private var fonts: [Int: CTFont] = [:]
     private var cache: [Key: Entry] = [:]
     private var shelfX = 0, shelfY = 0, shelfHeight = 0
@@ -153,6 +157,13 @@ final class GlyphAtlas {
             ctx.setShouldAntialias(true)
             ctx.setAllowsFontSubpixelPositioning(false)
             ctx.setFillColor(gray: 1, alpha: 1)
+            if spec.thicken {
+                // macOS の「文字を太く描く」の代わり: 塗りに加えて輪郭を、文字の大きさに比べて細い線でなぞる
+                ctx.setStrokeColor(gray: 1, alpha: 1)
+                ctx.setLineWidth(max(0.5, spec.pixelSize / Self.thickenDivisor))
+                ctx.setLineJoin(.round)
+                ctx.setTextDrawingMode(.fillStroke)
+            }
             ctx.textMatrix = .identity
             // セルより狭い文字（全角のフォールバックなど）は中央に置く
             let x = advance < CGFloat(w) ? ((CGFloat(w) - advance) / 2).rounded(.down) : 0

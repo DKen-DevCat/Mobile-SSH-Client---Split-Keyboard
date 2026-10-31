@@ -31,6 +31,29 @@ public enum ConfigEditor {
         return try validated(join(lines), original: text)
     }
 
+    /// palette の 1 色を書き換える（`palette = 番号=#RRGGBB`。set は使えない、何度でも書ける項目）。
+    /// 同じ番号の有効な行があれば最後の 1 行を置き換え、無ければ見本の同じ番号の行（`# palette = 番号=…`）の下に、
+    /// それも無ければ最後の palette の行の下に、どれも無ければ末尾に足す
+    public static func setPalette(_ index: Int, _ color: RGB, in text: String) throws -> String {
+        guard (0..<16).contains(index) else { throw EditError("palette の番号は 0〜15 です") }
+        let line = "palette = \(index)=\(color)"
+        var lines = split(text)
+        if let i = lines.lastIndex(where: { activeKey($0) == "palette" && paletteIndex(of: $0) == index }) {
+            lines[i] = line
+        } else if let i = lines.lastIndex(where: {
+            documentedKey($0) == "palette" && paletteIndex(of: String($0.dropFirst(2))) == index
+        }) {
+            lines.insert(line, at: i + 1)
+        } else if let i = lines.lastIndex(where: { activeKey($0) == "palette" }) {
+            lines.insert(line, at: i + 1)
+        } else if let i = lines.lastIndex(where: { documentedKey($0) == "palette" }) {
+            lines.insert(line, at: i + 1)
+        } else {
+            appendWithSpacing(line, to: &lines)
+        }
+        return try validated(join(lines), original: text)
+    }
+
     /// 接続先を足す（同じ名前があれば断る）。最後の host の下、無ければ見本の host の下に置く
     public static func addHost(_ entry: HostEntry, in text: String) throws -> String {
         let (config, _) = ConfigParser.parse(text)
@@ -95,6 +118,13 @@ public enum ConfigEditor {
         return text
     }
 
+    /// `palette = 3=#FFB454` の行の番号（3）
+    static func paletteIndex(of line: String) -> Int? {
+        guard let eq = line.firstIndex(of: "=") else { return nil }
+        let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+        return value.split(separator: "=", maxSplits: 1).first.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
     /// 有効な行（`key = value`）の項目の名前
     static func activeKey(_ line: String) -> String? {
         let t = line.trimmingCharacters(in: .whitespaces)
@@ -141,7 +171,8 @@ extension TermConfig {
         ]
         out += palette.enumerated().map { "palette = \($0.offset)=\($0.element)" }
         out += [
-            "minimum-contrast = \(n(minimumContrast))", "cursor-style = \(cursorStyle.rawValue)",
+            "minimum-contrast = \(n(minimumContrast))", "bold-is-bright = \(b(boldIsBright))",
+            "font-thicken = \(b(fontThicken))", "cursor-style = \(cursorStyle.rawValue)",
             "cursor-blink = \(b(cursorBlink))", "scrollback-limit = \(scrollbackLimit)",
             "keyboard = \(keyboard.rawValue)", "keyboard-pitch = \(keyboardPitch.map(n) ?? "auto")",
             "key-repeat-delay = \(dur(keyRepeatDelay))", "key-repeat-interval = \(dur(keyRepeatInterval))",

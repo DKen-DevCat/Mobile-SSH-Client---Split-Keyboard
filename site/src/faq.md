@@ -1,7 +1,7 @@
 ---
 title: よくある質問 | Mobile-SSH-Client---Split-Keyboard
 description: Mobile-SSH-Client---Split-Keyboard のよくある質問。何か、誰向けか、最低 iOS（iOS / iPadOS {{min_ios}}）、料金（0 円）、App Store に無いこと、7 日の署名、プライバシー、対応するエージェント、できないこと。
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # よくある質問
@@ -29,6 +29,10 @@ iOS / iPadOS {{min_ios}} 以上。iPhone は XS・XR・SE（第 2 世代）以�
 ## 7 日で使えなくなるのですか？ {#seven-days}
 
 無料の署名のアプリは 7 日で起動できなくなる。そのため Mac の launchd が 1 時間ごとに期限を見て、残りが 48 時間を切ったら自動でビルドし直して入れ直す（端末がロックされているか、アプリを使っていない時に）。入れ直しても config・鍵・ホスト鍵は残る。入れ直すときは、端末が Mac から届く所（同じ Wi-Fi など）にある必要がある。
+
+## 色が PC の Ghostty より薄く見えます。どうすれば？ {#colors}
+
+原因は 4 つ重なっていることが多い。①tmux の中で true color が 256 色に丸められている、②アプリの配色が Ghostty と違う、③読みやすさの補正（`minimum-contrast`）が暗い色を白へ寄せている、④色空間・太字・文字の太さの描き方が違う。アプリは tmux の起動で `COLORTERM=truecolor` を渡し（tmux 3.2 以上は `-T RGB` も）、`minimum-contrast` の既定を 1（補正しない）にしている。Mac で `splitterm theme import` を実行すると Ghostty の配色を config に取り込める。動いている tmux のセッションは 1 度作り直す。手順は [Get Started](/get-started#colors)、見比べには `scripts/colortest.sh`。
 
 ## どうやって入れますか？ {#install}
 

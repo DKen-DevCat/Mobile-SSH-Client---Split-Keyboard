@@ -17,8 +17,12 @@ public struct TermConfig: Equatable, Sendable {
     public var accent = RGB(hex: "#2F81F7")!
     public var selectionBackground = RGB(hex: "#264F78")!
     public var palette: [RGB] = TermConfig.defaultPalette
-    /// 文字と背景のコントラスト比の下限（1 で補正しない）
-    public var minimumContrast = 4.5
+    /// 文字と背景のコントラスト比の下限（1 で補正しない。Ghostty の既定と同じ）
+    public var minimumContrast = 1.0
+    /// 太字の文字で、文字色がパレットの 0〜7 なら 8〜15 の色にする（true color と既定の文字色は変えない）
+    public var boldIsBright = false
+    /// 文字の輪郭を細い線でなぞって太らせる（macOS の Ghostty の「文字を太く描く」の代わり）
+    public var fontThicken = false
     public var colorSpace: ColorSpace = .displayP3
     public var cursorStyle: CursorShape = .block
     public var cursorBlink = false
@@ -249,17 +253,24 @@ public struct HostEntry: Equatable, Sendable, Hashable {
     /// SSH の exec はログインシェルを通らず、Homebrew の PATH（.zprofile）が効かない。
     /// そこで外側は `/bin/sh` に任せ（ログインシェルが fish・tcsh でも壊れない）、`tmuxSearchPaths` を順に試し、
     /// 無ければログインシェルの `command -v tmux` で探す。tmux 自体はログインシェル経由で起動し、
-    /// tmux のサーバーにログインの環境（PATH）を持たせる。見つからなければ、知らせて素のシェルを開く
+    /// tmux のサーバーにログインの環境（PATH）を持たせる。見つからなければ、知らせて素のシェルを開く。
+    /// true color を tmux の中まで届けるため（docs/design.md「色」①）、tmux のクライアントに `COLORTERM=truecolor` を渡す。
+    /// tmux 3.2 以上（`-T RGB -V` が通る）なら、さらに `-T RGB`（この端末は true color）と、
+    /// 新しいセッションへの `-e COLORTERM=truecolor` を付ける。通らなければ今までどおりの起動（256 色）
     public func startupCommand(slot: Int) -> String? {
         // 名前は parse で英数と - _ . に限っているので、引用符の中にそのまま入れてよい
         guard let name = tmuxSessionName(slot: slot) else { return nil }
         // $HOME を含む候補だけ二重引用符で囲む（展開は接続先の sh）
         let candidates = Self.tmuxSearchPaths.map { $0.contains("$") ? "\"" + $0 + "\"" : $0 }.joined(separator: " ")
-        // 外側の単一引用符の中に単一引用符を入れない（sshd がログインシェルの -c に渡す 1 行にするため）
+        // 外側の単一引用符の中に単一引用符を入れない（sshd がログインシェルの -c に渡す 1 行にするため）。
+        // `-T` は tmux 3.2 から。知らない版は使い方を出して失敗するので、その失敗で版を見分ける
         let script = [
             #"t=; for p in \#(candidates); do if [ -x "$p" ]; then t=$p; break; fi; done; "#,
             #"if [ -z "$t" ]; then t=$("$SHELL" -lc "command -v tmux" 2>/dev/null | tail -n 1); [ -x "$t" ] || t=; fi; "#,
-            #"if [ -n "$t" ]; then exec "$SHELL" -lc "exec \"$t\" -u new-session -A -s \#(name)"; fi; "#,
+            #"if [ -n "$t" ]; then "#,
+            #"if "$t" -T RGB -V >/dev/null 2>&1; then exec "$SHELL" -lc "exec env COLORTERM=truecolor \"$t\" -u -T RGB new-session -A -e COLORTERM=truecolor -s \#(name)"; fi; "#,
+            #"exec "$SHELL" -lc "exec env COLORTERM=truecolor \"$t\" -u new-session -A -s \#(name)"; "#,
+            #"fi; "#,
             #"echo "tmux が見つかりません（Mac で brew install tmux を入れると、切れても作業が残ります）。素のシェルを開きます"; "#,
             #"exec "$SHELL" -l"#,
         ].joined()

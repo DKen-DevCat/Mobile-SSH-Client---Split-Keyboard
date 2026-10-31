@@ -37,7 +37,7 @@ XCCONFIG = ROOT / "ios/Config/Base.xcconfig"
 AI_BOTS = ("GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User",
            "PerplexityBot", "Google-Extended", "Applebot-Extended")
 MCP_TOOLS = ("doctor", "config_show", "config_check", "config_set", "host_add", "host_remove", "config_push",
-             "pubkey_install", "app_install", "app_status", "inbox_list", "inbox_clean")
+             "pubkey_install", "app_install", "app_status", "inbox_list", "inbox_clean", "theme_import")
 OLD_NAMES = ("SplitTerm", "splitterm.pages.dev")
 CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; "
        "frame-ancestors 'none'")

@@ -1,6 +1,6 @@
 # MCP（splitterm コマンド）
 
-Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動く `splitterm` コマンドがある。MCP サーバー（stdio）にもなる。Claude Code に登録すると、エージェントが config の検査・変更・送信、公開鍵の登録、アプリの入れ直し、受け取り箱の片付けを実行できる。ネットには出ない。
+Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動く `splitterm` コマンドがある。MCP サーバー（stdio）にもなる。Claude Code に登録すると、エージェントが config の検査・変更・送信、Ghostty の配色の取り込み、公開鍵の登録、アプリの入れ直し、受け取り箱の片付けを実行できる。ネットには出ない。
 
 - config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない
 - 端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く
@@ -52,8 +52,9 @@ Claude Code 以外の MCP クライアントも、同じ stdio のサーバー�
 | `app_status` | 入れたアプリの期限とビルドを見る | – |
 | `inbox_list` | 端末から届いたメディアの一覧（新しい順、種類、元の動画との対応） | – |
 | `inbox_clean` | 受け取り箱の古いもの（アプリが付けた名前のものだけ）を消す | – |
+| `theme_import` | Mac の Ghostty が使っている配色（背景・文字・カーソル・選択・パレット 0〜15・`minimum-contrast`・`bold-is-bright`・`font-thicken`・色空間）を config に書く。引数 `dry_run` が true なら、書き換える内容と警告を出すだけ。明暗 2 つのテーマは暗い方。端末へは `config_push` で送る | – |
 
-道具が触る config は決まった 1 つ（`SPLITTERM_CONFIG`、無ければ `~/.config/splitterm/config`）だけで、ファイルの場所は受け取らない。守りを弱める変更（`app-lock`・`privacy-blur`・`media-strip-location` を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。
+道具が触る config は決まった 1 つ（`SPLITTERM_CONFIG`、無ければ `~/.config/splitterm/config`）だけで、ファイルの場所は受け取らない。`theme_import` が読む Ghostty の実行ファイルと設定ファイルも、決まった場所だけ。守りを弱める変更（`app-lock`・`privacy-blur`・`media-strip-location` を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。
 
 ## 人の手が要る所
 
@@ -92,6 +93,7 @@ MCP と同じことを、コマンドでも実行できる。
 | `splitterm host remove NAME` | 接続先を消す |
 | `splitterm push` | config を端末へ送る |
 | `splitterm pubkey --fingerprint SHA256:...` | 指紋が一致したら、公開鍵を authorized_keys に足す |
+| `splitterm theme import [--dry-run]` | Mac の Ghostty の配色を config に取り込む。`--dry-run` は書き換える内容を出すだけ |
 | `splitterm install [--force]` | アプリを作り直して入れる |
 | `splitterm status` | 入れたアプリの期限とビルドを見る |
 | `splitterm doctor` | 足りないものと直し方を出す |

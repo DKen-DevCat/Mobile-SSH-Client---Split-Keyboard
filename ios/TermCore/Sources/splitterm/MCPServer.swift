@@ -74,6 +74,12 @@ struct MCPServer {
             },
             Tool(name: "inbox_clean", description: "受け取り箱の古いものを消す（既定は config の media-retention）",
                  properties: ["days": ["type": "integer"]], required: []) { a in c.inboxClean(days: a["days"] as? Int) },
+            Tool(name: "theme_import",
+                 description: "Mac の Ghostty が実際に使っている配色（背景・文字・カーソル・選択・パレット 0〜15・minimum-contrast・bold-is-bright・font-thicken・色空間）を config に書く（コメントと並びは残る）。dry_run が true なら、書き換える内容と警告を返すだけで何も書かない。明暗 2 つのテーマは暗い方。端末へは config_push で送る。Ghostty が無ければ、直し方つきのエラー",
+                 properties: ["dry_run": ["type": "boolean", "description": "true なら書き換えない（既定 false）"]],
+                 required: []) { a in
+                c.themeImport(dryRun: a["dry_run"] as? Bool ?? false, file: nil)
+            },
         ]
     }
 

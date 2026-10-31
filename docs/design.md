@@ -35,6 +35,7 @@ iPhone と iPad 向けに、SSH 先のシェルを操作するネイティブの
 | 6 | 最低 OS を iOS / iPadOS 17 にする。古い OS に合わせて操作感を落としたり、保守の止まった版や非公式の依存を抱えたりしない | iPad 第 5 世代（iPadOS 16 まで）を外した。かな漢字変換（AzooKey の最新版）を今回組み込んだ。SSH は Citadel ではなく Apple 公式の swift-nio-ssh を維持した（「技術スタックと段階計画」） |
 | 13 | 接続は tmux のまま直す（決まった場所も探す、裏で約 30 秒保つ、戻ったらすぐ戻る、タブごとに別のセッションで閉じても残す）。下の環境バーを無くし、上に 2 行（時計と状態・タブと＋）をシェルに重ねて置く。キーボード選択はシェルの右下。フリックも下寄せ。ポインタはトラックパッド式で上の 2 行も押せ、空白の長押しでキーボードをトラックパッドに。変換中の読みはカーソル位置に、直接の文字は確かめられた場面で先行表示 | 利用者の指示（2026-10-30）。TrackPoint の動き・下の環境バー・フリックの上寄せをやめた |
 | 14 | シェルで選んだ文字は、表示を出さずに自動でクリップボードへ。ダブルタップは空白で区切ったひとかたまり（URL・パスなど。折り返しも、tmux の中の折り返しもつなぐ）を選び、マウス報告ありの画面でも選択にする。クリップボードはアプリを離れてから `clipboard-clear` で消える（残るリスクは issue #4）。スクロールは指を離したら止める。分割キーボード（JIS）のキーの大きさを実物の比率に（キー 1 つ = u×u、左 8.25u・右 9.5u・高さ 5.6u）。赤い丸をなくし、左右の空白キーが空白とポインタを兼ねる（動かさず離す = 空白、動かす = ポインタ、動かした指を離して 1 秒以内のタップ = 左クリック、左右同時 = 右クリック）。赤い丸があった所は、左が 📎、右が 🌐。シェルの左下の 📎 は画面のキーボードを出している間は隠す | 利用者の指示（2026-10-31）。ダブルタップの「単語」・コピー後の編集メニュー・慣性スクロール・赤い丸（11）・キーボードの幅 pitch × 6.07 と高さ 幅 × 1.35（12）をやめた |
+| 15 | 色味を PC（Mac の Ghostty）にそろえる。薄く見える原因を 4 つに分け、4 段で直す。①true color を tmux の中まで届ける（tmux の起動で `COLORTERM=truecolor` を渡し、tmux 3.2 以上なら `-T RGB` と `-e COLORTERM=truecolor` も付ける）、②Ghostty が使っている配色を `splitterm theme import`（MCP は `theme_import`）で config に取り込む、③読みやすさの補正 `minimum-contrast` の既定を 1（補正しない。Ghostty と同じ）に、④描き方を合わせる（`color-space`・`bold-is-bright`・`font-thicken`）。見比べは `scripts/colortest.sh`。選べる配色の内蔵はしない | 利用者の指示（2026-10-31）。`minimum-contrast` の既定 4.5 をやめた。取り込むと `color-space` が Ghostty の値（既定は `srgb`）になり、今の Display P3 より少し落ち着くが PC と同じになる |
 
 ## 設計原則と性能目標
 
@@ -79,7 +80,7 @@ iPhone と iPad 向けに、SSH 先のシェルを操作するネイティブの
 
 | 層 | 場所 | 中身 | 確かめ方 |
 | --- | --- | --- | --- |
-| TermCore | `ios/TermCore/Sources/TermCore`（依存の無いパッケージ。Mac の `splitterm` コマンドもここ） | 設定ファイルの読み方、レイアウトの算出、キーの変換、マウスの形、キーボードの配置、かな入力、ホスト鍵の指紋、再接続の間隔、つながった文字列の範囲（`ConnectedText`）、空白兼ポインタの状態機械（`SpacePointerGesture`）、クリップボードの期限の規則（`ClipboardLease`）。画面にも通信にも頼らない | Mac で `swift test`（`ios/TermKit/Tests`） |
+| TermCore | `ios/TermCore/Sources/TermCore`（依存の無いパッケージ。Mac の `splitterm` コマンドもここ） | 設定ファイルの読み方、レイアウトの算出、キーの変換、マウスの形、キーボードの配置、かな入力、ホスト鍵の指紋、再接続の間隔、つながった文字列の範囲（`ConnectedText`）、空白兼ポインタの状態機械（`SpacePointerGesture`）、クリップボードの期限の規則（`ClipboardLease`）、セルの色を決める規則（`CellColorRules`）、Ghostty の配色の読み取りと変換（`GhosttyImport`）。画面にも通信にも頼らない | Mac で `swift test`（`ios/TermKit/Tests`） |
 | TermSession | `ios/TermKit/Sources/TermSession` | SSH の接続、エミュレータの包み（別スレッドでの解釈と画面の写し）、キーチェーン（Secure Enclave の鍵・ホスト鍵） | 実機 |
 | アプリ | `ios/SplitTerm`（内部の短い名前） | UIKit の画面、Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） | 実機 |
 
@@ -167,7 +168,7 @@ Ghostty と同じく、**config ファイル 1 枚**ですべてを決める。�
 | 区分 | 項目（既定値） |
 | --- | --- |
 | 接続 | `host = 名前 ユーザー@アドレス[:ポート] [tmux=名前\|none] [auth=key\|password]`（`tmux` は既定 `main`。タブごとに `main-2`・`main-3`…と別のセッションに入る）、`auto-connect`（空＝最初の host、`none`＝つながない）、`term = xterm-256color`、`keepalive = 15s`、`reconnect = true`、`password-auth = false` |
-| 表示 | `font-family = system-mono`、`font-family-cjk = Hiragino Sans`、`font-size = 10`、`zoom-steps = 85, 100`（先頭が起動時）、`color-space = display-p3`、`background`・`foreground`・`cursor-color`・`accent`・`selection-background`、`palette = 0〜15=#RRGGBB`、`minimum-contrast = 4.5`、`cursor-style = block`、`cursor-blink = false`、`scrollback-limit = 10000` |
+| 表示 | `font-family = system-mono`、`font-family-cjk = Hiragino Sans`、`font-size = 10`、`zoom-steps = 85, 100`（先頭が起動時）、`color-space = display-p3`、`background`・`foreground`・`cursor-color`・`accent`・`selection-background`、`palette = 0〜15=#RRGGBB`、`minimum-contrast = 1`（1 で補正しない）、`bold-is-bright = false`、`font-thicken = false`、`cursor-style = block`、`cursor-blink = false`、`scrollback-limit = 10000` |
 | キーボード | `keyboard = us`、`keyboard-pitch = auto`（キー 1 つの大きさ u の固定。20〜80pt、auto は画面から算出）、`key-repeat-delay = 400ms`、`key-repeat-interval = 50ms`、`option-as-meta = true`、`haptics = true`、`newline = auto`、`soft-keyboard-with-hardware = false` |
 | 操作 | `mouse-reporting = true` |
 | メディア | `agent = claude-code`（`codex`・`generic`）、`agent-media`（読める種類の上書き）、`media-dir = ~/.splitterm/inbox`、`media-retention = 7d`、`media-strip-location = true`、`media-insert = "{paths} "`、`video-mode = auto`、`video-frames = 12`、`video-sheet-size = 1568`、`video-transcribe = true`、`audio-mode = auto` |
@@ -362,7 +363,7 @@ mosh の考え方。直接送る文字（英語の分割・英語フリック・
 
 ## 描画と解像度
 
-物理ピクセルと 1 対 1 になる解像度で Metal 描画し、文字をピクセル境界にそろえる。これで 85% 表示の 8.5pt でも文字が滲まない。色は Display P3 で出し、Termius より鮮やかにする。描画の仕組みは、サポートする最も遅い端末（A10）でも画面のリフレッシュレートを保てるように作る。
+物理ピクセルと 1 対 1 になる解像度で Metal 描画し、文字をピクセル境界にそろえる。これで 85% 表示の 8.5pt でも文字が滲まない。色は config の `color-space`（既定は Display P3）で出し、PC の Ghostty と同じ色に見えるように「色」の 4 段で合わせる。描画の仕組みは、サポートする最も遅い端末（A10）でも画面のリフレッシュレートを保てるように作る。
 
 ### 解像度
 
@@ -377,13 +378,28 @@ mosh の考え方。直接送る文字（英語の分割・英語フリック・
 - 文字は物理ピクセルの大きさで 1 度だけラスタライズしてテクスチャにため（グリフアトラス、2048px 四方）、倍率やフォントを変えたときだけ作り直す。アトラスは最近傍で読む。
 - 罫線とブロック文字（─ │ ┌ ╭ █ ▀ ░ など）はフォントを使わず図形として描く。行の間に隙間ができず、Claude Code や tmux の UI の枠がきれいにつながる。丸い角（╭╮╯╰）と二重線は、角の四角い 1 本線で描く。
 - フォントは等幅英字（既定は SF Mono）に日本語フォールバック（Hiragino Sans）を組み合わせる。全角文字は 2 セル幅で描き、セルより狭い字形は中央に置く。
+- **文字の太さ**（`font-thicken`、既定 false）：macOS の Ghostty にある「文字を太く描く」仕組みが iOS には無いので、グリフアトラスに書くとき（`GlyphAtlas.rasterize`）、文字の輪郭を細い線（文字の大きさの 1/40、最小 0.5px）でなぞって太らせる（描き方を塗り＋線にする）。設定を変えたら、`FontSpec` が変わるのでアトラスを作り直す。
 
 ### 色
 
-- 24bit カラー（true color）に対応する。256 色の 16〜255 は xterm の標準の表。
-- 色空間は Display P3（`color-space`）。テーマの値を P3 の座標として描くので、sRGB より彩度の高い色が出る。キーボードとバーも同じ色空間で塗る。
-- **最小コントラスト補正**：文字色と背景色のコントラスト比が 4.5:1（`minimum-contrast`）を下回るときは、文字色を白か黒の側へ必要なだけ寄せる。色の組ごとに結果を覚えておく。
-- テーマは config で編集できる。既定は高彩度のダークテーマとし、横持ちの試作と同じ配色にする。
+手本は Mac の Ghostty。PC で見る画面よりスマホのアプリの色が薄く見えたので、原因を 4 つに分け、4 段で直す。
+
+| 段 | 原因 | 直し方 |
+| --- | --- | --- |
+| ① true color が tmux の中まで届かない | tmux が 256 色に丸めている | tmux の起動で `COLORTERM=truecolor` を渡し、tmux 3.2 以上なら `-T RGB` も付ける（「接続の安定性」） |
+| ② アプリ独自の配色 | 既定の配色が Ghostty と違う | `splitterm theme import` で、Ghostty が使っている値を config に書く（「Get Started と MCP」） |
+| ③ 読みやすさの補正 | `minimum-contrast = 4.5` が暗い色を白へ寄せる | 既定を 1（補正しない。Ghostty の既定と同じ）にする |
+| ④ 描き方 | 色空間・太字・文字の太さが違う | `color-space`（取り込みで Ghostty の `window-colorspace` を写す）、`bold-is-bright`、`font-thicken` |
+
+見比べは `scripts/colortest.sh`（16 色・256 色・true color・Claude Code の色に近い見本・太字と通常）を、Ghostty とアプリで同じように流す。
+
+- 24bit カラー（true color）に対応する。256 色の 16〜255 は xterm の標準の表（6×6×6 の立方体と灰色 24 段）。0〜15 は config の `palette`。
+- **色空間**（`color-space`）：`display-p3`（アプリの既定）はテーマの値を P3 の座標として描くので、sRGB より彩度の高い色が出る。`srgb` は Ghostty の `window-colorspace` の既定で、PC と同じ色になる。取り込む（②）と Ghostty の値が書かれるので、Ghostty が既定のままなら `srgb` になり、P3 より少し落ち着く。キーボードとバーも同じ色空間で塗る。
+- **最小コントラスト補正**（`minimum-contrast`、既定 1）：1 は補正しない。1 より大きくすると、文字色と背景色のコントラスト比がその値（例 4.5）を下回るとき、文字色を白か黒の側へ必要なだけ寄せる。暗い色が白っぽくなって薄く見えるので、既定では切る。色の組ごとに結果を覚えておく。
+- **太字を明るく**（`bold-is-bright`、既定 false）：true なら、太字の文字で、文字色がパレットの 0〜7 のものを 8〜15 の色にする（256 色の指定 `38;5;N` の N が 0〜7 のときも同じ。true color と既定の文字色は変えない）。
+- **色を決める規則**は `TermCore` の純粋な関数（`CellColorRules.resolve`）にあり、エミュレータや画面に頼らない（テストで固定する）。順に、太字を明るく → 反転（文字色と背景色を入れ替える）→ 薄く（dim。背景へ 40% 寄せる）→ 隠す（invisible。文字色を背景色にする）、隠さないなら最小コントラスト補正。`Theme` は SwiftTerm のセルをこの関数の入力に直して呼ぶだけ。
+- **文字の太さ**（`font-thicken`、既定 false）：「文字の描画」を参照。
+- テーマは config で編集できる。既定は高彩度のダークテーマとし、横持ちの試作と同じ配色にする。選べる配色（テーマ）は内蔵しない。Ghostty の配色は、取り込んで config に書く。
 
 | 用途 | 色 |
 | --- | --- |
@@ -420,7 +436,9 @@ mosh の考え方。直接送る文字（英語の分割・英語フリック・
 
 1. **MVP（実装済み）**：config の `host` に tmux のセッション名を持たせ（既定 `main`）、接続時にそのセッションへ入る（無ければ作る）。SSH の exec はログインシェルを通らず、`.zshrc` などに書いた PATH が効かないので、tmux の場所は自分で探す。
    - **探す場所と順**：接続先の `/bin/sh` が（ログインシェルが fish・tcsh でも壊れないように）、`/opt/homebrew/bin/tmux`、`/usr/local/bin/tmux`、`/opt/local/bin/tmux`、`$HOME/.nix-profile/bin/tmux`、`/run/current-system/sw/bin/tmux`、`/usr/bin/tmux` を順に試し、最初に実行できたものを使う。どれにも無ければ、ログインシェルの `command -v tmux`。この一覧は `HostEntry.tmuxSearchPaths` の 1 か所だけにあり、`splitterm doctor` も同じ一覧で探して、見つけた場所を出す。
-   - **起動**：tmux 自体はログインシェル（`$SHELL -lc`）経由で `tmux -u new-session -A -s <名前>` として起動し、tmux のサーバーにログインの環境（PATH）を持たせる。
+   - **起動**：tmux 自体はログインシェル（`$SHELL -lc`）経由で `exec env COLORTERM=truecolor tmux -u new-session -A -s <名前>` として起動し、tmux のサーバーにログインの環境（PATH）を持たせる。
+   - **true color を tmux の中まで届ける**（「描画と解像度」の「色」①）：tmux のクライアントに `COLORTERM=truecolor` を渡す。tmux 3.2 以上のときだけ、さらに `-T RGB`（この端末は true color、と tmux に伝える）と、新しいセッションへの `-e COLORTERM=truecolor`（`new-session -A -e COLORTERM=truecolor -s <名前>`。中で動く Claude Code などに伝わる）を付ける。3.2 以上かどうかは実際に試して決める（`tmux -T RGB -V` が成功すれば対応。3.2 未満は `-T` を知らず失敗する）。通らなければ今までどおりの起動（256 色）。1 行・外側の単一引用符の中に単一引用符を入れない・`/bin/sh` に任せる・tmux の探し方・見つからないときの素のシェル、はそのまま。
+   - **環境は新しいセッションにしか届かない**：既に動いている tmux のセッションの中は 256 色のまま。色を直したら 1 度セッションを作り直す（そのタブで `exit` してから開き直す、または `tmux kill-session -t main`。中のプロセスは終わる）。この手順は Get Started の「色を PC の Ghostty にそろえる」に書く。
    - **見つからないとき**：「tmux が見つかりません（Mac で brew install tmux を入れると、切れても作業が残ります）。素のシェルを開きます」と出して、素のシェル（`$SHELL -l`）を開く。
    - **タブごとに別のセッション**：1 つ目のタブは `main`、2 つ目からは `main-2`・`main-3`…（`tmux=` の名前に `-番号`。番号は、同じ接続先で開いているタブが使っていない最小のもの。`TabSlots`）。タブの題名も `mac`・`mac 2`…（接続先の題名が来たら `mac 2 · 題名`）。＋も ⌘T も同じ。タブを閉じても tmux のセッションは残し（kill しない）、次に開いたタブが同じ番号なら、そのセッションに戻る。止まるのは、シェルでプロセスを終わらせたときだけ。`tmux=none` のタブは、番号に関わらず素のシェル。
    - **裏に回っても約 30 秒は繋いだまま**：裏に回ったとき、繋がっているタブが 1 つでもあれば、iOS のバックグラウンドの猶予（`beginBackgroundTask`。約 30 秒、全タブで 1 つ）を取る。猶予が切れる前に、自分で全タブの接続を閉じ（状態は「裏に回ったので切りました」。再試行は予約しない）、猶予を返す。猶予の前に前面へ戻れば、接続はそのまま続く。`reconnect = false` のときは、自分で閉じたタブも前面に戻って勝手には繋がず、タブのタップで繋ぐ。
@@ -552,7 +570,7 @@ mosh の考え方。直接送る文字（英語の分割・英語フリック・
 
 ### Mac の `splitterm`（CLI と MCP）
 
-`ios/TermCore` の依存の無いパッケージにある（数秒でビルドできる）。config の読み取りはアプリと同じ `TermCore` なので、検査の規則がずれない。`splitterm mcp` で MCP サーバー（stdio、1 行に 1 つの JSON-RPC）になる。ネットには出ない。外のプログラム（scripts/）はシェルを通さずに起動する。
+`ios/TermCore` の依存の無いパッケージにある（数秒でビルドできる）。config の読み取りはアプリと同じ `TermCore` なので、検査の規則がずれない。`splitterm mcp` で MCP サーバー（stdio、1 行に 1 つの JSON-RPC）になる。ネットには出ない。外のプログラム（scripts/ と、`theme import` が呼ぶ `ghostty`）はシェルを通さずに起動する。
 
 | 道具（MCP） | CLI | すること |
 | --- | --- | --- |
@@ -564,10 +582,33 @@ mosh の考え方。直接送る文字（英語の分割・英語フリック・
 | `pubkey_install` | `pubkey --fingerprint` | 公開鍵を authorized_keys へ（アプリに出た指紋が要る。`restrict,pty` 付き） |
 | `app_install` / `app_status` | `install` / `status` | 入れ直す / 期限 |
 | `inbox_list` / `inbox_clean` | `inbox list` / `inbox clean` | 端末から届いたメディアの一覧（新しい順）/ 古いもの（アプリが付けた名前のものだけ）を消す |
+| `theme_import`（引数 `dry_run`） | `theme import [--dry-run]` | Mac の Ghostty が使っている配色を config に書く（`--dry-run` は書き換える内容と警告を出すだけ）。端末へは `push` で送る |
 
-- 道具が触る config は決まった 1 つだけ（ファイルの場所は受け取らない。CLI の `--file` は人が使う）。守りを弱める変更は、端末へ送っても、端末で本人が確かめるまで効かない（「セキュリティ要件」）。
+- 道具が触る config は決まった 1 つだけ（ファイルの場所は受け取らない。CLI の `--file` は人が使う）。`theme_import` が読む Ghostty の config とテーマも決まった場所だけで、場所は受け取らない。守りを弱める変更は、端末へ送っても、端末で本人が確かめるまで効かない（「セキュリティ要件」）。
 - `pubkey_install` の指紋は、人がアプリの画面から読んだものを渡す約束（道具は形を確かめるだけで、エージェントが公開鍵のファイルから自分で計算した指紋を見分けられない）。手順書と道具の説明でエージェントにそう伝える。
 - 外のプログラムが時間切れになったら止め、孫のプロセスが出力を持ったままでも 5 秒で見切る（MCP サーバーが止まらない）。1 行は 1MB まで。
+
+#### Ghostty の配色の取り込み（`theme import`）
+
+「色」②。Ghostty が実際に使っている値を読み、config に書く。
+
+- **読み方**（上から順に試す）：
+  1. `ghostty +show-config --changes-only=false`（テーマを当てた後の全部の値）を、シェルを通さずに起動して読む。場所は `/Applications/Ghostty.app/Contents/MacOS/ghostty`、無ければ PATH の `ghostty`。時間切れ（10 秒）と出力の上限（1MB）は外のプログラムの起動の仕組みに従う。`key = value` の行として読み、知らない行は飛ばす（出力の形は版で変わりうる）。
+  2. 起動できない・読めないときは、Ghostty の config ファイル（`$XDG_CONFIG_HOME/ghostty/config`。`$XDG_CONFIG_HOME` が無ければ `~/.config/ghostty/config`。続けて `~/Library/Application Support/com.mitchellh.ghostty/config`。後に読んだ方が優先）とテーマのファイル（`theme = 名前` → `$XDG_CONFIG_HOME/ghostty/themes/名前`〔`$XDG_CONFIG_HOME` が無ければ `~/.config/ghostty/themes/名前`〕、無ければ `/Applications/Ghostty.app/Contents/Resources/ghostty/themes/名前`。名前に `/` を含む・`.` で始まるものは読まない）を直接読む。テーマの値の上に config の値を重ねる。この道では、明示されていない色は Ghostty の既定色が分からないので書かず、そのことを出力に書く（色以外の `minimum-contrast`・`bold-is-bright`・`font-thicken`・`window-colorspace` は、明示がなければ Ghostty の既定値の 1・false・false・`srgb` と見なす）。
+  3. どちらでも見つからなければ、直し方（Ghostty を入れる・置き場所）を添えたエラーにする。
+- **書く項目**（Ghostty → splitterm）：
+
+| Ghostty | config |
+| --- | --- |
+| `background`・`foreground`・`cursor-color`・`selection-background` | 同じ名前（未設定のものは書かない） |
+| `palette = N=#RRGGBB`（N が 0〜15） | `palette = N=#RRGGBB` |
+| `minimum-contrast`・`bold-is-bright`・`font-thicken` | 同じ名前 |
+| `window-colorspace`（`srgb` / `display-p3`） | `color-space` |
+
+- **明暗 2 つのテーマ**（`theme = light:A,dark:B`）は暗い方（B）を使う（アプリは暗い画面だけ）。`+show-config` の出力に明暗 2 つの `theme` があるときは、どちらの値が出ているか分からないので、ファイルの道で暗い方を読み直す（読めなければ出力の値を使い、警告する）。
+- **色の書き方**は `#RRGGBB`・`RRGGBB`。それ以外（X11 の色の名前など）は書かずに警告する。
+- **palette の 16〜255** は取り込まない（xterm の標準と同じため）。標準と違う値があれば、警告だけ出す。
+- **書き方**は `config set` と同じ（`ConfigEditor`。コメントと並びを残し、読めなくなる書き換えは断る）。`--dry-run` は書き換える内容と警告を出すだけで、何も書かない。出力の最後に、次は `splitterm push` で端末へ送る、と書く。
 
 ### サイトと AIO
 
@@ -614,7 +655,7 @@ Sakana AI の Conductor は、7B の小さなモデルが質問ごとに作業�
 | レイアウト | 自前のレイアウト算出（`LayoutEngine`） | iPhone と iPad を 1 つの仕組みで扱う |
 | 設定 | 自前の config 読み取り（`ConfigParser`） | Ghostty と同じ形の 1 枚のファイル |
 | 端末エミュレーション | SwiftTerm（MIT、1.99 系＝2.0 の API）の解釈・画面バッファ部分 | xterm 互換の実績がある。別スレッドで解釈し、ロックの下で画面の写しを取る（`makeRenderSnapshot`。1.20 以前には無く、メインスレッドで解釈することになる）。作者が保守するのは最新版だけなので、最新に追従する（2026-10-30 時点は 1.99.1 に一時的に固定: 1.99.2 が Xcode 26.3 でコンパイルできないため。直った版で戻す）。描画部分は使わない。接続先に許すことを絞る（「セキュリティ要件」） |
-| 描画 | Metal＋Core Text | 物理ピクセル描画、Display P3、グリフアトラス |
+| 描画 | Metal＋Core Text | 物理ピクセル描画、色空間は config（既定 Display P3）、グリフアトラス |
 | SSH | swift-nio-ssh（Apple 公式、0.15 系）＋ swift-nio-transport-services（Network.framework） | Apple が保守を続けている（2026-10 も更新）。Secure Enclave の鍵をそのまま渡せる。Network.framework で TCP の keepalive と回線の扱いを iOS に任せる。iOS 17 に上げても Citadel にしない理由: Citadel は Apple の swift-nio-ssh ではなく個人のフォーク（Wellz26/swift-nio-ssh 0.3 系）に依存しており、暗号と認証の部分を保守の見えないコードに頼ることになる。Citadel の便利さ（SFTP・RSA・高水準の API）は、このアプリでは使わない（PTY・exec・公開鍵認証・ホスト鍵の照合だけ） |
 | かな漢字変換 | AzooKeyKanaKanjiConverter（0.11 系、同梱の辞書） | iOS で動く実績がある変換エンジン。ニューラル変換（Zenzai）は使わない（重さとアプリの大きさ） |
 | 鍵・認証 | CryptoKit、Keychain、LocalAuthentication | Secure Enclave 鍵と Face ID |
@@ -626,7 +667,7 @@ Sakana AI の Conductor は、7B の小さなモデルが質問ごとに作業�
 | 2. 横持ちのキーボード | レイアウト算出（iPhone・iPad）、JIS の分割（実物の比率）、5 つのキーボードと 🌐、ローマ字入力、ポインタ（空白と兼用）、フリック（かな・英字）、同時入力、ハードウェアキーボード | 実装済み・CI でビルド済み・実機未確認 |
 | 3. タッチ操作 | タップ、スクロール、選択と自動コピー、マウス報告の 3 モード、ピンチと倍率、入力行のタップでカーソル移動 | 実装済み・CI でビルド済み・実機未確認 |
 | 4. 仕上げ | アプリロック、画面の保護、クリップボード消去 | 実装済み・CI でビルド済み・実機未確認 |
-| M1. splitterm | CLI と MCP、config の編集 | 実装済み・Mac の CI でテスト済み |
+| M1. splitterm | CLI と MCP、config の編集、Ghostty の配色の取り込み | 実装済み・Mac の CI でテスト済み |
 | M2. サイト | Get Started、llms.txt、Cloudflare Pages、CI の静的な検査 | 実装済み |
 | M3. メディア | 選ぶ・撮る・録音・ファイル、原本、位置情報、再開と SHA-256 | 実装済み・CI でビルド済み・実機未確認 |
 | M4. 動画 | コンタクトシート、文字起こし、添え書き | 実装済み・CI でビルド済み・実機未確認 |
@@ -647,6 +688,7 @@ Sakana AI の Conductor は、7B の小さなモデルが質問ごとに作業�
 - [ ] 実物の比率にした分割（u = 24pt の 13 mini）の字の大きさと、空白兼ポインタの動かし始め（6pt）・クリックの猶予（1.0 秒）を実機で確かめる
 - [ ] フリックの面は枠いっぱいに並べるので 1 段が約 27pt（13 mini）。打ちやすさを実機で確かめる
 - [ ] 自動コピーで残るリスク（issue #4）の緩和案（前面でも安全網の期限、アプリ内だけのクリップボード、秘密らしい文字列の除外）を決める
+- [ ] 色味を実機で Ghostty と見比べる（Mac で `splitterm theme import --dry-run` を 1 回流して出力の形を確かめ、`scripts/colortest.sh` を Ghostty とアプリで流す。tmux のセッションは作り直す。`font-thicken` の線の太さ〔文字の大きさの 1/40〕と `bold-is-bright` の見え方）
 - [ ] 先行表示のしきい値（1 秒）と見た目を実機で確かめる（tmux・vim・less の中でも、確かめの規則だけで誤って出さないか。vim の通常モードで、たまたま同じ文字の上へ動いたときに 1 度出てすぐ消える程度で済むか）
 - [ ] iPadOS 26 の窓の自由な大きさ（`UIRequiresFullScreen` が効かない場合）での見え方。狭い窓ではキーボードを隠す動きで足りるか
 - [ ] Swift 6 の厳密な並行性の検査を入れる（今は Swift 5 の言語モード）

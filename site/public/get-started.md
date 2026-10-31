@@ -220,6 +220,36 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 成功の確かめ方: アプリに tmux の画面（セッション `main`）が出る。これで準備は終わり。
 
+## 色を PC の Ghostty にそろえる（任意）
+
+PC の Ghostty で見る色よりアプリの色が薄いときの手順。Mac に Ghostty が入っていて、その配色に合わせたいときに行う。段 3 で `splitterm` を作ってあること（`tmux` は 3.2 以上だと true color の指定も付く）。
+
+実行する（人に内容を見せてから書く）:
+
+```bash
+ios/TermCore/.build/release/splitterm theme import --dry-run
+ios/TermCore/.build/release/splitterm theme import
+ios/TermCore/.build/release/splitterm push
+```
+
+成功の確かめ方: `--dry-run` が、書き換える内容（`color-space`・`background`・`foreground`・`palette`・`minimum-contrast`・`bold-is-bright`・`font-thicken`）と、読めなかった値の警告を出す（config は変わらない）。内容に納得したら 2 行目で config に書き、最後に `push` で端末へ送る。出力の最後に「次は splitterm push」と出る。MCP なら `theme_import`（`dry_run` で内容だけ確かめる）と `config_push`。
+
+- Ghostty の実際の値を `ghostty +show-config` で読み、読めなければ Ghostty の config とテーマのファイルを直接読む。明暗 2 つのテーマ（`theme = light:A,dark:B`）は暗い方を使う。Ghostty が見つからなければ、直し方つきのエラーになる
+- `color-space` は Ghostty の `window-colorspace`（既定は `srgb`）になる。今の Display P3 より少し落ち着くが、PC と同じ色になる
+- 色の名前（`red` など）は読まずに警告する。`palette` の 16〜255 は取り込まず、xterm の標準と違えば警告だけ出す
+- 読みやすさの補正 `minimum-contrast` の既定は 1（補正しない。Ghostty と同じ）。4.5 に戻すと、暗い色が白へ寄る
+
+**tmux の中を true color にする。** アプリは tmux を起動するとき `COLORTERM=truecolor` を渡す（tmux 3.2 以上なら `-T RGB` と `-e COLORTERM=truecolor` も付く。`tmux -V` で版を見る）。ただし tmux の環境は新しく作るセッションにしか届かないので、**既に動いているセッションは 1 度作り直す**。中で動いているもの（Claude Code など）は終わるので、**人に確かめてから**行う:
+
+```bash
+tmux ls
+tmux kill-session -t main
+```
+
+`main` はタブごとのセッション（`main-2`・`main-3`…）もある。終わらせたら、アプリのそのタブをタップして繋ぎ直す（新しいセッションができる）。端末側で同じことをするなら、そのタブのシェルで `exit`（ウィンドウが 1 つだけのとき、セッションも終わる）してから開き直す。
+
+見比べるには、Ghostty とアプリ（tmux の外と中）で同じ見本を流す: `scripts/colortest.sh`。true color の帯に段が見えるのは、まだ 256 色に丸められている。
+
 ## ふだんの操作
 
 | すること | コマンド・操作 |
@@ -230,6 +260,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | 期限を見る | `splitterm status`（MCP なら `app_status`） |
 | すぐに入れ直す | `scripts/ios_reinstall.sh` |
 | 写真・動画を送る | [メディアを送る](https://mobile-ssh-client---split-keyboard.pages.dev/media.md) |
+| 色を Ghostty にそろえる | `splitterm theme import --dry-run`、`splitterm theme import`、`splitterm push`（[手順](#colors)） |
 
 ## うまくいかないとき
 
@@ -243,5 +274,6 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | 「公開鍵を取れませんでした」「送れませんでした」 | アプリを一度開いてから、もう一度試す |
 | 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ を長押し →「このタブのホスト鍵を忘れる」 |
 | config の ⚠ | `splitterm config check` で行番号と理由を見て直す |
+| tmux の中だけ色が薄い・帯に段が見える | `tmux -V` が 3.2 以上か見る。動いているセッションを作り直したか（[手順](#colors)）。`scripts/colortest.sh` を tmux の外と中で流して比べる |
 | アプリで「認証に失敗しました」 | 公開鍵を登録したか確かめる: `grep -c splitterm ~/.ssh/authorized_keys` が 0 なら段 11。登録済みなら、システム設定 > 一般 > 共有 > リモートログイン の「アクセスを許可」に自分が入っているか、`~/.ssh` の権限（`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`）を見る。理由は `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` に出る |
 | ビルドが「Validate plug-in “SwiftTermBuildInfoPlugin”」で止まる | 初回だけ人の手: `open ios/*.xcodeproj` で Xcode を開き、実行先を「Any iOS Simulator Device」にして ⌘B、出てきた「Trust & Enable」を押す（Xcode でビルドするには先に `ios/Config/Local.xcconfig` に `DEVELOPMENT_TEAM` を書く）。そのあと段 7 をやり直す |

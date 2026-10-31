@@ -97,10 +97,10 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
 
     /// フォントと倍率を設定し、文字セルの寸法を返す
     @discardableResult
-    func configureFont(family: String, cjkFamily: String, pointSize: CGFloat) -> CellMetrics? {
+    func configureFont(family: String, cjkFamily: String, pointSize: CGFloat, thicken: Bool) -> CellMetrics? {
         let scale = nativeScale
         let spec = GlyphAtlas.FontSpec(family: family, cjkFamily: cjkFamily,
-                                       pixelSize: (pointSize * scale).rounded(), scale: scale)
+                                       pixelSize: (pointSize * scale).rounded(), scale: scale, thicken: thicken)
         metrics = renderer?.configure(spec)
         if let m = metrics { accumulator = ScrollAccumulator(lineHeight: m.heightPt) }
         setInlineFont(family: family, pointSize: pointSize)

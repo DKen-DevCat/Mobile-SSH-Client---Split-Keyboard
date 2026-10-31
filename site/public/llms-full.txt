@@ -319,6 +319,36 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 成功の確かめ方: アプリに tmux の画面（セッション `main`）が出る。これで準備は終わり。
 
+## 色を PC の Ghostty にそろえる（任意）
+
+PC の Ghostty で見る色よりアプリの色が薄いときの手順。Mac に Ghostty が入っていて、その配色に合わせたいときに行う。段 3 で `splitterm` を作ってあること（`tmux` は 3.2 以上だと true color の指定も付く）。
+
+実行する（人に内容を見せてから書く）:
+
+```bash
+ios/TermCore/.build/release/splitterm theme import --dry-run
+ios/TermCore/.build/release/splitterm theme import
+ios/TermCore/.build/release/splitterm push
+```
+
+成功の確かめ方: `--dry-run` が、書き換える内容（`color-space`・`background`・`foreground`・`palette`・`minimum-contrast`・`bold-is-bright`・`font-thicken`）と、読めなかった値の警告を出す（config は変わらない）。内容に納得したら 2 行目で config に書き、最後に `push` で端末へ送る。出力の最後に「次は splitterm push」と出る。MCP なら `theme_import`（`dry_run` で内容だけ確かめる）と `config_push`。
+
+- Ghostty の実際の値を `ghostty +show-config` で読み、読めなければ Ghostty の config とテーマのファイルを直接読む。明暗 2 つのテーマ（`theme = light:A,dark:B`）は暗い方を使う。Ghostty が見つからなければ、直し方つきのエラーになる
+- `color-space` は Ghostty の `window-colorspace`（既定は `srgb`）になる。今の Display P3 より少し落ち着くが、PC と同じ色になる
+- 色の名前（`red` など）は読まずに警告する。`palette` の 16〜255 は取り込まず、xterm の標準と違えば警告だけ出す
+- 読みやすさの補正 `minimum-contrast` の既定は 1（補正しない。Ghostty と同じ）。4.5 に戻すと、暗い色が白へ寄る
+
+**tmux の中を true color にする。** アプリは tmux を起動するとき `COLORTERM=truecolor` を渡す（tmux 3.2 以上なら `-T RGB` と `-e COLORTERM=truecolor` も付く。`tmux -V` で版を見る）。ただし tmux の環境は新しく作るセッションにしか届かないので、**既に動いているセッションは 1 度作り直す**。中で動いているもの（Claude Code など）は終わるので、**人に確かめてから**行う:
+
+```bash
+tmux ls
+tmux kill-session -t main
+```
+
+`main` はタブごとのセッション（`main-2`・`main-3`…）もある。終わらせたら、アプリのそのタブをタップして繋ぎ直す（新しいセッションができる）。端末側で同じことをするなら、そのタブのシェルで `exit`（ウィンドウが 1 つだけのとき、セッションも終わる）してから開き直す。
+
+見比べるには、Ghostty とアプリ（tmux の外と中）で同じ見本を流す: `scripts/colortest.sh`。true color の帯に段が見えるのは、まだ 256 色に丸められている。
+
 ## ふだんの操作
 
 | すること | コマンド・操作 |
@@ -329,6 +359,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | 期限を見る | `splitterm status`（MCP なら `app_status`） |
 | すぐに入れ直す | `scripts/ios_reinstall.sh` |
 | 写真・動画を送る | [メディアを送る](https://mobile-ssh-client---split-keyboard.pages.dev/media.md) |
+| 色を Ghostty にそろえる | `splitterm theme import --dry-run`、`splitterm theme import`、`splitterm push`（[手順](#colors)） |
 
 ## うまくいかないとき
 
@@ -342,6 +373,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | 「公開鍵を取れませんでした」「送れませんでした」 | アプリを一度開いてから、もう一度試す |
 | 接続でホスト鍵が違うと出る | 受け入れる道は無い。本当に鍵を変えたときだけ、アプリの ＋ を長押し →「このタブのホスト鍵を忘れる」 |
 | config の ⚠ | `splitterm config check` で行番号と理由を見て直す |
+| tmux の中だけ色が薄い・帯に段が見える | `tmux -V` が 3.2 以上か見る。動いているセッションを作り直したか（[手順](#colors)）。`scripts/colortest.sh` を tmux の外と中で流して比べる |
 | アプリで「認証に失敗しました」 | 公開鍵を登録したか確かめる: `grep -c splitterm ~/.ssh/authorized_keys` が 0 なら段 11。登録済みなら、システム設定 > 一般 > 共有 > リモートログイン の「アクセスを許可」に自分が入っているか、`~/.ssh` の権限（`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`）を見る。理由は `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` に出る |
 | ビルドが「Validate plug-in “SwiftTermBuildInfoPlugin”」で止まる | 初回だけ人の手: `open ios/*.xcodeproj` で Xcode を開き、実行先を「Any iOS Simulator Device」にして ⌘B、出てきた「Trust & Enable」を押す（Xcode でビルドするには先に `ios/Config/Local.xcconfig` に `DEVELOPMENT_TEAM` を書く）。そのあと段 7 をやり直す |
 
@@ -384,6 +416,21 @@ clipboard-clear = 30s
 
 `host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。タブごとに別のセッションに入る（1 つ目は `main`、2 つ目から `main-2`・`main-3`…）。タブを閉じても tmux のセッションは残り、次に開いたタブが同じ番号なら戻る。tmux は `/opt/homebrew/bin` や `/usr/local/bin` などの決まった場所を順に探し、見つからなければ知らせて素のシェルを開く。`tmux=none` なら素のシェル。
 
+## 色を Mac の Ghostty にそろえる
+
+PC の Ghostty で見る色と同じにするには、Mac で `splitterm theme import` を実行する。Ghostty が使っている値（`background`・`foreground`・`cursor-color`・`selection-background`・`palette` の 0〜15・`minimum-contrast`・`bold-is-bright`・`font-thicken`、`window-colorspace` → `color-space`）を、コメントと並びを残して config に書く。
+
+```bash
+splitterm theme import --dry-run   # 書き換える内容と警告を出すだけ（何も書かない）
+splitterm theme import             # config に書く
+splitterm push                     # 端末へ送る
+```
+
+- 読み方は、まず `ghostty +show-config`、読めなければ Ghostty の config ファイルとテーマのファイル。明暗 2 つのテーマは暗い方。色の名前は書かずに警告。`palette` の 16〜255 は取り込まず、標準と違えば警告だけ
+- `minimum-contrast` の既定は 1（補正しない。Ghostty と同じ）。`bold-is-bright` は太字の 0〜7 の色を 8〜15 にする。`font-thicken` は文字の輪郭を細い線でなぞって太らせる（どちらも既定 false）
+- `color-space` は Ghostty の既定（`srgb`）だと、`display-p3` より少し落ち着いた、PC と同じ色になる
+- tmux の中を true color にするには、動いているセッションを 1 度作り直す。[Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md#colors) にある
+
 ## 確かめ方
 
 ```bash
@@ -412,14 +459,16 @@ splitterm config check --file path/to/config
 | `font-family-cjk` | `Hiragino Sans` | 日本語のフォールバック |
 | `font-size` | `10` | 100% 表示のときの文字の大きさ（pt） |
 | `zoom-steps` | `85, 100` | 表示倍率の段（%）。ピンチ・倍率ボタン・command + − / = はこの段で止まる。先頭が起動時 |
-| `color-space` | `display-p3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `background` | `#07090D` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `foreground` | `#E6EDF3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `cursor-color` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `accent` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `selection-background` | `#264F78` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
+| `color-space` | `display-p3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `background` | `#07090D` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `foreground` | `#E6EDF3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `cursor-color` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `accent` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `selection-background` | `#264F78` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
 | `palette` | `0=#1C2128` `1=#FF5F6D` `2=#3FE08A` `3=#FFB454` `4=#2F81F7` `5=#FF6AC1` `6=#5CE1E6` `7=#C9D1D9` `8=#545D68` `9=#FF8A94` `10=#7BF0B0` `11=#FFCC85` `12=#6CA6FF` `13=#FF9AD6` `14=#8EEFF2` `15=#FFFFFF`（番号ごとに上書きできる） | 16 色のパレット（番号=色） |
-| `minimum-contrast` | `4.5` | 文字と背景のコントラスト比がこれを下回ると、文字色の明るさを補正する。1 で補正しない |
+| `minimum-contrast` | `1` | 文字と背景のコントラスト比がこれを下回ると、文字色を白か黒の側へ寄せて補正する。1 で補正しない（Ghostty の既定と同じ）。 4.5 などにすると読みやすくなる代わりに、暗い色が白っぽくなって薄く見える |
+| `bold-is-bright` | `false` | 太字の文字で、文字色がパレットの 0〜7 なら 8〜15 の色にする（true color と既定の文字色は変えない）。Ghostty の bold-is-bright |
+| `font-thicken` | `false` | 文字の輪郭を細い線でなぞって、文字を少し太く描く（macOS の Ghostty の font-thicken の代わり） |
 | `cursor-style` | `block` | カーソル: block / bar / underline |
 | `cursor-blink` | `false` | カーソルを点滅させる |
 | `scrollback-limit` | `10000` | スクロールバックの行数（メモリの上だけに置く） |
@@ -476,7 +525,7 @@ splitterm config check --file path/to/config
 
 # MCP（splitterm コマンド）
 
-Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動く `splitterm` コマンドがある。MCP サーバー（stdio）にもなる。Claude Code に登録すると、エージェントが config の検査・変更・送信、公開鍵の登録、アプリの入れ直し、受け取り箱の片付けを実行できる。ネットには出ない。
+Mobile-SSH-Client---Split-Keyboard の設定と運用のために、Mac で動く `splitterm` コマンドがある。MCP サーバー（stdio）にもなる。Claude Code に登録すると、エージェントが config の検査・変更・送信、Ghostty の配色の取り込み、公開鍵の登録、アプリの入れ直し、受け取り箱の片付けを実行できる。ネットには出ない。
 
 - config の読み取りは、アプリと同じ Swift のコード（TermCore）を使う。アプリと規則がずれない
 - 端末に触る操作（config を送る・入れ直す・公開鍵を取る）は Mac の devicectl を使うので、MCP サーバーは Mac の中で動く
@@ -528,8 +577,9 @@ Claude Code 以外の MCP クライアントも、同じ stdio のサーバー�
 | `app_status` | 入れたアプリの期限とビルドを見る | – |
 | `inbox_list` | 端末から届いたメディアの一覧（新しい順、種類、元の動画との対応） | – |
 | `inbox_clean` | 受け取り箱の古いもの（アプリが付けた名前のものだけ）を消す | – |
+| `theme_import` | Mac の Ghostty が使っている配色（背景・文字・カーソル・選択・パレット 0〜15・`minimum-contrast`・`bold-is-bright`・`font-thicken`・色空間）を config に書く。引数 `dry_run` が true なら、書き換える内容と警告を出すだけ。明暗 2 つのテーマは暗い方。端末へは `config_push` で送る | – |
 
-道具が触る config は決まった 1 つ（`SPLITTERM_CONFIG`、無ければ `~/.config/splitterm/config`）だけで、ファイルの場所は受け取らない。守りを弱める変更（`app-lock`・`privacy-blur`・`media-strip-location` を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。
+道具が触る config は決まった 1 つ（`SPLITTERM_CONFIG`、無ければ `~/.config/splitterm/config`）だけで、ファイルの場所は受け取らない。`theme_import` が読む Ghostty の実行ファイルと設定ファイルも、決まった場所だけ。守りを弱める変更（`app-lock`・`privacy-blur`・`media-strip-location` を false に）は、端末へ送っても、端末で本人が確かめるまで効かない。
 
 ## 人の手が要る所
 
@@ -568,6 +618,7 @@ MCP と同じことを、コマンドでも実行できる。
 | `splitterm host remove NAME` | 接続先を消す |
 | `splitterm push` | config を端末へ送る |
 | `splitterm pubkey --fingerprint SHA256:...` | 指紋が一致したら、公開鍵を authorized_keys に足す |
+| `splitterm theme import [--dry-run]` | Mac の Ghostty の配色を config に取り込む。`--dry-run` は書き換える内容を出すだけ |
 | `splitterm install [--force]` | アプリを作り直して入れる |
 | `splitterm status` | 入れたアプリの期限とビルドを見る |
 | `splitterm doctor` | 足りないものと直し方を出す |
@@ -704,6 +755,10 @@ iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad 
 ## 7 日で使えなくなるのですか？
 
 無料の署名のアプリは 7 日で起動できなくなる。そのため Mac の launchd が 1 時間ごとに期限を見て、残りが 48 時間を切ったら自動でビルドし直して入れ直す（端末がロックされているか、アプリを使っていない時に）。入れ直しても config・鍵・ホスト鍵は残る。入れ直すときは、端末が Mac から届く所（同じ Wi-Fi など）にある必要がある。
+
+## 色が PC の Ghostty より薄く見えます。どうすれば？
+
+原因は 4 つ重なっていることが多い。①tmux の中で true color が 256 色に丸められている、②アプリの配色が Ghostty と違う、③読みやすさの補正（`minimum-contrast`）が暗い色を白へ寄せている、④色空間・太字・文字の太さの描き方が違う。アプリは tmux の起動で `COLORTERM=truecolor` を渡し（tmux 3.2 以上は `-T RGB` も）、`minimum-contrast` の既定を 1（補正しない）にしている。Mac で `splitterm theme import` を実行すると Ghostty の配色を config に取り込める。動いている tmux のセッションは 1 度作り直す。手順は [Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md#colors)、見比べには `scripts/colortest.sh`。
 
 ## どうやって入れますか？
 
