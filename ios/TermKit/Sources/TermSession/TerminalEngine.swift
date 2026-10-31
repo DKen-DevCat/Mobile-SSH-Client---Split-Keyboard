@@ -332,22 +332,22 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
         }
     }
 
-    /// 単語の範囲（ダブルタップ）。通し番号の行と桁
-    public func wordRange(row: Int, col: Int) -> (start: Int, end: Int)? {
+    /// ダブルタップで選ぶ、つながっている文字列（通し番号の行と桁）。範囲と、改行を入れずにつなげた文字は、
+    /// 画面にも SwiftTerm にも頼らない `ConnectedText.select` が決める。ここはロックの中で行を読んで渡すだけ
+    public func connectedText(row: Int, col: Int) -> ConnectedText.Selection? {
         terminal.terminalLock.withLock {
             let t = terminal!
-            guard let line = t.getScrollInvariantLine(row: row), col < line.count else { return nil }
-            func isWord(_ c: Int) -> Bool {
-                let s = t.getText(for: line[c])
-                guard let u = s.unicodeScalars.first else { return false }
-                return CharacterSet.alphanumerics.contains(u) || "_-./~:@".unicodeScalars.contains(u)
-                    || u.value > 0x2E7F
+            return ConnectedText.select(row: row, col: col) { r in
+                guard let line = t.getScrollInvariantLine(row: r) else { return nil }
+                var cells: [ConnectedText.Cell] = []
+                cells.reserveCapacity(line.count)
+                // 全角の先頭は幅 2、その続きと、行末で全角が折り返した隙間は幅 0
+                for c in 0..<line.count {
+                    let cd = line[c]
+                    cells.append(ConnectedText.Cell(t.getText(for: cd), width: Int(cd.width)))
+                }
+                return ConnectedText.Line(cells: cells, isWrapped: line.isWrapped)
             }
-            guard isWord(col) else { return nil }
-            var s = col, e = col
-            while s > 0 && isWord(s - 1) { s -= 1 }
-            while e + 1 < line.count && isWord(e + 1) { e += 1 }
-            return (s, e)
         }
     }
 

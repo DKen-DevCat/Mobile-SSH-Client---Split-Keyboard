@@ -9,6 +9,9 @@ import UIKit
 struct TextSelection: Equatable {
     var anchor: GridPoint
     var head: GridPoint
+    /// ダブルタップで選んだ「つながっている文字列」の、コピーする文字（行をまたいでも改行を入れずにつなげたもの）。
+    /// nil なら範囲から画面を読んで作る（長押し→ドラッグ）
+    var copyText: String? = nil
 
     var ordered: (start: GridPoint, end: GridPoint) {
         anchor <= head ? (anchor, head) : (head, anchor)
