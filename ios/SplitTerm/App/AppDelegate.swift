@@ -17,6 +17,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
+extension UIInterfaceOrientationMask {
+    /// アプリの向き（横持ちと縦持ち。docs/design.md「画面構成」）。iPhone は逆さまの縦持ちを除く（Face ID の iPhone は
+    /// 逆さまにならない）。画面とロックの覆いは同じ値を使う（覆いだけ違うと、覆いが出たときに画面ごと回る）。
+    /// Info.plist の向き（ios/Config/Base.xcconfig）と合わせる
+    static func app(for traits: UITraitCollection) -> UIInterfaceOrientationMask {
+        traits.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
+    }
+}
+
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 

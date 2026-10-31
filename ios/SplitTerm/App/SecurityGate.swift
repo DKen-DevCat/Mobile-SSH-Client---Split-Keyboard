@@ -345,9 +345,7 @@ private final class CoverViewController: UIViewController {
 
     override var prefersStatusBarHidden: Bool { true }
     /// 画面と同じ向き（横持ちと縦持ち。iPhone は逆さまの縦持ちを除く）。覆いだけ横持ちにすると、画面ごと回ってしまう
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        traitCollection.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
-    }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .app(for: traitCollection) }
     // 覆いが受けたキーは捨てる
     override var canBecomeFirstResponder: Bool { true }
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {}

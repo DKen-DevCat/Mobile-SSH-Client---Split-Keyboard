@@ -7,7 +7,7 @@ final class KeyboardMenuController: UITableViewController {
     private let current: KeyboardKind
     private let onPick: (KeyboardKind) -> Void
     private let portrait: Bool
-    private var kinds: [KeyboardKind] { portrait ? KeyboardKind.portraitMenuOrder : KeyboardKind.menuOrder }
+    private var kinds: [KeyboardKind] { KeyboardKind.menuOrder(portrait: portrait) }
     private static let rowHeight: CGFloat = 44
 
     init(current: KeyboardKind, portrait: Bool, onPick: @escaping (KeyboardKind) -> Void) {
@@ -33,7 +33,7 @@ final class KeyboardMenuController: UITableViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "kind", for: indexPath)
         let kind = kinds[indexPath.row]
         var content = cell.defaultContentConfiguration()
-        content.text = portrait ? kind.portraitTitle : kind.title
+        content.text = kind.title(portrait: portrait)
         content.textProperties.font = .systemFont(ofSize: 15)
         cell.contentConfiguration = content
         cell.accessoryType = kind == current ? .checkmark : .none

@@ -226,13 +226,15 @@ final class SplitKeyboardView: UIView {
         let label = key.label as NSString
         // 1〜2 文字の刻印は高さで大きさを決めるので、キーの幅に収まらなければ縮める（縦持ちの縦に長いキーの「英数」「かな」。
         // 単語は上で幅から大きさを決めているので、そのまま）
+        // 測るのは 1 度（高さにも使う）。縮めたときだけ測り直す
+        var measured = label.size(withAttributes: attrs)
         let fitWidth = r.width * 0.9
-        let measured = isWord ? 0 : label.size(withAttributes: attrs).width
-        if measured > fitWidth {
-            font = font.withSize(max(5, size * fitWidth / measured))
+        if !isWord, measured.width > fitWidth {
+            font = font.withSize(max(5, size * fitWidth / measured.width))
             attrs[.font] = font
+            measured = label.size(withAttributes: attrs)
         }
-        let h = label.size(withAttributes: attrs).height
+        let h = measured.height
         var y = r.midY - h / 2
         if let sub = key.subLabel {
             let subFont = UIFont.systemFont(ofSize: min(10, max(5.5, r.height * 0.25)))

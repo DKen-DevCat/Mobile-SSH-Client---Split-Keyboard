@@ -208,6 +208,15 @@ public enum KeyboardKind: String, Sendable, CaseIterable {
         }
     }
 
+    /// キーボードを選ぶ吹き出しの順（縦持ちは JIS の一体型の 2 つだけ）
+    public static func menuOrder(portrait: Bool) -> [KeyboardKind] { portrait ? portraitMenuOrder : menuOrder }
+
+    /// その向きで使える種類にそろえる（縦持ちはフリックを使わず、同じ言葉の JIS にする）
+    public func normalized(portrait: Bool) -> KeyboardKind { portrait ? portraitEquivalent : self }
+
+    /// 吹き出しに出す名前
+    public func title(portrait: Bool) -> String { portrait ? portraitTitle : title }
+
     /// フリックの面
     public var isFlick: Bool { self == .kana || self == .flickRomaji || self == .flickEnglish }
     /// 英字をローマ字としてかなにする

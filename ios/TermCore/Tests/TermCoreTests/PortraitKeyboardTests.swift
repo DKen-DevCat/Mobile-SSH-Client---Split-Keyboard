@@ -113,6 +113,21 @@ final class PortraitKeyboardTests: XCTestCase {
         for kind in KeyboardKind.portraitMenuOrder { XCTAssertFalse(kind.portraitTitle.contains("分割"), kind.rawValue) }
     }
 
+    /// 向きごとの決まりは 1 か所（画面の側は、選ぶ・吹き出し・名前のどれもこれを使う）
+    func testOrientationRulesInOnePlace() {
+        XCTAssertEqual(KeyboardKind.menuOrder(portrait: false), KeyboardKind.menuOrder)
+        XCTAssertEqual(KeyboardKind.menuOrder(portrait: true), KeyboardKind.portraitMenuOrder)
+        for kind in KeyboardKind.allCases {
+            // 横持ちはそのまま、縦持ちは同じ言葉の JIS（吹き出しに出るものだけ）
+            XCTAssertEqual(kind.normalized(portrait: false), kind, kind.rawValue)
+            XCTAssertEqual(kind.normalized(portrait: true), kind.portraitEquivalent, kind.rawValue)
+            XCTAssertTrue(KeyboardKind.menuOrder(portrait: true).contains(kind.normalized(portrait: true)), kind.rawValue)
+            XCTAssertEqual(kind.title(portrait: false), kind.title, kind.rawValue)
+        }
+        XCTAssertEqual(KeyboardKind.romaji.title(portrait: true), KeyboardKind.romaji.portraitTitle)
+        XCTAssertEqual(KeyboardKind.english.title(portrait: true), "JIS キーボード（英語）")
+    }
+
     func testOrientationMemoryRestoresTheFlickWhenTheLanguageIsKept() {
         var m = KeyboardOrientationMemory()
         // かなフリック → 縦持ちはローマ字 → 替えずに戻ればかなフリック
