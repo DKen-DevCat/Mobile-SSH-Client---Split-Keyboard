@@ -332,6 +332,36 @@ public enum KeyboardLayouts {
          fnKey("right", "▶", .right, fn: .end, repeats: true)],
     ], gridUnits: rightUnits, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1], alignment: .trailing)
 
+    // MARK: 縦持ちの JIS の一体型（分割する前の Mac の JIS 配列。docs/design.md「JIS の一体型（縦持ち）」）。
+    // 横持ちの分割とは別の面: 6・Y・H・N・F6 は 1 つずつ、英数とかなを元の位置に、空白はただの空白（ポインタを兼ねない）、
+    // 📎 のキーと 2 つ目の 🌐 は無い。キーは分割の面と同じもの（KeySpec）を使う
+
+    /// 一体型の幅（u 単位）= Magic Keyboard の JIS 本体の幅。`LayoutEngine` が縦持ちの u（幅 ÷ これ）に使う
+    public static let fullUnits: CGFloat = 14.5
+
+    /// 英数: 英語のキーボードへ。かな: ローマ字へ（Mac と同じく、もうその入力なら何もしない）
+    static let eisu = KeySpec("lang-eisu", "英数", action: .setKeyboard(.english), style: .function)
+    static let kanaMode = KeySpec("lang-kana", "かな", action: .setKeyboard(.romaji), style: .function)
+
+    /// 最下段: caps・option・command・英数・空白 4・かな・command・🌐・◀・▲▼・▶
+    static let fullBottomRow: [KeySpec] = {
+        let left = jisLeft.rows[5], right = jisRight.rows[5]
+        // 左の caps・option・command と、右の command・🌐・矢印は分割の面と同じキー
+        return Array(left.prefix(3)) + [eisu, space("space", width: 4), kanaMode] + Array(right.dropFirst(2))
+    }()
+
+    /// 幅 14.5u・高さ 5.6 段（F キーの段 0.6）。上の 5 段は、分割の左の段に、右の段から重ねたキー（右の先頭）を除いたものを
+    /// つなげる（どの段も 14.5u。刻印・shift の記号・return の逆 L 字は分割と同じ）
+    public static let jisFull: KeyboardFace = {
+        var rows: [[KeySpec]] = []
+        for r in 0..<5 {
+            rows.append(jisLeft.rows[r] + jisRight.rows[r].dropFirst())
+        }
+        rows.append(fullBottomRow)
+        return KeyboardFace(rows: rows, gridUnits: fullUnits, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1],
+                            alignment: .leading)
+    }()
+
     // MARK: フリックの分割。iOS の 12 キーを左右に 1 面ずつ（分割と同じ枠いっぱいに並べる）。最下段は、左が 🌐・空白兼ポインタ・📎、右が 🌐・空白兼ポインタ・🌐
 
     static func flick(_ id: String, _ set: FlickSet, label: String? = nil) -> KeySpec {

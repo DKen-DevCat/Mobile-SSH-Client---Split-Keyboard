@@ -10,7 +10,7 @@ iPhone・iPad から、自分の Mac のシェルや Claude Code を操作した
 
 ## 最低の iOS は？ どの iPhone・iPad で使えますか？
 
-iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。横持ちだけで使い、iPhone SE から iPad Pro 13 インチまで、1 つの作りで画面に合わせる。
+iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。横持ち（分割キーボード）と縦持ち（Mac の JIS 配列のキーボードと、シェルの面のトラックパッド）で使い、iPhone SE から iPad Pro 13 インチまで、1 つの作りで画面に合わせる。
 
 ## いくらかかりますか？
 
@@ -58,7 +58,7 @@ SSH で届く機械ならつなげる（例: Raspberry Pi）。ただし、ア�
 
 ## できないことは？
 
-- 縦持ちと、iOS のシステムキーボード（横持ちの自前のキーボードだけ）
+- iOS のシステムキーボード（自前のキーボードだけ。縦持ちにはフリックも無い）
 - App Store・TestFlight での配布。Android 版も無い
 - SFTP・ポート転送
 - アプリ内の AI 機能・クラウド同期

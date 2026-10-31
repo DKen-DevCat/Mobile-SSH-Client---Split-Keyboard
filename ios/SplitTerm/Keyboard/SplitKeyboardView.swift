@@ -6,10 +6,18 @@ import UIKit
 /// 修飾キーは押している間だけ効き、長押ししてもリピートしない。左右の空白キーは空白とポインタを兼ねる
 /// （判定は TermCore の `SpacePointerGesture`。KeyboardModel が出力を実行する）。
 /// フリックは押した瞬間にキーの上と上下左右へ文字の四角を出し（`FlickGuide`）、フリックの「空白」は 0.5 秒の長押しで
-/// キーボード全体がトラックパッドになる（docs/design.md「ポインタ」「フリックの分割」「同時入力」）
+/// キーボード全体がトラックパッドになる（docs/design.md「ポインタ」「フリックの分割」「同時入力」）。
+/// 縦持ちの JIS の一体型（`KeyboardLayouts.jisFull`）も、この 1 枚で描く（docs/design.md「JIS の一体型（縦持ち）」）
 final class SplitKeyboardView: UIView {
     let model: KeyboardModel
     var face: KeyboardFace { didSet { relayout() } }
+    /// 普通の空白（`.character(" ")`）の長押しで、キーボードをトラックパッドにするか。縦持ちの一体型は false
+    /// （空白はただの空白。ポインタはシェルのトラックパッドで動かす）
+    var spaceHoldsTrackpad = true
+    /// 今の入力（英数・かなのキーの左上のランプに使う。縦持ち）。nil ならランプを出さない
+    var inputKind: KeyboardKind? {
+        didSet { if inputKind != oldValue { setNeedsDisplay() } }
+    }
     /// 1 段の高さの目安（隙間と文字の大きさに使う。段ごとの高さは面の比で決まる）
     var rowHeight: CGFloat = 40 { didSet { setNeedsDisplay() } }
     var colors: KeyboardColors { didSet { setNeedsDisplay() } }
@@ -167,6 +175,10 @@ final class SplitKeyboardView: UIView {
                 continue
             }
             if case .capsLock = key.action { drawCapsLight(in: r, on: model.capsLock) }
+            // 英数・かな: 効いている方のランプ（縦持ちには、シェルの角のキーボード選択のボタンが無い）
+            if case .setKeyboard(let kind) = key.action, let current = inputKind, key.id.hasPrefix("lang-") {
+                drawCapsLight(in: r, on: kind == current)
+            }
             drawLabel(key, in: r)
             if key.homing { drawHomingBar(in: r) }
             if dim { g?.setAlpha(1) }
@@ -209,10 +221,20 @@ final class SplitKeyboardView: UIView {
         } else {
             size = min(20, r.height * 0.46)
         }
-        let font = UIFont.systemFont(ofSize: size, weight: isWord ? .medium : .regular)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: colors.text, .paragraphStyle: p]
+        var font = UIFont.systemFont(ofSize: size, weight: isWord ? .medium : .regular)
+        var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: colors.text, .paragraphStyle: p]
         let label = key.label as NSString
-        let h = label.size(withAttributes: attrs).height
+        // 1〜2 文字の刻印は高さで大きさを決めるので、キーの幅に収まらなければ縮める（縦持ちの縦に長いキーの「英数」「かな」。
+        // 単語は上で幅から大きさを決めているので、そのまま）
+        // 測るのは 1 度（高さにも使う）。縮めたときだけ測り直す
+        var measured = label.size(withAttributes: attrs)
+        let fitWidth = r.width * 0.9
+        if !isWord, measured.width > fitWidth {
+            font = font.withSize(max(5, size * fitWidth / measured.width))
+            attrs[.font] = font
+            measured = label.size(withAttributes: attrs)
+        }
+        let h = measured.height
         var y = r.midY - h / 2
         if let sub = key.subLabel {
             let subFont = UIFont.systemFont(ofSize: min(10, max(5.5, r.height * 0.25)))
@@ -325,7 +347,7 @@ final class SplitKeyboardView: UIView {
                 startRepeat(state)
             case .flick(let set):
                 showGuide(state, set: set)
-            case .character(" ", _, _):
+            case .character(" ", _, _) where spaceHoldsTrackpad:
                 startTrackpadHold(state, id: id)
             case .spacePointer(let side):
                 // 空白兼ポインタ: 動かさずに離せば空白、動かせばポインタ、左右同時なら右クリック（SpacePointerGesture）。

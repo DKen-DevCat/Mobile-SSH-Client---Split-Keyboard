@@ -21,9 +21,10 @@ final class PointerStick {
     weak var output: PointerOutput?
     var haptics = true
 
-    /// タップとみなす、ずれと時間の上限。ずれは空白兼ポインタが動かしたとみなす距離と同じ
-    static let tapSlop: CGFloat = SpacePointerGesture.slop
-    static let tapTime: TimeInterval = 0.3
+    /// タップとみなす、ずれと時間の上限。ずれは空白兼ポインタが動かしたとみなす距離と同じ。
+    /// 縦持ちのシェルのトラックパッド（`TrackpadGesture`）と同じ値を TermCore の 1 か所で持つ
+    static let tapSlop: CGFloat = TrackpadGesture.slop
+    static let tapTime: TimeInterval = TrackpadGesture.tapTime
 
     private struct Touch {
         let id: ObjectIdentifier
@@ -68,6 +69,12 @@ final class PointerStick {
     /// クリック（手応えの振動つき）。right なら右クリック。タップの判定は呼び手がする
     /// （この中の `down`・`up` と、トラックパッドの間の別の指のタップ）
     func click(right: Bool) {
+        clickFeedback(right: right)
+        output?.pointerClick(right: right)
+    }
+
+    /// クリックの手応え（押し込んだ感触の振動）。right は強く 2 回。縦持ちのダブルクリックもこの振動
+    func clickFeedback(right: Bool) {
         if haptics {
             if right {
                 deepHaptic.impactOccurred(intensity: 1)
@@ -79,7 +86,6 @@ final class PointerStick {
                 clickHaptic.impactOccurred(intensity: 1)
             }
         }
-        output?.pointerClick(right: right)
     }
 
     /// 指が動いた。前の点と時刻から指の速さを出し、その速さの倍率を掛けた分だけポインタを動かす
