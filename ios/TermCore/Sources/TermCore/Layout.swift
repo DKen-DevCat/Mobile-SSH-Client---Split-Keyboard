@@ -2,14 +2,14 @@ import CoreGraphics
 import Foundation
 
 /// 画面の配置を、画面の大きさ・セーフエリア・入力手段から毎回算出する（docs/design.md「レイアウトの決め方」）。
-/// 端末ごとの固定値は持たない。iPhone 13 mini の横持ち（812×375pt）で、左右 182pt のキーボードと中央 344pt のシェルになる。
+/// 端末ごとの固定値は持たない。iPhone 13 mini の横持ち（812×375pt）で、左 198pt・右 228pt のキーボードと中央 282pt のシェルになる。
 /// 座標はウィンドウの左上を原点とする pt
 public struct LayoutInput: Equatable, Sendable {
     public var size: CGSize
     public var safeArea: Insets
     public var hardwareKeyboard: Bool
     public var keyboard: KeyboardKind
-    /// 設定の `keyboard-pitch`。nil なら算出する
+    /// 設定の `keyboard-pitch`（キー 1 つの大きさ u）。nil なら算出する
     public var pitchOverride: Double?
     public var softKeyboardWithHardware: Bool
 
@@ -54,11 +54,12 @@ public struct LayoutResult: Equatable, Sendable {
     public var candidateBar: CGRect?
     /// キーボード選択のボタン。シェルの右下の角（候補バーがあればその上）。split のときだけ
     public var keyboardButton: CGRect?
+    /// 左のキーボード（8.25u × 5.6u）と右（9.5u × 5.6u）。どちらも下寄せ
     public var leftKeyboard: CGRect?
     public var rightKeyboard: CGRect?
-    /// キーの基準の大きさ（pt）
-    public var pitch: CGFloat
-    /// キーボードの 1 段の高さ（pt）
+    /// キー 1 つの大きさ u（pt）。文字キー（1u）は u×u の正方形
+    public var unit: CGFloat
+    /// キーボードの 1 段の高さ（pt）= u
     public var rowHeight: CGFloat
 }
 
@@ -73,22 +74,14 @@ public enum LayoutEngine {
     /// シェルの角に重ねる丸いボタン（📎 とキーボード選択）の大きさと、シェルの端からの余白
     public static let cornerButtonSize: CGFloat = 36
     public static let cornerButtonMargin: CGFloat = 6
-    /// キーボードの片側の幅 = pitch × この値（13 mini: 30 × 6.07 ≒ 182pt）
-    public static let keyboardWidthUnits: CGFloat = 6.07
-    /// 片側の段の数の目安（1 段の高さ = キーボードの高さ ÷ これ。面ごとの段の高さは面の比で決まる）
-    public static let keyboardRows = 5
-    /// キーボードの高さの上限 = 幅 × この値（やや縦長。縦に長すぎないように）
-    public static let keyboardAspect: CGFloat = 1.35
-    /// pitch = 画面の短辺 × この値を、下の範囲に収める
-    public static let pitchRatio: CGFloat = 0.08
-    public static let pitchRange: ClosedRange<CGFloat> = 28...50
-    /// 窓が狭いときに pitch を縮めてよい下限
-    public static let minimumPitch: CGFloat = 22
-    /// 1 段の高さの上限（iPad で縦に伸びすぎないように）
-    public static let maximumRowHeight: CGFloat = 64
-    /// キーボードとシェルの間の隙間（13 mini: 812 − 44×2 − 182×2 − 8×2 = 344pt）
+    /// u = 画面の短辺 × この値を切り捨てた整数を、下の範囲に収める（13 mini で 24、iPad で 36）
+    public static let unitRatio: CGFloat = 0.064
+    public static let unitRange: ClosedRange<CGFloat> = 24...36
+    /// 窓が狭い・低いときに u を縮めてよい下限。これを割るなら画面のキーボードを隠す（tooNarrow）
+    public static let minimumUnit: CGFloat = 18
+    /// キーボードとシェルの間の隙間（13 mini: 812 − 44×2 − 198 − 228 − 8×2 = 282pt）
     public static let keyboardGap: CGFloat = 8
-    /// シェルの幅の下限。これを割るほど狭いと tooNarrow
+    /// シェルの幅の下限。これを割るなら u を縮める
     public static let minimumShellWidth: CGFloat = 200
 
     public static func compute(_ input: LayoutInput) -> LayoutResult {
@@ -98,39 +91,40 @@ public enum LayoutEngine {
         let contentWidth = max(0, contentRight - contentLeft)
         let bottom = h - s.bottom
 
-        var pitch = input.pitchOverride.map { CGFloat($0) }
-            ?? (min(w, h) * pitchRatio).clamped(pitchRange.lowerBound, pitchRange.upperBound)
+        var unit = input.pitchOverride.map { CGFloat($0) }
+            ?? (min(w, h) * unitRatio).rounded(.down).clamped(unitRange.lowerBound, unitRange.upperBound)
 
         let useSoft = !input.hardwareKeyboard || input.softKeyboardWithHardware
         if useSoft {
-            // 狭ければ、シェルの幅の下限が残るまで pitch を縮める
-            let fit = (contentWidth - minimumShellWidth - 2 * keyboardGap) / (2 * keyboardWidthUnits)
-            if pitch > fit { pitch = fit }
+            // 狭ければ、シェルの幅の下限が残るまで u を縮める（切り捨て）
+            let facesUnits = KeyboardLayouts.leftUnits + KeyboardLayouts.rightUnits
+            let fitWidth = ((contentWidth - minimumShellWidth - 2 * keyboardGap) / facesUnits).rounded(.down)
+            // 低ければ、上の 2 行に重ならない高さ（下端 − 上端 − 上の 2 行）に面の高さ 5.6u が収まるまで縮める（切り捨て）
+            let fitHeight = (max(0, bottom - s.top - keyboardTopGap) / KeyboardLayouts.heightUnits).rounded(.down)
+            unit = min(unit, fitWidth, fitHeight)
         }
 
         // 上の 2 行は、セーフエリアの左右いっぱい・上端から（シェルに重なる）
         let statusRow = CGRect(x: contentLeft, y: s.top, width: contentWidth, height: statusRowHeight)
         let tabRow = CGRect(x: contentLeft, y: s.top + statusRowHeight, width: contentWidth, height: tabRowHeight)
 
-        if !useSoft || pitch < minimumPitch {
-            // シェルを全面に（ハードウェアキーボード、または狭すぎる窓）
+        if !useSoft || unit < minimumUnit {
+            // シェルを全面に（ハードウェアキーボード、または狭すぎる・低すぎる窓）
             let shell = CGRect(x: contentLeft, y: s.top, width: contentWidth, height: max(0, bottom - s.top))
             return LayoutResult(
                 mode: useSoft ? .tooNarrow : .hardware,
                 shell: shell.integral,
                 statusRow: statusRow, tabRow: tabRow,
                 candidateBar: nil, keyboardButton: nil, leftKeyboard: nil, rightKeyboard: nil,
-                pitch: pitch, rowHeight: 0)
+                unit: unit, rowHeight: 0)
         }
 
-        let kbWidth = (pitch * keyboardWidthUnits).rounded()
-        let available = max(0, bottom - s.top - keyboardTopGap)
-        let kbHeight = min(available, (kbWidth * keyboardAspect).rounded(), maximumRowHeight * CGFloat(keyboardRows))
-        let rowHeight = kbHeight / CGFloat(keyboardRows)
-        // 分割もフリックも下に寄せる（親指の届きやすい高さ。上の 2 行には重ならない）
+        // 左 8.25u × 5.6u、右 9.5u × 5.6u。分割もフリックも同じ枠で、下に寄せる（親指の届きやすい高さ。上の 2 行には重ならない）
+        let kbHeight = unit * KeyboardLayouts.heightUnits
         let kbY = bottom - kbHeight
-        let left = CGRect(x: contentLeft, y: kbY, width: kbWidth, height: kbHeight)
-        let right = CGRect(x: contentRight - kbWidth, y: kbY, width: kbWidth, height: kbHeight)
+        let left = CGRect(x: contentLeft, y: kbY, width: unit * KeyboardLayouts.leftUnits, height: kbHeight)
+        let rightWidth = unit * KeyboardLayouts.rightUnits
+        let right = CGRect(x: contentRight - rightWidth, y: kbY, width: rightWidth, height: kbHeight)
 
         let centerX = left.maxX + keyboardGap
         let centerWidth = right.minX - keyboardGap - centerX
@@ -142,7 +136,7 @@ public enum LayoutEngine {
             candidate = CGRect(x: centerX, y: shellBottom, width: centerWidth, height: candidateBarHeight)
         }
         let shell = CGRect(x: centerX, y: s.top, width: centerWidth, height: max(0, shellBottom - s.top))
-        // キーボード選択のボタンはシェルの右下の角（📎 は左下の角）
+        // キーボード選択のボタンはシェルの右下の角（📎 は左下の角。画面のキーボードを出している間は隠す）
         let button = CGRect(x: shell.maxX - cornerButtonMargin - cornerButtonSize,
                             y: shell.maxY - cornerButtonMargin - cornerButtonSize,
                             width: cornerButtonSize, height: cornerButtonSize)
@@ -151,7 +145,7 @@ public enum LayoutEngine {
             shell: shell,
             statusRow: statusRow, tabRow: tabRow,
             candidateBar: candidate, keyboardButton: button, leftKeyboard: left, rightKeyboard: right,
-            pitch: pitch, rowHeight: rowHeight)
+            unit: unit, rowHeight: unit)
     }
 }
 

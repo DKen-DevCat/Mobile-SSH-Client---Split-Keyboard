@@ -16,6 +16,8 @@ enum KeyboardEmit {
     case keyboardMenu(anchor: CGRect)
     /// Touch ID の位置のキー。アプリをすぐロックする
     case lockApp
+    /// 📎 のキー。メディアを送るメニューを、そのキーを指す吹き出しで出す。anchor はウィンドウの座標
+    case attachMedia(anchor: CGRect)
 }
 
 @MainActor
@@ -30,8 +32,12 @@ final class KeyboardModel {
     weak var output: KeyboardOutput?
     /// 修飾キーの見た目が変わった（両面を描き直す）
     var onChange: (() -> Void)?
-    /// スペースの横の赤い丸（左右で 1 つを共有する）
+    /// ポインタへの出口（動きとクリック。左右で 1 つを共有する）
     let pointer = PointerStick()
+    /// 空白兼ポインタ（左右の空白キー）の触れ方の判定。左右の指をまとめて見る（両押しが右クリック）
+    private(set) var spacePointer = SpacePointerGesture()
+    /// 空白兼ポインタの指に付ける ID。左右の面で重ならないよう、ここで振る
+    private var touchSerial = 0
     /// 空白の長押しで、キーボード全体がトラックパッドになっている（文字と絵を薄くし、キーの面だけにする）。
     /// その指の動きはポインタ（`pointer`）に流れ、空白は打たない。変わったら両方の面を描き直す
     var trackpadMode = false {
@@ -51,6 +57,7 @@ final class KeyboardModel {
     func modifierDown(_ m: ModifierKey) {
         held[m, default: 0] += 1
         usedWhileHeld.remove(m)
+        spacePointer.keyTyped()
         onChange?()
     }
 
@@ -74,6 +81,7 @@ final class KeyboardModel {
 
     func toggleCapsLock() {
         capsLock.toggle()
+        spacePointer.keyTyped()
         onChange?()
     }
 
@@ -81,8 +89,60 @@ final class KeyboardModel {
         held.removeAll()
         usedWhileHeld.removeAll()
         pointer.reset()
+        spacePointer.reset()
         trackpadMode = false
         onChange?()
+    }
+
+    // MARK: 空白兼ポインタ（判定は TermCore の `SpacePointerGesture`。ここでは出力を実行する）
+
+    /// 空白兼ポインタの指の ID（指が触れた時に 1 つ振る）
+    func nextTouchID() -> Int {
+        touchSerial += 1
+        return touchSerial
+    }
+
+    func spacePointerDown(_ id: Int, key: KeySpec, side: PointerSide, at p: CGPoint, time: TimeInterval) {
+        perform(spacePointer.touchDown(id, side: side, at: p, time: time), key: key)
+    }
+
+    func spacePointerMoved(_ id: Int, key: KeySpec, to p: CGPoint, time: TimeInterval) {
+        perform(spacePointer.touchMoved(id, to: p, time: time), key: key)
+    }
+
+    func spacePointerUp(_ id: Int, key: KeySpec, at p: CGPoint, time: TimeInterval) {
+        perform(spacePointer.touchUp(id, at: p, time: time), key: key)
+    }
+
+    func spacePointerCancelled(_ id: Int) {
+        spacePointer.touchCancelled(id)
+    }
+
+    /// 出力を実行する。空白は、普通の空白キーと同じ道（修飾キー・ローマ字の変換・先行表示）で打つ。
+    /// クリックは `PointerStick.click`（振動つき）、ポインタの移動は `PointerStick.move`
+    private func perform(_ outputs: [SpacePointerGesture.Output], key: KeySpec) {
+        for o in outputs {
+            switch o {
+            case .space:
+                commit(key)
+            case .click(let right):
+                pointer.click(right: right)
+            case .movePointer(let dx, let dy):
+                pointer.move(dx: dx, dy: dy)
+            }
+        }
+    }
+
+    /// 📎 を離した。シェルの左下の 📎 と同じメニューを、そのキーを指す吹き出しで出す。anchor はウィンドウの座標
+    func attachMediaTapped(anchor: CGRect) {
+        noteKeyTyped()
+        output?.keyboard(.attachMedia(anchor: anchor))
+    }
+
+    /// ほかのキーを打った。押している修飾キーは使われたことになり、空白兼ポインタのクリックの猶予は終わる
+    private func noteKeyTyped() {
+        usedWhileHeld.formUnion(held.keys)
+        spacePointer.keyTyped()
     }
 
     var modifiers: KeyModifiers {
@@ -106,7 +166,14 @@ final class KeyboardModel {
         var mods = modifiers
         let fn = a.contains(.fn)
         var emit: KeyboardEmit?
-        switch spec.action {
+        var action = spec.action
+        // 空白兼ポインタの空白は、普通の空白キーと同じ道（修飾キー・ローマ字の変換・先行表示）。ほかのキーは猶予を終わらせる
+        if case .spacePointer = action {
+            action = .character(" ", shifted: nil, fn: nil)
+        } else {
+            spacePointer.keyTyped()
+        }
+        switch action {
         case .character(let c, let shifted, let fnKey):
             if fn, let fnKey {
                 emit = .key(fnKey, mods)
@@ -141,7 +208,7 @@ final class KeyboardModel {
             emit = .kanaBreak
         case .kanaModify:
             emit = .kanaModify
-        case .modifier, .capsLock, .pointer:
+        case .modifier, .capsLock, .attachMedia, .spacePointer:
             return
         }
         // 押している修飾キーを、ほかのキーに使ったと記録する

@@ -10,19 +10,19 @@ protocol PointerOutput: AnyObject {
     func pointerClick(right: Bool)
 }
 
-/// スペースの横の赤い丸（docs/design.md「ポインタ」）。ノートパソコンのトラックパッドのように、指の動いた分だけポインタが動き、
-/// 速く動かすほど遠くへ届く（指の速さに応じた倍率 `PointerCurve.gain`）。止めれば止まる。指は丸の外まで滑らせてよい
-/// - 左右どちらでも、先に触れた方がポインタを動かす
-/// - 片方だけを軽くタップするとクリック、両方を同時に押すと右クリック
-/// - 空白の長押しでトラックパッドにした間の、別の指のタップは左クリック（`click(right:)`。ノートパソコンのトラックパッドと同じ）
-/// - クリックには、押し込んだ手応えの振動を返す（3D Touch のような感触）
+/// ポインタ（docs/design.md「ポインタ」）への出口。ノートパソコンのトラックパッドのように、指の動いた分だけポインタが動き、
+/// 速く動かすほど遠くへ届く（指の速さに応じた倍率 `PointerCurve.gain`）。止めれば止まる
+/// - 空白兼ポインタ（左右の空白キー）の判定は TermCore の `SpacePointerGesture`。その出力のポインタの移動（`move`）と
+///   クリック（`click(right:)`）をここから受け手へ渡す。クリックには、押し込んだ手応えの振動を返す（3D Touch のような感触）
+/// - フリックの「空白」の長押しでキーボードをトラックパッドにした間は、その指の動き（`down`・`moved`・`up`）を受け持ち、
+///   別の指のタップは左クリック（`click(right:)`。ノートパソコンのトラックパッドと同じ）
 @MainActor
 final class PointerStick {
     weak var output: PointerOutput?
     var haptics = true
 
-    /// タップとみなす、ずれと時間の上限
-    static let tapSlop: CGFloat = 6
+    /// タップとみなす、ずれと時間の上限。ずれは空白兼ポインタが動かしたとみなす距離と同じ
+    static let tapSlop: CGFloat = SpacePointerGesture.slop
     static let tapTime: TimeInterval = 0.3
 
     private struct Touch {
@@ -44,8 +44,13 @@ final class PointerStick {
     private let clickHaptic = UIImpactFeedbackGenerator(style: .rigid)
     private let deepHaptic = UIImpactFeedbackGenerator(style: .heavy)
 
-    /// 触れているか（キーの見た目に使う）
+    /// トラックパッドの指が触れているか（空白の長押しでトラックパッドに入るのを止めるのに使う）
     var isActive: Bool { primary != nil }
+
+    /// ポインタを動かす（空白兼ポインタの指の動き。倍率は `SpacePointerGesture` が掛けた後の pt）
+    func move(dx: CGFloat, dy: CGFloat) {
+        output?.pointerMove(dx: dx, dy: dy)
+    }
 
     func down(_ id: ObjectIdentifier, at p: CGPoint, time: TimeInterval) {
         if primary == nil {

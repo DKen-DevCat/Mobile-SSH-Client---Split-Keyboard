@@ -55,6 +55,8 @@ final class RootViewController: UIViewController {
     private var hardwareKeyboard = GCKeyboard.coalesced != nil
     private var layout: LayoutResult?
     private var grid = (cols: 80, rows: 24)
+    /// アプリがクリップボードに載せた文字と、その期限の規則（メモリにだけ持つ）
+    private var clipboard = ClipboardLease()
 
     // 安全（ロックと画面の保護は SecurityGate。ロック中は入力をすべて捨てる）
     private lazy var gate = SecurityGate(colors: colors)
@@ -238,9 +240,12 @@ final class RootViewController: UIViewController {
         notice.frame = CGRect(x: r.shell.minX + side, y: r.shell.maxY - 22,
                               width: max(0, r.shell.width - 2 * side), height: 16)
         emptyLabel.frame = r.shell.insetBy(dx: 16, dy: 16)
-        // 角の丸いボタン: 左下が 📎、右下がキーボード選択（分割のときだけ）
+        // 角の丸いボタン: 左下が 📎、右下がキーボード選択（分割のときだけ）。
+        // 📎 は画面のキーボードを出している間（split）は隠す（キーボードの左下の 📎 のキーから同じメニューを出す）。
+        // ハードウェアキーボード・狭い窓では残る
         let inset = LayoutEngine.cornerButtonMargin, size = LayoutEngine.cornerButtonSize
         clipButton.frame = CGRect(x: r.shell.minX + inset, y: r.shell.maxY - inset - size, width: size, height: size)
+        clipButton.isHidden = r.mode == .split
         keyboardButton.isHidden = r.keyboardButton == nil
         if let b = r.keyboardButton { keyboardButton.frame = b }
         pointerOverlay.frame = view.bounds
@@ -422,6 +427,18 @@ final class RootViewController: UIViewController {
     private func presentKeyboardMenu(anchor: CGRect) {
         guard !gate.isLocked, presentedViewController == nil else { return }
         let vc = KeyboardMenuController(current: keyboardKind) { [weak self] kind in self?.setKeyboard(kind) }
+        presentPopover(vc, anchor: anchor)
+    }
+
+    /// 📎 のキー: シェルの左下の 📎 と同じメニューを、そのキーを指す吹き出し（ポップオーバー）で出す
+    private func presentMediaMenu(anchor: CGRect) {
+        guard !gate.isLocked, presentedViewController == nil else { return }
+        let vc = ActionMenuController(items: mediaMenuItems())
+        presentPopover(vc, anchor: anchor)
+    }
+
+    /// 吹き出しを出す（iPhone でも吹き出しのまま）。anchor はウィンドウの座標
+    private func presentPopover(_ vc: UIViewController, anchor: CGRect) {
         vc.modalPresentationStyle = .popover
         if let pop = vc.popoverPresentationController {
             pop.sourceView = view
@@ -478,7 +495,6 @@ final class RootViewController: UIViewController {
         if s.scrollTop != nil || s.selection != nil {
             s.scrollTop = nil
             s.selection = nil
-            terminalView.stopInertia()
             terminalView.requestRender()
         }
         noteEcho(key, mods, session: s, context: echoState)
@@ -645,17 +661,40 @@ final class RootViewController: UIViewController {
 
     // MARK: 選択・コピー・ペースト
 
-    private func copySelection() {
-        guard let s = active, let sel = s.selection else { return }
+    /// 選んでいる範囲の文字。ダブルタップで選んだ範囲は、行をまたいでも改行を入れずにつなげた文字
+    private func selectedText(_ s: TerminalSession) -> String {
+        guard let sel = s.selection else { return "" }
+        if let joined = sel.copyText { return joined }
         let (a, b) = sel.ordered
-        let text = s.engine.text(from: (a.row, a.col), to: (b.row, b.col))
+        return s.engine.text(from: (a.row, a.col), to: (b.row, b.col))
+    }
+
+    /// 選んだ範囲をクリップボードへ。ダブルタップは選んだ瞬間、長押し→ドラッグは指を離したとき、⌘C と編集メニューの「コピー」も
+    /// この関数。表示は出さず、選んだ範囲の色は残す（タップ・キー入力で外れる）。docs/design.md「選択とコピー」
+    private func copySelection() {
+        guard let s = active, s.selection != nil else { return }
+        placeOnClipboard(selectedText(s))
+    }
+
+    // MARK: クリップボード（期限の規則は TermCore の ClipboardLease。比べるのは changeCount だけで、中身は読まない）
+
+    /// 選んだ文字を載せる。他の端末へは渡さず（localOnly）、前面にいる間は期限を付けない。
+    /// アプリを離れたときに期限を付けて載せ直し（didEnterBackground）、戻ったら外す（didActivate）
+    private func placeOnClipboard(_ text: String) {
         guard !text.isEmpty else { return }
+        let pb = UIPasteboard.general
+        pb.setItems([[UTType.utf8PlainText.identifier: text]], options: [.localOnly: true])
+        clipboard.placed(text, changeCount: pb.changeCount)
+    }
+
+    /// ClipboardLease の指示（同じ文字を、期限付きまたは期限なしで載せ直す）を実行する
+    private func applyClipboard(_ action: ClipboardLease.Action) {
+        guard case .rewrite(let text, let expiresAt) = action else { return }
         var options: [UIPasteboard.OptionsKey: Any] = [.localOnly: true]
-        // アプリからコピーした内容は既定 60 秒で消す（docs/design.md「セキュリティ要件」）
-        if config.clipboardClear > 0 { options[.expirationDate] = Date().addingTimeInterval(config.clipboardClear) }
-        UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: text]], options: options)
-        s.selection = nil
-        terminalView.requestRender()
+        if let expiresAt { options[.expirationDate] = expiresAt }
+        let pb = UIPasteboard.general
+        pb.setItems([[UTType.utf8PlainText.identifier: text]], options: options)
+        clipboard.rewritten(changeCount: pb.changeCount, expiresAt: expiresAt)
     }
 
     private func pasteClipboard() {
@@ -704,26 +743,36 @@ final class RootViewController: UIViewController {
         }])
     }
 
-    private func mediaMenu() -> [UIMenuElement] {
+    /// 📎 のメニューの項目（シェルの左下の 📎 と、キーボードの 📎 のキーで同じ）
+    private func mediaMenuItems() -> [ActionMenuController.Item] {
         if sender.busy {
-            return [UIAction(title: "送るのをやめる", image: UIImage(systemName: "xmark.circle"), attributes: .destructive) {
-                [weak self] _ in self?.sender.cancel()
+            return [ActionMenuController.Item(title: "送るのをやめる", symbol: "xmark.circle", destructive: true) { [weak self] in
+                self?.sender.cancel()
             }]
         }
         return [
-            UIAction(title: "写真・動画を選ぶ", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+            ActionMenuController.Item(title: "写真・動画を選ぶ", symbol: "photo.on.rectangle") { [weak self] in
                 self?.startPicking { $0.pickLibrary() }
             },
-            UIAction(title: "撮る", image: UIImage(systemName: "camera")) { [weak self] _ in
+            ActionMenuController.Item(title: "撮る", symbol: "camera") { [weak self] in
                 self?.startPicking { $0.capture() }
             },
-            UIAction(title: "録音する", image: UIImage(systemName: "mic")) { [weak self] _ in
+            ActionMenuController.Item(title: "録音する", symbol: "mic") { [weak self] in
                 self?.startPicking { $0.record() }
             },
-            UIAction(title: "ファイルを選ぶ", image: UIImage(systemName: "doc")) { [weak self] _ in
+            ActionMenuController.Item(title: "ファイルを選ぶ", symbol: "doc") { [weak self] in
                 self?.startPicking { $0.pickFile() }
             },
         ]
+    }
+
+    private func mediaMenu() -> [UIMenuElement] {
+        mediaMenuItems().map { item in
+            let attributes: UIMenuElement.Attributes = item.destructive ? .destructive : []
+            return UIAction(title: item.title, image: UIImage(systemName: item.symbol), attributes: attributes) { _ in
+                item.run()
+            }
+        }
     }
 
     /// 繋がっているタブがあるときだけ選ばせる（選んだのに送れない、を避ける）
@@ -823,6 +872,9 @@ final class RootViewController: UIViewController {
         gate.didEnterBackground()
         for s in sessions { s.resignedActive() }
         keepConnectionsForAWhile()
+        // アプリが載せた文字が、まだクリップボードにあれば、clipboard-clear の期限を付けて載せ直す
+        applyClipboard(clipboard.didEnterBackground(changeCount: UIPasteboard.general.changeCount, now: Date(),
+                                                    clearAfter: config.clipboardClear))
     }
 
     /// 裏に回ったら、繋がっている（繋いでいる途中を含む）タブが 1 つでもあるとき猶予を 1 つ取る。期限が来たら自分で閉じ、
@@ -860,6 +912,8 @@ final class RootViewController: UIViewController {
 
     @objc private func didActivate() {
         gate.didActivate()
+        // 期限がまだなら外して載せ直す（過ぎていれば何もしない）
+        applyClipboard(clipboard.didActivate(changeCount: UIPasteboard.general.changeCount, now: Date()))
     }
 
     /// ロックを解いた、またはロックの無いまま前面に戻った
@@ -937,11 +991,13 @@ extension RootViewController: KeyboardOutput {
             presentKeyboardMenu(anchor: anchor)
         case .lockApp:
             gate.lockNow()
+        case .attachMedia(let anchor):
+            presentMediaMenu(anchor: anchor)
         }
     }
 }
 
-// MARK: - スペースの横の赤い丸 → ポインタ（docs/design.md「ポインタ」。シェルと上の 2 行を動き、クリックできる）
+// MARK: - 空白兼ポインタ → ポインタ（docs/design.md「ポインタ」。シェルと上の 2 行を動き、クリックできる）
 
 extension RootViewController: PointerOutput {
     /// ポインタが動ける範囲: シェルの枠と、上の 2 行（左右いっぱい）の和
@@ -978,7 +1034,7 @@ extension RootViewController: PointerOutput {
             presentKeyboardMenu(anchor: keyboardButton.convert(keyboardButton.bounds, to: nil))
             return
         }
-        if clipButton.frame.contains(p) { return }
+        if !clipButton.isHidden, clipButton.frame.contains(p) { return }
         // シェルの上: シェルの座標に直して、タップ（左）・2 本指のタップ（右）と同じ扱い
         // （マウス報告・入力行のカーソル移動・編集メニュー）
         guard terminalView.frame.contains(p) else { return }
@@ -1059,20 +1115,16 @@ extension RootViewController: TerminalViewDelegate {
         }
     }
 
+    /// ダブルタップ: どのモードでも（マウス報告ありでも。ダブルクリックは送らない）、つながっている文字列を選んで、
+    /// 選んだ瞬間に自動でコピーする。メニューは出さない（docs/design.md「選択とコピー」）
     func terminalView(_ view: TerminalView, doubleTappedAt cell: GridPoint) {
         guard !gate.isLocked, let s = active else { return }
-        if gestureMode == .mouse {
-            // 1 回目はタップで送っているので、もう 1 回でダブルクリックになる
-            s.send(MouseEncoder.click(.left, col: cell.col, row: cell.row))
-            return
-        }
         let abs = absolute(cell)
-        guard let w = s.engine.wordRange(row: abs.row, col: abs.col) else { return }
-        s.selection = TextSelection(anchor: GridPoint(row: abs.row, col: w.start), head: GridPoint(row: abs.row, col: w.end))
+        guard let w = s.engine.connectedText(row: abs.row, col: abs.col) else { return }
+        s.selection = TextSelection(anchor: GridPoint(row: w.start.row, col: w.start.col),
+                                    head: GridPoint(row: w.end.row, col: w.end.col), copyText: w.text)
         view.requestRender()
-        if let m = view.metrics {
-            view.showEditMenu(at: CGPoint(x: CGFloat(cell.col) * m.widthPt, y: CGFloat(cell.row) * m.heightPt))
-        }
+        copySelection()
     }
 
     func terminalView(_ view: TerminalView, twoFingerTappedAt cell: GridPoint, location: CGPoint) {
@@ -1112,9 +1164,11 @@ extension RootViewController: TerminalViewDelegate {
             // 長押し → ドラッグで選択（マウス報告ありでも接続先へは送らない）
             s.selection = TextSelection(anchor: abs, head: abs)
         case .changed:
-            s.selection?.head = abs
+            // 動かした範囲は、ダブルタップで選んだ文字（copyText）ではなく、画面から読む
+            if let anchor = s.selection?.anchor { s.selection = TextSelection(anchor: anchor, head: abs) }
         case .ended:
-            view.showEditMenu(at: location)
+            // 指を離したらコピー（編集メニューは自動では出さない）
+            copySelection()
         default:
             break
         }
@@ -1149,9 +1203,8 @@ extension RootViewController: TerminalViewDelegate {
     }
 
     private func lookUpSelection() {
-        guard let s = active, let sel = s.selection else { return }
-        let (a, b) = sel.ordered
-        let text = s.engine.text(from: (a.row, a.col), to: (b.row, b.col))
+        guard let s = active, s.selection != nil else { return }
+        let text = selectedText(s)
         guard !text.isEmpty else { return }
         topPresenter.present(UIReferenceLibraryViewController(term: text), animated: true)
     }

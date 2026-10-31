@@ -19,12 +19,14 @@ public struct KeySpec: Hashable, Sendable {
     public var rowSpan: Int
     /// 1 つの枠を上下に分けて置くキー（↑ と ↓）。空でなければ、このキー自身は置かない
     public var stacked: [KeySpec]
+    /// つながって 1 つの形に見えるキーの ID（return の上の枠と下の枠。逆 L 字）。描くときと押した色に使う
+    public var joinedWith: String?
     public var action: KeyAction
     public var style: KeyStyle
 
     public init(_ id: String, _ label: String, sub: String? = nil, option: String? = nil, symbol: String? = nil,
                 homing: Bool = false, width: CGFloat = 1, rowSpan: Int = 1, stacked: [KeySpec] = [],
-                action: KeyAction, style: KeyStyle = .character) {
+                joinedWith: String? = nil, action: KeyAction, style: KeyStyle = .character) {
         self.id = id
         self.label = label
         self.subLabel = sub
@@ -34,16 +36,17 @@ public struct KeySpec: Hashable, Sendable {
         self.width = width
         self.rowSpan = rowSpan
         self.stacked = stacked
+        self.joinedWith = joinedWith
         self.action = action
         self.style = style
     }
 }
 
 public enum KeyStyle: Hashable, Sendable {
-    case character, function, modifier, accent, pointer
+    case character, function, modifier, accent
 }
 
-/// ポインタ（スペースの横の赤い丸）が左右どちらか
+/// 空白兼ポインタが左右どちらか
 public enum PointerSide: Hashable, Sendable {
     case left, right
 }
@@ -71,8 +74,11 @@ public enum KeyAction: Hashable, Sendable {
     case setKeyboard(KeyboardKind)
     /// Touch ID の位置。アプリをすぐロックする
     case lockApp
-    /// スペースの横の赤い丸。触れている間はシェルのポインタを動かす（触れ方はアプリ側）
-    case pointer(PointerSide)
+    /// 空白とポインタを兼ねるキー。動かさずに離せば空白、動かせばポインタ、動かした指を離して 1 秒以内のタップは左クリック、
+    /// 左右の同時押しは右クリック（判定は `SpacePointerGesture`）
+    case spacePointer(PointerSide)
+    /// 📎。離したら、メディアを送るメニュー（写真・動画を選ぶ／撮る／録音する／ファイル）を、そのキーを指す形で出す
+    case attachMedia
     /// かなの 1 列。フリックの方向で文字が決まる
     case flick(FlickSet)
     /// 「→」。同じキーの連打で文字を進める（トグル入力）のを区切る
@@ -140,16 +146,28 @@ public enum FlickDirection: Sendable, Hashable, CaseIterable {
 
 /// キーボードの片側 1 面
 public struct KeyboardFace: Sendable {
-    public var rows: [[KeySpec]]
-    /// 全段で共通の格子の幅（単位）。nil なら段ごとに幅の合計で割る
-    public var gridUnits: CGFloat?
-    /// 段ごとの高さの比（nil なら全段 1。英語の F キーの段は低い）
-    public var rowWeights: [CGFloat]?
+    /// 幅が格子より短い段を、どちらの端に寄せるか（外側の端にそろえる）
+    public enum Alignment: Sendable {
+        /// 左端にそろえる（左の面）
+        case leading
+        /// 右端にそろえる（右の面）
+        case trailing
+    }
 
-    public init(rows: [[KeySpec]], gridUnits: CGFloat? = nil, rowWeights: [CGFloat]? = nil) {
+    public var rows: [[KeySpec]]
+    /// 面の幅（単位）。全段で共通の格子で、rect の幅がこれにあたる。nil なら段ごとに幅の合計で割る（段がそろう）
+    public var gridUnits: CGFloat?
+    /// 段ごとの高さの比（nil なら全段 1。JIS の F キーの段は低い）
+    public var rowWeights: [CGFloat]?
+    /// 格子より短い段を寄せる向き
+    public var alignment: Alignment
+
+    public init(rows: [[KeySpec]], gridUnits: CGFloat? = nil, rowWeights: [CGFloat]? = nil,
+                alignment: Alignment = .leading) {
         self.rows = rows
         self.gridUnits = gridUnits
         self.rowWeights = rowWeights
+        self.alignment = alignment
     }
 
     /// 段の高さの比の合計（rect の高さをこれで割ったものが 1 の高さ）
@@ -158,7 +176,8 @@ public struct KeyboardFace: Sendable {
     func weight(_ row: Int) -> CGFloat { rowWeights.flatMap { row < $0.count ? $0[row] : nil } ?? 1 }
 
     /// 各キーの枠（rect いっぱいに、段の高さは比で分ける）。2 段にまたがるキーは下の段の同じ位置をふさぐ。
-    /// 上下に分けるキー（stacked）は、子のキーを上下半分ずつに置く
+    /// 上下に分けるキー（stacked）は、子のキーを上下半分ずつに置く。格子より短い段は `alignment` の端に寄せる
+    /// （キーの無い隙間は、触れたときにいちばん近いキーになる）
     public func frames(in rect: CGRect) -> [(key: KeySpec, frame: CGRect)] {
         var out: [(key: KeySpec, frame: CGRect)] = []
         // (段, 開始単位, 幅単位) のふさがった場所
@@ -172,9 +191,15 @@ public struct KeyboardFace: Sendable {
         }
         tops.append(y)
         for (r, row) in rows.enumerated() {
-            let units = gridUnits ?? row.reduce(0) { $0 + $1.width }
+            let rowUnits = row.reduce(0) { $0 + $1.width }
+            let units = gridUnits ?? rowUnits
             let unit = rect.width / max(units, 0.0001)
             var x: CGFloat = 0
+            if alignment == .trailing {
+                // 上の段からのびたキーがふさぐ幅も、段の幅に数える
+                let blockedUnits = blocked.filter { $0.row == r }.reduce(0) { $0 + $1.w }
+                x = max(0, units - rowUnits - blockedUnits)
+            }
             for key in row {
                 // 上の段からのびたキーを避ける
                 while let b = blocked.first(where: { $0.row == r && abs($0.x - x) < 0.001 }) {
@@ -203,8 +228,18 @@ public struct KeyboardFace: Sendable {
 
 public enum KeyboardLayouts {
     // MARK: 分割（Mac の JIS 配列から日本語の刻印を外したもの。利用者の写真、2026-10-31）。
-    // 6・Y・H・N の列は左右の両方に置く（左の右端と右の左端が同じキー）。
-    // 英数とかなの位置は赤い丸（ポインタ）。🌐 はタップで前のキーボード、長押しでキーボードを選ぶ
+    // 左右・全段で共通の単位 u を使い、文字キー（1u）は u×u の正方形。各段の幅は Magic Keyboard の JIS（本体 14.5u）に合わせる。
+    // 内側の端は実物どおり段ごとにずれ、外側の端はそろう（左の面は左端、右の面は右端）。
+    // 6・Y・H・N の列は左右の両方に置く（左の右端と右の左端が同じキー。右の面の左端は、左の面の 5u の位置）。
+    // 英数とかなの位置は 📎 と 🌐（空白キーがポインタを兼ねる）。🌐 はタップで前のキーボード、長押しでキーボードを選ぶ
+
+    /// 面の幅・高さ（u 単位）。`LayoutEngine` が枠の大きさに使う値で、下の面の並びと同じ（テストで一致を確かめる）
+    public static let leftUnits: CGFloat = 8.25
+    public static let rightUnits: CGFloat = 9.5
+    /// F キーの段の高さ（ほかの段を 1 として）
+    public static let functionRowWeight: CGFloat = 0.6
+    /// 面の高さ = F キーの段 + ほかの 5 段
+    public static let heightUnits: CGFloat = functionRowWeight + 5
 
     static func ch(_ c: String, _ shifted: String? = nil, option: String? = nil, fn: TermKey? = nil, id: String? = nil) -> KeySpec {
         KeySpec(id ?? "ch-\(c)", c, sub: shifted, option: option, action: .character(c, shifted: shifted, fn: fn))
@@ -233,22 +268,29 @@ public enum KeyboardLayouts {
         KeySpec(id, label, width: width, action: .character(" ", shifted: nil, fn: nil))
     }
 
-    static func pointer(_ side: PointerSide, width: CGFloat = 1) -> KeySpec {
-        KeySpec("pointer-\(side)", "", width: width, action: .pointer(side), style: .pointer)
+    /// 空白兼ポインタ。見た目は空白キーの中央に小さな赤い丸
+    static func spacePointer(_ id: String, _ side: PointerSide, width: CGFloat) -> KeySpec {
+        KeySpec(id, "", width: width, action: .spacePointer(side))
+    }
+
+    /// 📎（メディアを送る）
+    static func attach(width: CGFloat = 1) -> KeySpec {
+        KeySpec("attach", "", symbol: "paperclip", width: width, action: .attachMedia, style: .function)
     }
 
     /// 🌐（fn）。タップで前のキーボード、長押しでキーボードを選ぶ。押しながら矢印などで fn の層
-    static func globe(width: CGFloat = 1) -> KeySpec {
-        KeySpec("globe", "", symbol: "globe", width: width, action: .modifier(.fn), style: .modifier)
+    static func globe(id: String = "globe", width: CGFloat = 1) -> KeySpec {
+        KeySpec(id, "", symbol: "globe", width: width, action: .modifier(.fn), style: .modifier)
     }
 
-    /// F キーの段の高さ（ほかの段を 1 として）
-    public static let functionRowWeight: CGFloat = 0.6
+    /// 右の面とフリックの右の内側に置く 🌐（外側の `globe` と同じ働き。ID だけ違う）
+    static func globeInner(width: CGFloat = 1) -> KeySpec { globe(id: "globe-inner", width: width) }
 
     static let f6 = fKey(6, "moon")
     static let k6 = ch("6", "&", fn: .function(6))
     static let y = letter("y"), h = letter("h"), n = letter("n")
 
+    /// 左: 幅 8.25u。左端をそろえる（短い段は右の内側に隙間ができる）
     public static let jisLeft = KeyboardFace(rows: [
         [fnKey("esc", "esc", .escape, width: 1.5), fKey(1, "sun.min"), fKey(2, "sun.max"), fKey(3, "rectangle.3.group"),
          fKey(4, "magnifyingglass"), fKey(5, "mic"), f6],
@@ -258,37 +300,39 @@ public enum KeyboardLayouts {
         [mod(.control, "control", sub: "^", width: 1.75, id: "mod-control-l"),
          letter("a"), letter("s"), letter("d"), letter("f", homing: true), letter("g"), h],
         [mod(.shift, "⇧", width: 2.25, id: "mod-shift-l"), letter("z"), letter("x"), letter("c"), letter("v"), letter("b"), n],
-        [KeySpec("caps", "⇪", width: 1.25, action: .capsLock, style: .modifier),
-         mod(.option, "option", sub: "⌥", width: 1.15, id: "mod-option-l"),
-         mod(.command, "command", sub: "⌘", width: 1.35, id: "mod-command-l"),
-         pointer(.left, width: 1.15), space("space-l", width: 2.1)],
-    ], rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
+        [KeySpec("caps", "⇪", action: .capsLock, style: .modifier),
+         mod(.option, "option", sub: "⌥", id: "mod-option-l"),
+         mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-l"),
+         spacePointer("space-l", .left, width: 4), attach()],
+    ], gridUnits: leftUnits, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1], alignment: .leading)
 
-    /// 右: 1 単位 = 幅 ÷ 9.5（return が 2 段にまたがるので、全段で共通の格子）
+    /// 右: 幅 9.5u。右端をそろえる（短い段は左の内側に隙間ができる）。return は実物の逆 L 字で、
+    /// 上 1u の `send` と下 0.75u の `send-lower` の 2 つの枠（どちらも送信。つながって見えるように描く）
     public static let jisRight = KeyboardFace(rows: [
-        [fKey(6, "moon", width: 1.2), fKey(7, "backward", width: 1.2), fKey(8, "playpause", width: 1.2),
-         fKey(9, "forward", width: 1.2), fKey(10, "speaker", width: 1.2), fKey(11, "speaker.wave.1", width: 1.2),
-         fKey(12, "speaker.wave.3", width: 1.2),
-         KeySpec("lock", "", symbol: "lock", width: 1.1, action: .lockApp, style: .function)],
+        [fKey(6, "moon"), fKey(7, "backward"), fKey(8, "playpause"), fKey(9, "forward"), fKey(10, "speaker"),
+         fKey(11, "speaker.wave.1"), fKey(12, "speaker.wave.3"),
+         KeySpec("lock", "", symbol: "lock", action: .lockApp, style: .function)],
         [k6, ch("7", "'", fn: .function(7)), ch("8", "(", fn: .function(8)), ch("9", ")", fn: .function(9)),
          ch("0", nil, fn: .function(10)), ch("-", "=", fn: .function(11)), ch("^", "~", fn: .function(12)),
          // ¥ のキーは、端末で使う \ を打つ（option で ¥）
          KeySpec("ch-yen", "¥", sub: "|", option: "¥", action: .character("\\", shifted: "|", fn: nil)),
          fnKey("bs", "⌫", .backspace, fn: .delete, width: 1.5, repeats: true)],
         [y, letter("u"), letter("i"), letter("o"), letter("p"), ch("@", "`"), ch("[", "{"),
-         KeySpec("send", "⏎", width: 2.5, rowSpan: 2, action: .send, style: .function)],
-        [h, letter("j", homing: true), letter("k"), letter("l"), ch(";", "+"), ch(":", "*"), ch("]", "}")],
-        [n, letter("m"), ch(",", "<"), ch(".", ">"), ch("/", "?"), ch("_", "_"), mod(.shift, "⇧", width: 3.5, id: "mod-shift-r")],
-        [space("space-r", width: 2.25), pointer(.right), mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-r"),
+         KeySpec("send", "⏎", joinedWith: "send-lower", action: .send, style: .function)],
+        [h, letter("j", homing: true), letter("k"), letter("l"), ch(";", "+"), ch(":", "*"), ch("]", "}"),
+         KeySpec("send-lower", "", width: 0.75, joinedWith: "send", action: .send, style: .function)],
+        [n, letter("m"), ch(",", "<"), ch(".", ">"), ch("/", "?"), ch("_", "_"), mod(.shift, "⇧", width: 1.25, id: "mod-shift-r")],
+        [globeInner(), spacePointer("space-r", .right, width: 3.25),
+         mod(.command, "command", sub: "⌘", width: 1.25, id: "mod-command-r"),
          globe(),
-         fnKey("left", "◀", .left, fn: .home, width: 4.0 / 3, repeats: true),
-         KeySpec("updown", "", width: 4.0 / 3, stacked: [fnKey("up", "▲", .up, fn: .pageUp, repeats: true),
-                                                           fnKey("down", "▼", .down, fn: .pageDown, repeats: true)],
+         fnKey("left", "◀", .left, fn: .home, repeats: true),
+         KeySpec("updown", "", stacked: [fnKey("up", "▲", .up, fn: .pageUp, repeats: true),
+                                           fnKey("down", "▼", .down, fn: .pageDown, repeats: true)],
                  action: .key(.up, fn: nil, repeats: false), style: .function),
-         fnKey("right", "▶", .right, fn: .end, width: 4.0 / 3, repeats: true)],
-    ], gridUnits: 9.5, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1])
+         fnKey("right", "▶", .right, fn: .end, repeats: true)],
+    ], gridUnits: rightUnits, rowWeights: [functionRowWeight, 1, 1, 1, 1, 1], alignment: .trailing)
 
-    // MARK: フリックの分割。iOS の 12 キーを左右に 1 面ずつ。最下段に 🌐・空白・ポインタ（ポインタは内側）
+    // MARK: フリックの分割。iOS の 12 キーを左右に 1 面ずつ（分割と同じ枠いっぱいに並べる）。最下段は、左が 🌐・空白兼ポインタ・📎、右が 🌐・空白兼ポインタ・🌐
 
     static func flick(_ id: String, _ set: FlickSet, label: String? = nil) -> KeySpec {
         KeySpec("flick-\(id)", label ?? set.center, action: .flick(set))
@@ -328,7 +372,7 @@ public enum KeyboardLayouts {
     static let newline = KeySpec("newline", "↩︎", action: .newline, style: .function)
     static let newlineTall = KeySpec("newline", "↩︎", rowSpan: 2, action: .newline, style: .function)
 
-    /// 左は 改行が外側の角・send が内側の縦 2 マス。右はその逆。最下段の内側にポインタ
+    /// 左は 改行が外側の角・send が内側の縦 2 マス。右はその逆。最下段は空白兼ポインタ（幅 3）を真ん中に
     static func flickFace(grid: [[KeySpec]], switchKey: KeySpec, left: Bool) -> KeyboardFace {
         KeyboardFace(rows: [
             [KeySpec("kana-break", "→", action: .kanaBreak, style: .function)] + grid[0]
@@ -336,8 +380,8 @@ public enum KeyboardLayouts {
             grid[1] + [space("space", width: 1, label: "空白")],
             [switchKey] + grid[2] + [left ? sendTall : newlineTall],
             [left ? newline : send] + grid[3],
-            left ? [globe(), space("space-b", width: 3), pointer(.left)]
-                 : [pointer(.right), space("space-b", width: 3), globe()],
+            left ? [globe(), spacePointer("space-b", .left, width: 3), attach()]
+                 : [globeInner(), spacePointer("space-b", .right, width: 3), globe()],
         ], gridUnits: 5)
     }
 
