@@ -57,9 +57,10 @@ final class EchoPredictorInstantTests: XCTestCase {
         XCTAssertNil(p.display)
         p.typed("2", cursor: (10, 0), now: 1.1, context: plain)
         XCTAssertNil(p.display)
-        // Enter で次の行へ。疑っている状態は保つ
+        // Enter で次の行へ（プロンプトが描かれてカーソルが 2 桁目に来た）。疑っている状態は保つ
         p.key(.enter)
         XCTAssertTrue(p.doubtful)
+        p.reconcile(cellText: screen([:]), cursor: (2, 0), now: 1.9)
         p.typed("l", cursor: (2, 0), now: 2, context: plain)
         XCTAssertNil(p.display)
         // 返ってくるのを見たら、また出す
@@ -69,9 +70,10 @@ final class EchoPredictorInstantTests: XCTestCase {
         XCTAssertEqual(p.display?.text, "s")
     }
 
-    /// Enter・Esc・Tab・control／option・貼り付け: 予測を消して、その行は確かめ直す（次の最初の 1 文字はすぐ出る）
+    /// Enter・Esc・Tab・control／option・貼り付け・矢印: 予測を消して、その行は確かめ直す。
+    /// 画面でカーソルが動く（返事が届く）までは予測しない。動いたら、次の最初の 1 文字はすぐ出る
     func testEnterAndFriendsStartANewUnconfirmedLine() {
-        for kind in [Predictor.KeyKind.enter, .escape, .tab, .modified, .paste] {
+        for kind in [Predictor.KeyKind.enter, .escape, .tab, .modified, .paste, .arrow] {
             var p = Predictor()
             p.typed("a", cursor: (5, 0), now: 0, context: plain)
             p.reconcile(cellText: screen([5: "a"]), cursor: (6, 0), now: 0.05)
@@ -80,11 +82,92 @@ final class EchoPredictorInstantTests: XCTestCase {
             XCTAssertTrue(p.pending.isEmpty, "\(kind)")
             XCTAssertFalse(p.confirmed, "\(kind)")
             XCTAssertFalse(p.doubtful, "\(kind)")
-            // 次の最初の 1 文字はすぐ出るが、2 文字目は確かめるまで待つ
+            // 返事が届く前（カーソルがまだ 6 桁目）に打った文字は出さない（先打ち）
+            p.typed("z", cursor: (6, 0), now: 0.12, context: plain)
+            XCTAssertNil(p.display, "\(kind)")
+            XCTAssertFalse(p.hasPending, "\(kind)")
+            // カーソルが動いた（新しいプロンプト）。次の最初の 1 文字はすぐ出るが、2 文字目は確かめるまで待つ
+            p.reconcile(cellText: screen([:]), cursor: (2, 0), now: 0.5)
             p.typed("c", cursor: (2, 0), now: 1, context: plain)
             p.typed("d", cursor: (2, 0), now: 1.05, context: plain)
             XCTAssertEqual(p.display?.text, "c", "\(kind)")
         }
+    }
+
+    /// 先打ちのパスワード（`sudo …⏎` の直後）: 問いかけが届くまでは出さない。改行だけ届いて行頭（0 桁目）にいる間も待つ
+    func testTypeAheadAfterEnterIsNotShown() {
+        var p = Predictor()
+        p.reconcile(cellText: screen([:]), cursor: (16, 0), now: 0)
+        p.key(.enter)
+        p.typed("h", cursor: (16, 0), now: 0.02, context: plain)
+        XCTAssertNil(p.display)
+        // 改行の返事だけ届いた（次の行の行頭）。問いかけはまだ
+        p.reconcile(cellText: screen([:]), cursor: (0, 1), now: 0.03)
+        XCTAssertNotNil(p.awaitingMoveFrom)
+        p.typed("u", cursor: (0, 1), now: 0.04, context: plain)
+        XCTAssertNil(p.display)
+        // 問いかけが描かれてカーソルがその後ろへ。ここからは予測する（問いかけの言葉はアプリが見て止める）
+        p.reconcile(cellText: screen([:]), cursor: (24, 1), now: 0.1)
+        XCTAssertNil(p.awaitingMoveFrom)
+        p.typed("x", cursor: (24, 1), now: 0.2, context: plain)
+        XCTAssertEqual(p.display?.text, "x")
+    }
+
+    /// 画面を 1 度も描いていない（カーソルの位置を知らない）ときの Enter は待たない
+    func testEnterWithoutAnyFrameDoesNotWait() {
+        var p = Predictor()
+        p.key(.enter)
+        XCTAssertNil(p.awaitingMoveFrom)
+        p.typed("a", cursor: (2, 0), now: 0, context: plain)
+        XCTAssertEqual(p.display?.text, "a")
+    }
+
+    /// ⌫ で消しても、確かめる前の 1 文字はもう出さない（返らない入力で、打ち直すたびに 1 文字ずつ出さない）
+    func testBackspaceDoesNotRearmTheFirstChar() {
+        var p = Predictor()
+        p.typed("x", cursor: (12, 0), now: 0, context: plain)
+        XCTAssertEqual(p.display?.text, "x")
+        p.key(.backspace)
+        XCTAssertNil(p.display)
+        p.typed("y", cursor: (12, 0), now: 0.2, context: plain)
+        XCTAssertNil(p.display)
+        // 返ってくるのを見たら出す
+        p.reconcile(cellText: screen([12: "y"]), cursor: (13, 0), now: 0.25)
+        p.typed("z", cursor: (13, 0), now: 0.3, context: plain)
+        XCTAssertEqual(p.display?.text, "z")
+        // 行が変われば、また 1 文字使える
+        p.key(.enter)
+        p.reconcile(cellText: screen([:]), cursor: (2, 0), now: 0.5)
+        p.typed("a", cursor: (2, 0), now: 0.6, context: plain)
+        XCTAssertEqual(p.display?.text, "a")
+    }
+
+    /// カーソルが隠れている画面（Claude Code など）: 確かめる前の 1 文字は出さない。隠れたカーソルの位置に返ってくるのを見たら出す
+    func testHiddenCursorWaitsForConfirmation() {
+        var p = Predictor()
+        let hidden = Predictor.Context(cursorHidden: true)
+        p.typed("h", cursor: (4, 0), now: 0, context: hidden)
+        XCTAssertNil(p.display)
+        XCTAssertTrue(p.hasPending)
+        p.reconcile(cellText: screen([4: "h"]), cursor: (5, 0), now: 0.05)
+        XCTAssertTrue(p.confirmed)
+        p.typed("i", cursor: (5, 0), now: 0.1, context: hidden)
+        XCTAssertEqual(p.display?.text, "i")
+        // 隠れたカーソルが入力欄に無い（返る文字の位置と違う）なら、外れて出さない
+        var q = Predictor()
+        q.typed("h", cursor: (0, 0), now: 0, context: hidden)
+        q.reconcile(cellText: screen([:]), cursor: (0, 0), now: 1.1)
+        XCTAssertTrue(q.doubtful)
+        XCTAssertNil(q.display)
+    }
+
+    /// 右端の桁に打った文字も確かめられる（返った後のカーソルの桁は幅と同じ）
+    func testConfirmsAtTheLastColumn() {
+        var p = Predictor()
+        p.typed("q", cursor: (79, 0), now: 0, context: plain)
+        p.reconcile(cellText: screen([79: "q"]), cursor: (80, 0), now: 0.05)
+        XCTAssertTrue(p.confirmed)
+        XCTAssertFalse(p.doubtful)
     }
 
     /// 違う文字が返った（vim の通常モードなど）→ 外れて疑う。確かめるまで出さない
@@ -167,11 +250,16 @@ final class EchoPredictorInstantTests: XCTestCase {
             "Password for 'https://github.com': ", "PIN: ", "Enter PIN: ", "Verification code: ", "One-time password (OTP): ",
             "export GITHUB_TOKEN=", "API key: ", "OPENAI_API_KEY=", "client secret: ", "2FA code: ", "パスワード：",
             "暗証番号: ", "認証コードを入力: ", "Passcode:", "Enter the apikey ",
+            // レビューで足した: OpenSSL・FIDO の PIN・MFA・暗号の鍵、前の行に問いかけがある道具（アプリは前の行をつなげて渡す）
+            "Enter pass phrase for server.key:", "Enter PIN for 'PIV Card Holder pin (PIV AUTH key)': ", "MFA code: ",
+            "Enter encryption key: ", "Please enter your password >  ",
         ]
         for line in secret { XCTAssertTrue(Predictor.looksLikeSecretPrompt(line), line) }
         let plainLines = [
             "dken@mac ~ % ", "❯ ", "> ", "$ git commit -m \"fix ping\"", "Username for 'https://github.com': ",
             "~/src/app (main) $ ls", "pinned versions: ", "",
+            // 短い言葉（pin・otp・2fa・mfa）は単語の中では当てない
+            "~/src/footprint $ ", "hotpot ", "spinner ", "$ ping -c 1 host", "dropins: ",
         ]
         for line in plainLines { XCTAssertFalse(Predictor.looksLikeSecretPrompt(line), line) }
     }

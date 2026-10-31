@@ -34,8 +34,8 @@ public struct ScreenFrame: Sendable {
     public var cells: [ScreenCell]
     /// 見えているカーソル（隠れているなら nil）
     public var cursor: Cursor?
-    /// カーソルの位置（隠れていても。見えている範囲の外なら nil）。先行表示の突き合わせに使う
-    /// （Claude Code はカーソルを隠し、入力欄に自分でカーソルを描く。docs/design.md「先行表示」）
+    /// カーソルの位置（隠れていても。見えている範囲の外なら nil。桁は行の終わりに書いた直後なら幅と同じ）。
+    /// 先行表示の突き合わせに使う（Claude Code はカーソルを隠し、入力欄に自分でカーソルを描く。docs/design.md「先行表示」）
     public var caret: Cursor?
     /// 表示している先頭行（スクロールバックを含めた通し番号）
     public var topRow: Int
@@ -273,8 +273,9 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
                 cells[line.y * cols + c] = theme.cell(text: cell.text, width: cell.width, attribute: cell.attribute)
             }
         }
+        // 桁は画面の幅に丸めない（行の終わりに書いた直後は桁 = 幅。丸めると、右端の桁に打った文字が確かめられない）
         let caret: ScreenFrame.Cursor? = snap.cursor.y >= 0 && snap.cursor.y < rows
-            ? .init(col: min(max(0, snap.cursor.x), max(0, cols - 1)), row: snap.cursor.y, shape: cursorShape) : nil
+            ? .init(col: max(0, snap.cursor.x), row: snap.cursor.y, shape: cursorShape) : nil
         let cursor: ScreenFrame.Cursor? = snap.cursor.hidden ? nil
             : .init(col: min(snap.cursor.x, cols - 1), row: snap.cursor.y, shape: cursorShape)
         return ScreenFrame(cols: cols, rows: rows, cells: cells, cursor: cursor, caret: caret, topRow: top, atBottom: true)
@@ -314,26 +315,6 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
             widths.reserveCapacity(line.count)
             for c in 0..<line.count { widths.append(Int(line[c].width)) }
             return (widths, t.buffer.x, y)
-        }
-    }
-
-    /// カーソルの行の、行頭からカーソルの手前までの文字（折り返しの続きなら前の行からつなげる。3 行まで）。
-    /// 先行表示が、秘密の入力らしい行（`EchoPredictor.looksLikeSecretPrompt`）を見分けるのに使う
-    public func cursorLinePrefix() -> String {
-        terminal.terminalLock.withLock {
-            let t = terminal!
-            let y = t.buffer.y
-            guard let line = t.getLine(row: y) else { return "" }
-            var text = line.translateToString(trimRight: false, startCol: 0, endCol: min(t.buffer.x, line.count),
-                                              skipNullCellsFollowingWide: true)
-            var row = y, wrapped = line.isWrapped
-            while wrapped, row > 0, y - row < 2, let prev = t.getLine(row: row - 1) {
-                text = prev.translateToString(trimRight: false, startCol: 0, endCol: prev.count,
-                                              skipNullCellsFollowingWide: true) + text
-                wrapped = prev.isWrapped
-                row -= 1
-            }
-            return text
         }
     }
 

@@ -93,8 +93,10 @@ final class EchoPredictorTests: XCTestCase {
         }
     }
 
-    func testBackspaceAndArrowOnlyClearWhatIsShown() {
-        for kind in [Predictor.KeyKind.backspace, .arrow] {
+    /// 2026-10-31: 矢印は ⌫ と同じく「出ているものを消すだけ」だったが、Enter などと同じく確かめ直しにした
+    /// （確かめた状態のまま、矢印で返らない入力欄へ移ると、打った文字が出てしまうため）。前方削除（delete）を ⌫ と分けた
+    func testBackspaceAndDeleteKeepTheConfirmation() {
+        for kind in [Predictor.KeyKind.backspace, .delete] {
             var p = confirmedPredictor()
             p.typed("x", cursor: (6, 0), now: 1, context: plain)
             p.key(kind)
@@ -105,6 +107,16 @@ final class EchoPredictorTests: XCTestCase {
             p.typed("y", cursor: (5, 0), now: 2, context: plain)
             XCTAssertEqual(p.display?.text, "y", "\(kind)")
         }
+    }
+
+    func testArrowRequiresConfirmationAgain() {
+        var p = confirmedPredictor()
+        p.typed("x", cursor: (6, 0), now: 1, context: plain)
+        p.key(.arrow)
+        XCTAssertTrue(p.pending.isEmpty)
+        XCTAssertFalse(p.confirmed)
+        p.typed("y", cursor: (5, 0), now: 2, context: plain)
+        XCTAssertNil(p.display)
     }
 
     func testDifferentCharClearsThePrediction() {
