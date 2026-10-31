@@ -56,14 +56,15 @@ public struct TerminalModes: Equatable, Sendable {
     public init() {}
 }
 
-/// テーマ（設定から作る）。256 色の表と、コントラストの補正の結果を持つ
+/// テーマ（設定から作る）。色を決める規則は TermCore の `CellColorRules`（純粋な関数）で、
+/// ここは SwiftTerm のセルをその入力に直して呼び、コントラストの補正の結果を覚える
 public final class Theme: @unchecked Sendable {
     public let foreground: RGB
     public let background: RGB
     public let cursor: RGB
     public let selection: RGB
     public let minimumContrast: Double
-    let table: [RGB]
+    let rules: CellColorRules
     private var contrastCache: [UInt64: RGB] = [:]
     private let lock = NSLock()
 
@@ -73,27 +74,16 @@ public final class Theme: @unchecked Sendable {
         cursor = config.cursorColor
         selection = config.selectionBackground
         minimumContrast = config.minimumContrast
-        table = Theme.xterm256(palette: config.palette)
+        rules = CellColorRules(config: config)
     }
 
-    /// 0〜15 はテーマのパレット、16〜231 は 6×6×6 の色の立方体、232〜255 は灰色
-    static func xterm256(palette: [RGB]) -> [RGB] {
-        var t = palette
-        let steps: [UInt8] = [0, 95, 135, 175, 215, 255]
-        for r in 0..<6 { for g in 0..<6 { for b in 0..<6 { t.append(RGB(steps[r], steps[g], steps[b])) } } }
-        for i in 0..<24 {
-            let v = UInt8(8 + i * 10)
-            t.append(RGB(v, v, v))
-        }
-        return t
-    }
-
-    func color(_ c: Attribute.Color, isForeground: Bool) -> RGB {
+    /// SwiftTerm の色の指定を、規則の入力に直す
+    static func cellColor(_ c: Attribute.Color) -> CellColor {
         switch c {
-        case .ansi256(let code): return table[Int(code)]
-        case .trueColor(let r, let g, let b): return RGB(r, g, b)
-        case .defaultColor: return isForeground ? foreground : background
-        case .defaultInvertedColor: return isForeground ? background : foreground
+        case .ansi256(let code): return .palette(Int(code))
+        case .trueColor(let r, let g, let b): return .rgb(RGB(r, g, b))
+        case .defaultColor: return .defaultColor
+        case .defaultInvertedColor: return .defaultInverted
         }
     }
 
@@ -112,15 +102,14 @@ public final class Theme: @unchecked Sendable {
     }
 
     func cell(text: String, width: Int8, attribute a: Attribute) -> ScreenCell {
-        var fg = color(a.fg, isForeground: true)
-        var bg = color(a.bg, isForeground: false)
         let style = a.style
-        if style.contains(.inverse) { swap(&fg, &bg) }
-        if style.contains(.dim) { fg = Contrast.mix(fg, bg, 0.4) }
-        if style.contains(.invisible) {
-            fg = bg
-        } else {
-            fg = readable(fg, on: bg)
+        var colorFlags: CellColorFlags = []
+        if style.contains(.inverse) { colorFlags.insert(.inverse) }
+        if style.contains(.dim) { colorFlags.insert(.dim) }
+        if style.contains(.invisible) { colorFlags.insert(.invisible) }
+        if style.contains(.bold) { colorFlags.insert(.bold) }
+        let (fg, bg) = rules.resolve(fg: Self.cellColor(a.fg), bg: Self.cellColor(a.bg), flags: colorFlags) {
+            readable($0, on: $1)
         }
         var flags: ScreenCell.Flags = []
         if style.contains(.bold) { flags.insert(.bold) }
