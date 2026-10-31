@@ -78,7 +78,7 @@ splitterm config check --file path/to/config
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
 | `keyboard` | `english` | 起動時のキーボード（🌐 の長押しでも選べる）: romaji（分割・ローマ字）/ english（分割・英語。Mac の JIS 配列）/ kana（日本語フリック分割）/ flick-romaji（英語フリック分割・ローマ字）/ flick-english（英語フリック分割・英語） |
-| `keyboard-pitch` | `auto` | キーの基準の大きさ（pt）。auto は画面から算出（iPhone 13 mini で 30、iPad で 50） |
+| `keyboard-pitch` | `auto` | キー 1 つの大きさ u（pt。20〜80）。文字キーは u×u の正方形で、左のキーボードは幅 8.25u、右は 9.5u、高さ 5.6u。 auto は画面から算出（画面の短辺 × 0.064 を切り捨てて 24〜36。iPhone 13 mini で 24、iPad で 36）。 大きすぎて収まらないときは、収まる大きさまで縮む |
 | `key-repeat-delay` | `400ms` | ⌫ と矢印の長押しリピート |
 | `key-repeat-interval` | `50ms` | ⌫ と矢印の長押しリピート |
 | `option-as-meta` | `true` | option を meta（ESC を前に付ける）として送る（キーに刷ってある option の文字 € と # は、こちらより先に効く） |
@@ -117,4 +117,4 @@ splitterm config check --file path/to/config
 | `app-lock` | `true` | アプリを開くときに Face ID（かパスコード）を求める（いつ求めるかは app-lock-after） |
 | `app-lock-after` | `15m` | アプリを開いていない時間がこれを超えたら、次に開くときに Face ID を求める（15m・1h・90s。0 で毎回） 長くする変更は、端末で本人の確認（Face ID かパスコード）の後で効く |
 | `privacy-blur` | `true` | アプリスイッチャーでターミナルの内容をぼかす |
-| `clipboard-clear` | `60s` | アプリからコピーした内容を消すまでの時間。0 で消さない |
+| `clipboard-clear` | `60s` | アプリからコピーした内容（シェルで選んだ文字。選ぶと自動でコピーされる）を、アプリを離れてから消すまでの時間。 前面にいる間は消さない。0 で消さない。他の端末へは渡さない |
