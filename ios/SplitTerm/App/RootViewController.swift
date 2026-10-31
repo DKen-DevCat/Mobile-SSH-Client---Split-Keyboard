@@ -203,7 +203,8 @@ final class RootViewController: UIViewController {
 
     private func configureFont() {
         let pt = CGFloat(config.fontSize) * CGFloat(zoom.percent) / 100
-        terminalView.configureFont(family: config.fontFamily, cjkFamily: config.fontFamilyCJK, pointSize: pt)
+        terminalView.configureFont(family: config.fontFamily, cjkFamily: config.fontFamilyCJK, pointSize: pt,
+                                   thicken: config.fontThicken)
         view.setNeedsLayout()
     }
 
