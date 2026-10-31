@@ -45,8 +45,7 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     /// flagLock の中だけで読み書きする
     private nonisolated(unsafe) var renderRequested = false
 
-    // 慣性スクロール（pt/秒）
-    private var velocity: CGFloat = 0
+    // 縦ドラッグを行単位にそろえる。指を離したら止まる（慣性は無い）
     private var accumulator = ScrollAccumulator(lineHeight: 10)
     private var lastPanCell = GridPoint(row: 0, col: 0)
 
@@ -164,7 +163,6 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     }
 
     fileprivate func tick(_ link: CADisplayLink) {
-        if velocity != 0 { decelerate(dt: CGFloat(link.targetTimestamp - link.timestamp)) }
         flagLock.lock()
         let need = renderRequested
         renderRequested = false
@@ -172,10 +170,10 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
         if need {
             idleTicks = 0
             if !render() { requestRender() }
-        } else if velocity == 0 && !cursorBlink {
+        } else if !cursorBlink {
             idleTicks += 1
             if idleTicks > 2 { link.isPaused = true }
-        } else if cursorBlink {
+        } else {
             // 点滅の切り替わりだけ描く
             let phase = Int((CACurrentMediaTime() - blinkPhaseStart) / 0.5)
             if phase != lastBlinkPhase {
@@ -227,7 +225,6 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     }
 
     @objc private func onTap(_ g: UITapGestureRecognizer) {
-        velocity = 0
         let p = g.location(in: self)
         delegate?.terminalView(self, tappedAt: cell(at: p), location: p)
     }
@@ -249,7 +246,6 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     @objc private func onPan(_ g: UIPanGestureRecognizer) {
         switch g.state {
         case .began:
-            velocity = 0
             accumulator.reset()
             lastPanCell = cell(at: g.location(in: self))
         case .changed:
@@ -257,24 +253,11 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
             g.setTranslation(.zero, in: self)
             let lines = accumulator.add(dy)
             if lines != 0 { delegate?.terminalView(self, scrollLines: lines, at: lastPanCell) }
-        case .ended:
-            velocity = g.velocity(in: self).y
-            if abs(velocity) < 50 { velocity = 0 } else { startLink() }
         default:
-            velocity = 0
+            // 指を離したら止まる。どのモードでも、離した後にスクロールを呼ぶ道は無い
+            break
         }
     }
-
-    /// 指を離した後の慣性（UIScrollView と同じ減速率）
-    private func decelerate(dt: CGFloat) {
-        let step = velocity * dt
-        velocity *= pow(0.998, dt * 1000)
-        if abs(velocity) < 20 { velocity = 0 }
-        let lines = accumulator.add(step)
-        if lines != 0 { delegate?.terminalView(self, scrollLines: lines, at: lastPanCell) }
-    }
-
-    func stopInertia() { velocity = 0 }
 
     private var pinchFired = false
 
