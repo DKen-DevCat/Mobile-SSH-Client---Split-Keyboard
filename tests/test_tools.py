@@ -1,11 +1,15 @@
-"""設定ファイルを送るスクリプトと、公開鍵を取り込むスクリプト（docs/design.md「設定ファイル」「配布」）。
+"""設定ファイルを送るスクリプトと、公開鍵を取り込むスクリプト（docs/design.md「設定ファイル」「配布」）、
+色の見比べ用の見本（scripts/colortest.sh。「描画と解像度」の「色」）。
 偽の xcrun（devicectl）で動かす。macOS の道具に頼らないので Linux でも通る。"""
 
 from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -245,3 +249,112 @@ def test_pubkey_missing_on_device(rig: Rig):
 
 def test_fingerprint_option_needs_a_value(rig: Rig):
     assert rig.run("ios_pubkey.sh", "--fingerprint").returncode == 2
+
+
+# ─── scripts/colortest.sh（色の見比べ。Ghostty とアプリで同じものを流す）──────────────────
+
+COLORTEST = ROOT / "scripts" / "colortest.sh"
+ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def colortest(*args: str, shell: str = "sh") -> subprocess.CompletedProcess:
+    """バイトで受けて UTF-8 に直す（実行する環境の locale に頼らない）。端末ではなく、パイプに流す"""
+    r = subprocess.run([shell, str(COLORTEST), *args], capture_output=True, stdin=subprocess.DEVNULL,
+                       env={"PATH": os.environ["PATH"], "LANG": "C"})
+    return subprocess.CompletedProcess(r.args, r.returncode, r.stdout.decode("utf-8"), r.stderr.decode("utf-8"))
+
+
+def visible_width(line: str) -> int:
+    """端末で占める桁数（色の指定を除き、全角は 2）"""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in ESCAPE.sub("", line))
+
+
+def test_colortest_is_a_posix_sh_script():
+    text = COLORTEST.read_text(encoding="utf-8")
+    assert text.startswith("#!/bin/sh\n")
+    assert os.access(COLORTEST, os.X_OK)
+    # POSIX sh と printf だけ（echo -e・bash の拡張・外のコマンドを使わない）
+    assert "echo -e" not in text and "[[" not in text and "seq " not in text and "$'" not in text
+
+
+def test_colortest_prints_true_color_and_256_color_and_16_color():
+    r = colortest()
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    # true color（24bit）の指定と、256 色の指定の両方
+    assert "\x1b[38;2;" in out and "\x1b[48;2;" in out
+    assert "\x1b[38;5;" in out and "\x1b[48;5;" in out
+    # 16 色（通常と明るい、文字と背景）と、太字
+    for sgr in ("30", "37", "90", "97", "40", "47", "100", "107", "1"):
+        assert f"\x1b[{sgr}m" in out, sgr
+    assert "\x1b[1;31m" in out  # 太字の赤（bold-is-bright の見比べ）
+    assert out.endswith("\x1b[0m")
+
+
+def test_colortest_256_colors_cover_the_whole_table():
+    out = colortest("256").stdout
+    shown = {int(n) for n in re.findall(r"\x1b\[48;5;(\d+)m", out)}
+    assert shown == set(range(256))
+
+
+def test_colortest_true_color_bands_are_smooth_not_quantized():
+    out = colortest("true").stdout
+    triples = [tuple(map(int, m)) for m in re.findall(r"\x1b\[48;2;(\d+);(\d+);(\d+)m", out)]
+    reds = {r for r, _, _ in triples}
+    # 256 色の立方体なら赤は 6 段（0・95・135・175・215・255）。滑らかな帯は、それよりずっと多くの値を使う
+    assert len(reds) >= 40
+    assert 0 in reds and 255 in reds
+    assert all(0 <= v <= 255 for t in triples for v in t)
+
+
+def test_colortest_has_claude_code_like_swatches():
+    out = colortest("claude").stdout
+    assert "\x1b[38;2;215;119;87m" in out  # オレンジ
+    assert "\x1b[48;2;215;119;87m" in out
+    assert "38;5;" not in out  # 256 色に丸めた色は混ぜない（true color の見本だけ）
+
+
+def test_colortest_bold_section_compares_bold_and_normal():
+    out = colortest("bold").stdout
+    for n in range(8):
+        assert f"\x1b[{30 + n}m" in out and f"\x1b[1;{30 + n}m" in out and f"\x1b[{90 + n}m" in out
+    assert "\x1b[1;38;5;1m" in out and "\x1b[38;5;9m" in out  # 256 色の 1 と 9
+    assert "\x1b[1;38;2;205;49;49m" in out and "\x1b[38;2;205;49;49m" in out  # true color は太字でも変わらない
+
+
+def test_colortest_sections_are_separate():
+    kinds = {
+        "16": ("\x1b[30m", ("38;2;", "48;5;")),
+        "256": ("\x1b[48;5;196m", ("38;2;", "48;2;")),
+        "true": ("\x1b[48;2;", ("38;5;", "48;5;")),
+        "claude": ("\x1b[38;2;215;119;87m", ("38;5;", "48;5;")),
+        "bold": ("\x1b[1;31m", ("48;2;", "48;5;")),
+    }
+    for section, (has, lacks) in kinds.items():
+        r = colortest(section)
+        assert r.returncode == 0, (section, r.stderr)
+        assert has in r.stdout, section
+        for s in lacks:
+            assert s not in r.stdout, (section, s)
+    assert colortest("all").stdout.count("\x1b[") > colortest("256").stdout.count("\x1b[")
+
+
+def test_colortest_unknown_section_is_a_usage_error():
+    r = colortest("nope")
+    assert r.returncode == 2
+    assert "usage" in r.stderr and r.stdout == ""
+
+
+def test_colortest_only_changes_colors_and_fits_a_phone_screen():
+    out = colortest().stdout
+    # 色の指定（ESC [ … m）のほかの制御列（カーソルの移動・画面消去・OSC）を出さない
+    assert "\x1b" not in ESCAPE.sub("", out)
+    # 1 行が 13 mini のシェルの桁数（85% 表示で 57）に収まる
+    assert max(visible_width(line) for line in out.split("\n")) <= 57
+
+
+def test_colortest_gives_the_same_output_under_dash():
+    dash = shutil.which("dash")
+    if dash is None:
+        pytest.skip("dash が無い")
+    assert colortest(shell=dash).stdout == colortest().stdout
