@@ -81,6 +81,10 @@ final class ConfigEditorTests: XCTestCase {
         c.mediaRetentionDays = 0
         c.keyboardPitch = 32
         c.palette[3] = RGB(1, 2, 3)
+        c.minimumContrast = 4.5
+        c.boldIsBright = true
+        c.fontThicken = true
+        c.colorSpace = .srgb
         let (back, d) = ConfigParser.parse(c.effectiveLines.joined(separator: "\n"))
         XCTAssertEqual(d, [])
         XCTAssertEqual(back, c)

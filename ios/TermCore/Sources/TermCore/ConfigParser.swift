@@ -85,6 +85,8 @@ public enum ConfigParser {
             }
             c.palette[i] = try color(parts[1])
         case "minimum-contrast": c.minimumContrast = reset ? d.minimumContrast : try number(value, in: 1...21)
+        case "bold-is-bright": c.boldIsBright = reset ? d.boldIsBright : try bool(value)
+        case "font-thicken": c.fontThicken = reset ? d.fontThicken : try bool(value)
         case "color-space": c.colorSpace = reset ? d.colorSpace : try choice(value, key: key)
         case "cursor-style": c.cursorStyle = reset ? d.cursorStyle : try choice(value, key: key)
         case "cursor-blink": c.cursorBlink = reset ? d.cursorBlink : try bool(value)

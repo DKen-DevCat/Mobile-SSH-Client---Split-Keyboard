@@ -185,12 +185,61 @@ final class ConfigParserTests: XCTestCase {
         XCTAssertNil(c.autoConnectHost)
     }
 
-    /// 同梱の設定の見本（ios/SplitTerm/Resources/config.example）は、そのまま読めて指摘が出ないこと
-    func testBundledExampleParsesCleanly() throws {
-        let url = URL(fileURLWithPath: #filePath)
+    /// リポジトリの根（このファイルから 5 つ上）
+    private var repoRoot: URL {
+        URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("ios/SplitTerm/Resources/config.example")
+    }
+
+    /// 色味の設定（docs/design.md「色」③④）。補正は既定で切り（Ghostty の既定と同じ 1）、
+    /// 太字を明るくするのと文字を太くするのも切る。値の範囲と書き方は他の項目と同じ
+    func testColorSettings() {
+        let d = TermConfig()
+        XCTAssertEqual(d.minimumContrast, 1)
+        XCTAssertFalse(d.boldIsBright)
+        XCTAssertFalse(d.fontThicken)
+        XCTAssertEqual(ConfigParser.parse("").config.minimumContrast, 1)
+
+        let (c, diags) = ConfigParser.parse("minimum-contrast = 4.5\nbold-is-bright = true\nfont-thicken = yes")
+        XCTAssertEqual(diags, [])
+        XCTAssertEqual(c.minimumContrast, 4.5)
+        XCTAssertTrue(c.boldIsBright)
+        XCTAssertTrue(c.fontThicken)
+
+        // 空の値で既定に戻る
+        let reset = ConfigParser.parse("minimum-contrast = 7\nbold-is-bright = true\nfont-thicken = true\nminimum-contrast =\nbold-is-bright =\nfont-thicken =")
+        XCTAssertEqual(reset.diagnostics, [])
+        XCTAssertEqual(reset.config, TermConfig())
+
+        // 1 未満・21 超・真偽でない値は読まない（既定のまま）
+        for line in ["minimum-contrast = 0.5", "minimum-contrast = 22", "minimum-contrast = high",
+                     "bold-is-bright = sometimes", "font-thicken = 2"] {
+            let r = ConfigParser.parse(line)
+            XCTAssertEqual(r.diagnostics.count, 1, line)
+            XCTAssertEqual(r.config, TermConfig(), line)
+        }
+    }
+
+    /// 色味の既定が、見本（config.example）と設計書「設定ファイル」の項目の表にも、同じ値で書いてあること
+    func testColorDefaultsMatchTheExampleAndTheDesignDoc() throws {
+        let effective = TermConfig().effectiveLines
+        let expected = ["minimum-contrast = 1", "bold-is-bright = false", "font-thicken = false"]
+        for line in expected { XCTAssertTrue(effective.contains(line), line) }
+
+        let example = try String(contentsOf: repoRoot.appendingPathComponent("ios/SplitTerm/Resources/config.example"),
+                                 encoding: .utf8)
+        let exampleLines = example.components(separatedBy: "\n")
+        for line in expected { XCTAssertTrue(exampleLines.contains("# " + line), "config.example に `# \(line)` がありません") }
+        XCTAssertFalse(exampleLines.contains("# minimum-contrast = 4.5"))
+
+        let doc = try String(contentsOf: repoRoot.appendingPathComponent("docs/design.md"), encoding: .utf8)
+        for line in expected { XCTAssertTrue(doc.contains("`" + line + "`"), "docs/design.md に `\(line)` がありません") }
+    }
+
+    /// 同梱の設定の見本（ios/SplitTerm/Resources/config.example）は、そのまま読めて指摘が出ないこと
+    func testBundledExampleParsesCleanly() throws {
+        let url = repoRoot.appendingPathComponent("ios/SplitTerm/Resources/config.example")
         let text = try String(contentsOf: url, encoding: .utf8)
         let (c, d) = ConfigParser.parse(text)
         XCTAssertEqual(d, [])

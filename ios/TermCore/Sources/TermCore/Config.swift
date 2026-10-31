@@ -17,8 +17,12 @@ public struct TermConfig: Equatable, Sendable {
     public var accent = RGB(hex: "#2F81F7")!
     public var selectionBackground = RGB(hex: "#264F78")!
     public var palette: [RGB] = TermConfig.defaultPalette
-    /// 文字と背景のコントラスト比の下限（1 で補正しない）
-    public var minimumContrast = 4.5
+    /// 文字と背景のコントラスト比の下限（1 で補正しない。Ghostty の既定と同じ）
+    public var minimumContrast = 1.0
+    /// 太字の文字で、文字色がパレットの 0〜7 なら 8〜15 の色にする（true color と既定の文字色は変えない）
+    public var boldIsBright = false
+    /// 文字の輪郭を細い線でなぞって太らせる（macOS の Ghostty の「文字を太く描く」の代わり）
+    public var fontThicken = false
     public var colorSpace: ColorSpace = .displayP3
     public var cursorStyle: CursorShape = .block
     public var cursorBlink = false

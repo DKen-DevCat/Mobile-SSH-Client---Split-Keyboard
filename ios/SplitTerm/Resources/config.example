@@ -51,7 +51,9 @@
 # 表示倍率の段（%）。ピンチ・倍率ボタン・command + − / = はこの段で止まる。先頭が起動時
 # zoom-steps = 85, 100
 
-# 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）
+# 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。
+# Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、
+# 既定の srgb になる）
 # color-space = display-p3
 # background = #07090D
 # foreground = #E6EDF3
@@ -77,8 +79,15 @@
 # palette = 14=#8EEFF2
 # palette = 15=#FFFFFF
 
-# 文字と背景のコントラスト比がこれを下回ると、文字色の明るさを補正する。1 で補正しない
-# minimum-contrast = 4.5
+# 文字と背景のコントラスト比がこれを下回ると、文字色を白か黒の側へ寄せて補正する。1 で補正しない（Ghostty の既定と同じ）。
+# 4.5 などにすると読みやすくなる代わりに、暗い色が白っぽくなって薄く見える
+# minimum-contrast = 1
+
+# 太字の文字で、文字色がパレットの 0〜7 なら 8〜15 の色にする（true color と既定の文字色は変えない）。Ghostty の bold-is-bright
+# bold-is-bright = false
+
+# 文字の輪郭を細い線でなぞって、文字を少し太く描く（macOS の Ghostty の font-thicken の代わり）
+# font-thicken = false
 
 # カーソル: block / bar / underline
 # cursor-style = block

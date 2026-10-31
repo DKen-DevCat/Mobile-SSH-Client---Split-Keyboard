@@ -141,7 +141,8 @@ extension TermConfig {
         ]
         out += palette.enumerated().map { "palette = \($0.offset)=\($0.element)" }
         out += [
-            "minimum-contrast = \(n(minimumContrast))", "cursor-style = \(cursorStyle.rawValue)",
+            "minimum-contrast = \(n(minimumContrast))", "bold-is-bright = \(b(boldIsBright))",
+            "font-thicken = \(b(fontThicken))", "cursor-style = \(cursorStyle.rawValue)",
             "cursor-blink = \(b(cursorBlink))", "scrollback-limit = \(scrollbackLimit)",
             "keyboard = \(keyboard.rawValue)", "keyboard-pitch = \(keyboardPitch.map(n) ?? "auto")",
             "key-repeat-delay = \(dur(keyRepeatDelay))", "key-repeat-interval = \(dur(keyRepeatInterval))",
