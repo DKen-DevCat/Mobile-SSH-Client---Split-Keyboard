@@ -95,13 +95,14 @@ splitterm config check --file path/to/config
 | 項目 | 既定値 | 説明 |
 | --- | --- | --- |
 | `keyboard` | `english` | 起動時のキーボード（🌐 の長押しでも選べる）: romaji（分割・ローマ字）/ english（分割・英語。Mac の JIS 配列）/ kana（日本語フリック分割）/ flick-romaji（英語フリック分割・ローマ字）/ flick-english（英語フリック分割・英語） |
-| `keyboard-pitch` | `auto` | キー 1 つの大きさ u（pt。20〜80）。文字キーは u×u の正方形で、左のキーボードは幅 8.25u、右は 9.5u、高さ 5.6u。 auto は画面から算出（画面の短辺 × 0.064 を切り捨てて 24〜36。iPhone 13 mini で 24、iPad で 36）。 大きすぎて収まらないときは、収まる大きさまで縮む |
+| `keyboard-pitch` | `auto` | キー 1 つの大きさ u（pt。20〜80）。文字キーは u×u の正方形。 横持ちは左のキーボードが幅 8.25u、右が 9.5u、高さ 5.6u。auto は画面の短辺 × 0.064 を切り捨てて 24〜36（iPhone 13 mini で 24、iPad で 36）。 縦持ちは Mac の JIS 配列の一体型で幅 14.5u、高さ 5.6u。auto は画面の幅 ÷ 14.5（iPhone 13 mini で 25.86）。 大きすぎて収まらないときは、収まる大きさまで縮む |
 | `key-repeat-delay` | `400ms` | ⌫ と矢印の長押しリピート |
 | `key-repeat-interval` | `50ms` | ⌫ と矢印の長押しリピート |
 | `option-as-meta` | `true` | option を meta（ESC を前に付ける）として送る（キーに刷ってある option の文字 € と # は、こちらより先に効く） |
 | `haptics` | `true` | キーに触れたときの振動 |
 | `newline` | `auto` | 改行キーが送るもの ・`auto`: 接続先が括弧付きペーストを有効にしていれば改行を貼り付けとして、無効なら ESC+CR ・`paste`: auto と同じ ・`esc-cr`: いつも ESC+CR（zsh・Claude Code の Option+Enter と同じ） ・`ctrl-j`: LF。bash・zsh では実行と同じ扱いになるので注意 |
 | `soft-keyboard-with-hardware` | `false` | ハードウェアキーボードがつながっていても、画面のキーボードを出し続ける（iPad） |
+| `echo-prediction` | `instant` | 先行表示（打った文字を、接続先の返事を待たずにカーソルの位置へ出す） ・`instant`: 押した瞬間に出す（iOS のキーボードと同じ速さ）。確かめる前は 1 行で最初の 1 文字だけ。外れたら、 返ってくるのを確かめるまで出さない。password・パスワード・token などの言葉がある行（前の行も見る）では 出さない。言葉に当たらない秘密の入力では、その行の最初の 1 文字が最大 1 秒出ることがある ・`confirmed`: 打った文字が返ってくるのを 1 度見てから出す（行が変わるたびに確かめ直す）。返らない入力では決して出ない ・`off`: 出さない |
 
 ## 操作
 

@@ -39,6 +39,8 @@ public struct TermConfig: Equatable, Sendable {
     public var newline: NewlineMode = .auto
     /// ハードウェアキーボードがつながっていても、画面のキーボードを出し続けるか
     public var softKeyboardWithHardware = false
+    /// 先行表示の出し方（docs/design.md「先行表示」）。instant は押した瞬間に出す
+    public var echoPrediction: EchoPredictor.Mode = .instant
 
     // MARK: 接続
     public var hosts: [HostEntry] = []
