@@ -6,9 +6,9 @@
 
 ## 手順
 
-- [はじめる（Get Started）]({{base}}/get-started.md): エージェントが実行できる準備の手順（コマンド・成功の確かめ方・人の手が要る所）
+- [はじめる（Get Started）]({{base}}/get-started.md): エージェントが実行できる準備の手順（コマンド・成功の確かめ方・人の手が要る所）と、色を Mac の Ghostty にそろえる手順
 - [config]({{base}}/config.md): 設定ファイルの置き場所・書き方・全項目・既定値（config.example から自動で作る）
-- [MCP]({{base}}/mcp.md): splitterm コマンドの MCP サーバーの作り方・登録・道具の一覧
+- [MCP]({{base}}/mcp.md): splitterm コマンドの MCP サーバーの作り方・登録・道具の一覧（Ghostty の配色の取り込み theme_import を含む）
 
 ## 説明
 

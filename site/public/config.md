@@ -33,6 +33,21 @@ clipboard-clear = 30s
 
 `host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。タブごとに別のセッションに入る（1 つ目は `main`、2 つ目から `main-2`・`main-3`…）。タブを閉じても tmux のセッションは残り、次に開いたタブが同じ番号なら戻る。tmux は `/opt/homebrew/bin` や `/usr/local/bin` などの決まった場所を順に探し、見つからなければ知らせて素のシェルを開く。`tmux=none` なら素のシェル。
 
+## 色を Mac の Ghostty にそろえる
+
+PC の Ghostty で見る色と同じにするには、Mac で `splitterm theme import` を実行する。Ghostty が使っている値（`background`・`foreground`・`cursor-color`・`selection-background`・`palette` の 0〜15・`minimum-contrast`・`bold-is-bright`・`font-thicken`、`window-colorspace` → `color-space`）を、コメントと並びを残して config に書く。
+
+```bash
+splitterm theme import --dry-run   # 書き換える内容と警告を出すだけ（何も書かない）
+splitterm theme import             # config に書く
+splitterm push                     # 端末へ送る
+```
+
+- 読み方は、まず `ghostty +show-config`、読めなければ Ghostty の config ファイルとテーマのファイル。明暗 2 つのテーマは暗い方。色の名前は書かずに警告。`palette` の 16〜255 は取り込まず、標準と違えば警告だけ
+- `minimum-contrast` の既定は 1（補正しない。Ghostty と同じ）。`bold-is-bright` は太字の 0〜7 の色を 8〜15 にする。`font-thicken` は文字の輪郭を細い線でなぞって太らせる（どちらも既定 false）
+- `color-space` は Ghostty の既定（`srgb`）だと、`display-p3` より少し落ち着いた、PC と同じ色になる
+- tmux の中を true color にするには、動いているセッションを 1 度作り直す。[Get Started](https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md#colors) にある
+
 ## 確かめ方
 
 ```bash
@@ -61,14 +76,16 @@ splitterm config check --file path/to/config
 | `font-family-cjk` | `Hiragino Sans` | 日本語のフォールバック |
 | `font-size` | `10` | 100% 表示のときの文字の大きさ（pt） |
 | `zoom-steps` | `85, 100` | 表示倍率の段（%）。ピンチ・倍率ボタン・command + − / = はこの段で止まる。先頭が起動時 |
-| `color-space` | `display-p3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `background` | `#07090D` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `foreground` | `#E6EDF3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `cursor-color` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `accent` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
-| `selection-background` | `#264F78` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか） |
+| `color-space` | `display-p3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `background` | `#07090D` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `foreground` | `#E6EDF3` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `cursor-color` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `accent` | `#2F81F7` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
+| `selection-background` | `#264F78` | 色（#RRGGBB）。color-space が display-p3 なら Display P3 の値として描く（sRGB より鮮やか）。 Mac の Ghostty と同じ色にするには、Mac で splitterm theme import を実行する（color-space は Ghostty の window-colorspace、 既定の srgb になる） |
 | `palette` | `0=#1C2128` `1=#FF5F6D` `2=#3FE08A` `3=#FFB454` `4=#2F81F7` `5=#FF6AC1` `6=#5CE1E6` `7=#C9D1D9` `8=#545D68` `9=#FF8A94` `10=#7BF0B0` `11=#FFCC85` `12=#6CA6FF` `13=#FF9AD6` `14=#8EEFF2` `15=#FFFFFF`（番号ごとに上書きできる） | 16 色のパレット（番号=色） |
-| `minimum-contrast` | `4.5` | 文字と背景のコントラスト比がこれを下回ると、文字色の明るさを補正する。1 で補正しない |
+| `minimum-contrast` | `1` | 文字と背景のコントラスト比がこれを下回ると、文字色を白か黒の側へ寄せて補正する。1 で補正しない（Ghostty の既定と同じ）。 4.5 などにすると読みやすくなる代わりに、暗い色が白っぽくなって薄く見える |
+| `bold-is-bright` | `false` | 太字の文字で、文字色がパレットの 0〜7 なら 8〜15 の色にする（true color と既定の文字色は変えない）。Ghostty の bold-is-bright |
+| `font-thicken` | `false` | 文字の輪郭を細い線でなぞって、文字を少し太く描く（macOS の Ghostty の font-thicken の代わり） |
 | `cursor-style` | `block` | カーソル: block / bar / underline |
 | `cursor-blink` | `false` | カーソルを点滅させる |
 | `scrollback-limit` | `10000` | スクロールバックの行数（メモリの上だけに置く） |

@@ -9,10 +9,10 @@ iPhone と iPad を横持ちにして、左右に分けたキーボードでシ�
 | 場所 | 中身 |
 |---|---|
 | `ios/SplitTerm/` | アプリ（UIKit）。Metal の描画、分割キーボード、入力ルータ、安全（ロック・画面の保護） |
-| `ios/TermCore/` | 依存の無い Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換など）と、Mac で動く `splitterm` コマンド・MCP サーバー |
+| `ios/TermCore/` | 依存の無い Swift パッケージ。`TermCore`（設定・レイアウト・キーの変換・色を決める規則・Ghostty の配色の読み取りなど）と、Mac で動く `splitterm` コマンド・MCP サーバー |
 | `ios/TermKit/` | 外の依存を持つ Swift パッケージ。`TermSession`（SSH・エミュレータ・キーチェーン）、`TermKana`（かな漢字変換、AzooKey） |
 | `ios/SplitTerm/Resources/config.example` | config の見本（全項目の説明付き。値はすべて既定値） |
-| `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`） |
+| `scripts/` | 配布（`ios_reinstall.sh`）、config を送る（`ios_push_config.sh`）、公開鍵を登録する（`ios_pubkey.sh`）、色の見比べ用の見本（`colortest.sh`） |
 | `launchd/com.dken.splitterm-ios.plist` | 1 時間ごとに期限を見て入れ直す |
 | `tests/` | スクリプトとプロジェクトの設定のテスト（pytest） |
 | `site/` | 公開サイト（Get Started・llms.txt）。`site/src` の Markdown から `site/build.py` で `site/public` を作り、Cloudflare Pages が配る（`site/README.md`・`docs/site.md`） |
@@ -73,6 +73,8 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 | 画面に頼らない部分のテスト（Mac） | `(cd ios/TermCore && swift test)` |
 | `splitterm` を作る（Mac） | `swift build -c release --package-path ios/TermCore`（できるのは `ios/TermCore/.build/release/splitterm`） |
 | エージェントに MCP を足す | `claude mcp add splitterm -- "$PWD/ios/TermCore/.build/release/splitterm" mcp` |
+| 色を Mac の Ghostty にそろえる | `splitterm theme import --dry-run`（内容だけ確かめる）→ `splitterm theme import` → `splitterm push`。tmux の中を true color にするには、動いているセッションを 1 度作り直す（`tmux kill-session -t main`。中のプロセスは終わる） |
+| 色を Ghostty と見比べる | 同じ見本を Ghostty と、アプリ（tmux の外と中）で流す: `scripts/colortest.sh`（16 色・256 色・true color・Claude Code の色・太字） |
 | スクリプトのテスト | `python3 -m pytest tests` |
 | Xcode で開く | 先に `ios/Config/Local.xcconfig` を作る（`Local.xcconfig.example`）。`open ios/SplitTerm.xcodeproj` |
 | アイコン・favicon を作り直す | `node scripts/gen_brand.cjs`（Playwright が要る。元の絵は `brand/`。`--og` で OGP 画像も） |
@@ -100,6 +102,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 - **ポインタ**: 左右の空白キー（小さな赤い丸つき）が空白とポインタを兼ねる。動かさずに離せば空白。動かせば、トラックパッドのように指の動いた分だけポインタが動き、速いほど遠くへ届く。動かした指を離して 1 秒以内に、動かさずに離すと左クリック（続けて叩けばダブルクリック）。左右を同時に押すと右クリック。シェルと上の 2 行（タブ・＋・倍率）をクリックできる。フリックの「空白」を 0.5 秒長押しすると、キーボード全体がトラックパッドになる（その間の別の指のタップが左クリック）
 - **シェル**: 縦ドラッグでスクロールバック（指を離したら止まる）、長押し→ドラッグで選択、ダブルタップで空白で区切ったひとかたまり（URL・パスなど。折り返しもつなぐ）を選択、2 本指タップでメニュー、ピンチで倍率（85% / 100%）。選んだ文字は自動でクリップボードへ（表示は出さない。アプリを離れてから `clipboard-clear` で消える）。vim・tmux・htop がマウスを求めたらマウスとして送る（ダブルタップは選択のまま）
 - **切れたら**: 前面に戻った・回線が変わった・通信が切れたときに自動で繋ぎ直し、tmux のセッションに戻る（tmux は `/opt/homebrew/bin` などの決まった場所も探す）。裏に回っても約 30 秒は繋いだままで、それを過ぎる前に自分で閉じ、戻るとすぐ繋ぎ直す。タブごとに別のセッション（`main`・`main-2`…）で、タブを閉じても tmux は残る。シェルを exit したタブは、タップで繋ぎ直す
+- **色**: 手本は Mac の Ghostty。tmux の起動で `COLORTERM=truecolor` を渡して true color を tmux の中まで届け（tmux 3.2 以上は `-T RGB` も）、読みやすさの補正 `minimum-contrast` の既定は 1（補正しない）。`bold-is-bright`・`font-thicken`（どちらも既定 false）と `color-space` を足し、`splitterm theme import` で Ghostty の配色を config に取り込む
 - **iPad**: ハードウェアキーボードをつなぐと画面のキーボードが消え、シェルが全面になる
 
 ## 状態

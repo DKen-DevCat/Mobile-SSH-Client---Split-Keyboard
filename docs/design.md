@@ -594,7 +594,7 @@ mosh の考え方。直接送る文字（英語の分割・英語フリック・
 
 - **読み方**（上から順に試す）：
   1. `ghostty +show-config --changes-only=false`（テーマを当てた後の全部の値）を、シェルを通さずに起動して読む。場所は `/Applications/Ghostty.app/Contents/MacOS/ghostty`、無ければ PATH の `ghostty`。時間切れ（10 秒）と出力の上限（1MB）は外のプログラムの起動の仕組みに従う。`key = value` の行として読み、知らない行は飛ばす（出力の形は版で変わりうる）。
-  2. 起動できない・読めないときは、Ghostty の config ファイル（`$XDG_CONFIG_HOME/ghostty/config`、無ければ `~/.config/ghostty/config`。続けて `~/Library/Application Support/com.mitchellh.ghostty/config`。後に読んだ方が優先）とテーマのファイル（`theme = 名前` → `$XDG_CONFIG_HOME/ghostty/themes/名前`〔無ければ `~/.config/ghostty/themes/名前`〕、無ければ `/Applications/Ghostty.app/Contents/Resources/ghostty/themes/名前`）を直接読む。テーマの値の上に config の値を重ねる。この道では、明示されていない色は Ghostty の既定色が分からないので書かず、そのことを出力に書く（色以外の `minimum-contrast`・`bold-is-bright`・`font-thicken`・`window-colorspace` は、明示がなければ Ghostty の既定値の 1・false・false・`srgb` と見なす）。
+  2. 起動できない・読めないときは、Ghostty の config ファイル（`$XDG_CONFIG_HOME/ghostty/config`。`$XDG_CONFIG_HOME` が無ければ `~/.config/ghostty/config`。続けて `~/Library/Application Support/com.mitchellh.ghostty/config`。後に読んだ方が優先）とテーマのファイル（`theme = 名前` → `$XDG_CONFIG_HOME/ghostty/themes/名前`〔`$XDG_CONFIG_HOME` が無ければ `~/.config/ghostty/themes/名前`〕、無ければ `/Applications/Ghostty.app/Contents/Resources/ghostty/themes/名前`。名前に `/` を含む・`.` で始まるものは読まない）を直接読む。テーマの値の上に config の値を重ねる。この道では、明示されていない色は Ghostty の既定色が分からないので書かず、そのことを出力に書く（色以外の `minimum-contrast`・`bold-is-bright`・`font-thicken`・`window-colorspace` は、明示がなければ Ghostty の既定値の 1・false・false・`srgb` と見なす）。
   3. どちらでも見つからなければ、直し方（Ghostty を入れる・置き場所）を添えたエラーにする。
 - **書く項目**（Ghostty → splitterm）：
 

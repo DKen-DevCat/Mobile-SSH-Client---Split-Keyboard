@@ -85,6 +85,14 @@
   },
   {
    "@type": "Question",
+   "name": "色が PC の Ghostty より薄く見えます。どうすれば？",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "原因は 4 つ重なっていることが多い。①tmux の中で true color が 256 色に丸められている、②アプリの配色が Ghostty と違う、③読みやすさの補正（minimum-contrast）が暗い色を白へ寄せている、④色空間・太字・文字の太さの描き方が違う。アプリは tmux の起動で COLORTERM=truecolor を渡し（tmux 3.2 以上は -T RGB も）、minimum-contrast の既定を 1（補正しない）にしている。Mac で splitterm theme import を実行すると Ghostty の配色を config に取り込める。動いている tmux のセッションは 1 度作り直す。手順は Get Started、見比べには scripts/colortest.sh。"
+   }
+  },
+  {
+   "@type": "Question",
    "name": "どうやって入れますか？",
    "acceptedAnswer": {
     "@type": "Answer",
@@ -156,7 +164,7 @@
    }
   }
  ],
- "dateModified": "2026-10-30"
+ "dateModified": "2026-10-31"
 }
 </script>
 </head>
@@ -177,6 +185,8 @@
 <p>無い。App Store・TestFlight では配っていない。Mac の Xcode でソースからビルドし、無料の Apple ID（Personal Team）の署名で iPhone・iPad に入れる。</p>
 <h2 id="seven-days">7 日で使えなくなるのですか？</h2>
 <p>無料の署名のアプリは 7 日で起動できなくなる。そのため Mac の launchd が 1 時間ごとに期限を見て、残りが 48 時間を切ったら自動でビルドし直して入れ直す（端末がロックされているか、アプリを使っていない時に）。入れ直しても config・鍵・ホスト鍵は残る。入れ直すときは、端末が Mac から届く所（同じ Wi-Fi など）にある必要がある。</p>
+<h2 id="colors">色が PC の Ghostty より薄く見えます。どうすれば？</h2>
+<p>原因は 4 つ重なっていることが多い。①tmux の中で true color が 256 色に丸められている、②アプリの配色が Ghostty と違う、③読みやすさの補正（<code>minimum-contrast</code>）が暗い色を白へ寄せている、④色空間・太字・文字の太さの描き方が違う。アプリは tmux の起動で <code>COLORTERM=truecolor</code> を渡し（tmux 3.2 以上は <code>-T RGB</code> も）、<code>minimum-contrast</code> の既定を 1（補正しない）にしている。Mac で <code>splitterm theme import</code> を実行すると Ghostty の配色を config に取り込める。動いている tmux のセッションは 1 度作り直す。手順は <a href="/get-started#colors">Get Started</a>、見比べには <code>scripts/colortest.sh</code>。</p>
 <h2 id="install">どうやって入れますか？</h2>
 <p>Mac のエージェントに「https://mobile-ssh-client---split-keyboard.pages.dev/get-started.md を読んで、この Mac と iPhone に Mobile-SSH-Client---Split-Keyboard を入れて設定して」と渡す。手で進めるなら <a href="/get-started">はじめる</a> の手順のとおり。流れは、Xcode に Apple ID でサインイン → 端末を USB でつないで信頼し、デベロッパモードをオン → <code>scripts/ios_reinstall.sh</code> で入れる → 端末で開発元を信頼 → config に接続先を書いて送る → 公開鍵を登録（指紋を見比べる）→ launchd に自動の入れ直しを登録。</p>
 <h2 id="config">設定（config）はどこにありますか？</h2>
@@ -196,6 +206,6 @@
 <h2 id="status">今使えますか？</h2>
 <p>開発中（2026-10-30 時点）。メディアの送信を含めて実装し、Mac の CI（GitHub Actions）でアプリ全体のビルドとテストを通している。実機での確認はまだ済んでいない。</p>
 </main>
-<footer><p>このページの Markdown: <a href="/faq.md" type="text/markdown">/faq.md</a> · <a href="/llms.txt" type="text/plain">llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">ソースコード（GitHub）</a></p><p>更新: <time datetime="2026-10-30">2026-10-30</time></p></footer>
+<footer><p>このページの Markdown: <a href="/faq.md" type="text/markdown">/faq.md</a> · <a href="/llms.txt" type="text/plain">llms.txt</a> · <a href="https://github.com/DKen-DevCat/Mobile-SSH-Client---Split-Keyboard">ソースコード（GitHub）</a></p><p>更新: <time datetime="2026-10-31">2026-10-31</time></p></footer>
 </body>
 </html>

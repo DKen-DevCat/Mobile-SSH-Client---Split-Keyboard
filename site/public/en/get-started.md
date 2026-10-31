@@ -222,6 +222,36 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 Verify: the app shows the tmux screen (session `main`). Setup is complete.
 
+## Match the colors to Ghostty on your Mac (optional)
+
+Use this when the app's colors look paler than Ghostty on your Mac and you want the same colors. Build `splitterm` first (step 3).
+
+Run (show the human what it will write first):
+
+```bash
+ios/TermCore/.build/release/splitterm theme import --dry-run
+ios/TermCore/.build/release/splitterm theme import
+ios/TermCore/.build/release/splitterm push
+```
+
+Verify: `--dry-run` prints what it would write (`color-space`, `background`, `foreground`, `palette`, `minimum-contrast`, `bold-is-bright`, `font-thicken`) and warns about values it could not read; the config is not changed. When the human agrees, run the second line to write the config, then `push` to send it to the device. The last line of the output says what to run next (`splitterm push`). With MCP, use `theme_import` (`dry_run` only shows the result) and `config_push`.
+
+- It reads Ghostty's real values from `ghostty +show-config`; if that fails it reads Ghostty's config file and the theme file directly. For a light/dark pair (`theme = light:A,dark:B`) it uses the dark theme. If Ghostty cannot be found it fails with how to fix it
+- `color-space` becomes Ghostty's `window-colorspace` (default `srgb`): slightly calmer than the current Display P3, but the same as on the Mac
+- Color names such as `red` are not written (a warning is printed). Palette entries 16–255 are not imported; it only warns if they differ from the xterm standard
+- The default of the readability correction `minimum-contrast` is 1 (no correction, like Ghostty). Setting it back to 4.5 pulls dark colors toward white
+
+**Make true color reach tmux.** When the app starts tmux it passes `COLORTERM=truecolor` (with tmux 3.2 or later it also adds `-T RGB` and `-e COLORTERM=truecolor`; check with `tmux -V`). tmux's environment only reaches sessions created afterwards, so **recreate any session that is already running once**. Whatever runs inside (Claude Code and so on) ends, so **ask the human first**:
+
+```bash
+tmux ls
+tmux kill-session -t main
+```
+
+Each tab has its own session (`main`, `main-2`, `main-3`…). After killing it, tap that tab in the app to reconnect (a new session is created). From the device you can do the same by running `exit` in that tab's shell (when the session has one window, the session ends) and opening the tab again.
+
+To compare, print the same sample in Ghostty and in the app (outside and inside tmux): `scripts/colortest.sh`. If the true color bands show steps, the colors are still rounded to 256.
+
 ## Troubleshooting
 
 | Message | What to do |
@@ -234,5 +264,6 @@ Verify: the app shows the tmux screen (session `main`). Setup is complete.
 | 「公開鍵を取れませんでした」「送れませんでした」 (could not fetch / send) | Open the app once, then retry |
 | The host key does not match | There is no way to accept it. Only if you really changed the key, long-press ＋ → 「このタブのホスト鍵を忘れる」 ("forget this tab's host key") in the app |
 | ⚠ on the config | Run `splitterm config check` to see the line numbers and reasons |
+| Colors look pale only inside tmux, or the bands show steps | Check `tmux -V` is 3.2 or later, and that you recreated the running session ([steps](#colors)). Compare `scripts/colortest.sh` outside and inside tmux |
 | 「認証に失敗しました」 (authentication failed) in the app | Check the public key is registered: if `grep -c splitterm ~/.ssh/authorized_keys` prints 0, do step 11. If it is there, check that you are allowed in System Settings > General > Sharing > Remote Login, and the permissions (`chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`). The reason appears in `log show --last 10m --style compact --predicate 'process BEGINSWITH "sshd"'` |
 | The build stops at "Validate plug-in “SwiftTermBuildInfoPlugin”" | Human, first time only: open Xcode with `open ios/*.xcodeproj`, choose "Any iOS Simulator Device", press ⌘B and click "Trust & Enable" (to build in Xcode, first write `DEVELOPMENT_TEAM` into `ios/Config/Local.xcconfig`). Then redo step 7 |

@@ -1,7 +1,7 @@
 ---
 title: config（設定ファイルの全項目） | Mobile-SSH-Client---Split-Keyboard
 description: Mobile-SSH-Client---Split-Keyboard の設定ファイル（config）の置き場所・書き方・全項目・既定値・説明。リポジトリの config.example から自動で作っている。
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # config（設定ファイルの全項目）
@@ -38,6 +38,21 @@ clipboard-clear = 30s
 ```
 
 `host` の形は `host = 名前 ユーザー@アドレス[:ポート] [tmux=セッション名|none] [auth=key|password]`。`tmux` を書かなければ、接続時に `main` のセッションへ戻る。タブごとに別のセッションに入る（1 つ目は `main`、2 つ目から `main-2`・`main-3`…）。タブを閉じても tmux のセッションは残り、次に開いたタブが同じ番号なら戻る。tmux は `/opt/homebrew/bin` や `/usr/local/bin` などの決まった場所を順に探し、見つからなければ知らせて素のシェルを開く。`tmux=none` なら素のシェル。
+
+## 色を Mac の Ghostty にそろえる {#colors}
+
+PC の Ghostty で見る色と同じにするには、Mac で `splitterm theme import` を実行する。Ghostty が使っている値（`background`・`foreground`・`cursor-color`・`selection-background`・`palette` の 0〜15・`minimum-contrast`・`bold-is-bright`・`font-thicken`、`window-colorspace` → `color-space`）を、コメントと並びを残して config に書く。
+
+```bash
+splitterm theme import --dry-run   # 書き換える内容と警告を出すだけ（何も書かない）
+splitterm theme import             # config に書く
+splitterm push                     # 端末へ送る
+```
+
+- 読み方は、まず `ghostty +show-config`、読めなければ Ghostty の config ファイルとテーマのファイル。明暗 2 つのテーマは暗い方。色の名前は書かずに警告。`palette` の 16〜255 は取り込まず、標準と違えば警告だけ
+- `minimum-contrast` の既定は 1（補正しない。Ghostty と同じ）。`bold-is-bright` は太字の 0〜7 の色を 8〜15 にする。`font-thicken` は文字の輪郭を細い線でなぞって太らせる（どちらも既定 false）
+- `color-space` は Ghostty の既定（`srgb`）だと、`display-p3` より少し落ち着いた、PC と同じ色になる
+- tmux の中を true color にするには、動いているセッションを 1 度作り直す。[Get Started](/get-started#colors) にある
 
 ## 確かめ方 {#check}
 
