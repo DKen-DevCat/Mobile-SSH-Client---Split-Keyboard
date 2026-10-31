@@ -598,14 +598,25 @@ def test_scheme_builds_the_app_target():
     assert f'BlueprintIdentifier = "{target}"' in scheme
 
 
-def test_app_is_landscape_only_on_iphone_and_ipad():
-    # 横持ちだけ（docs/design.md「画面構成」）。iPhone と iPad の両方に入れる
+def test_app_supports_landscape_and_portrait_on_iphone_and_ipad():
+    # 2026-10-31: 横持ちだけ（両方とも LandscapeLeft と LandscapeRight）だったのを、縦持ちも足した
+    # （docs/design.md「画面構成」「縦持ちの配置」）。iPhone は逆さまの縦持ちを除く。iPhone と iPad の両方に入れる
     base = (ROOT / "ios/Config/Base.xcconfig").read_text()
     land = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-    assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = {land}$", base, re.M)
-    assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = {land}$", base, re.M)
+    phone = f"UIInterfaceOrientationPortrait {land}"
+    pad = f"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown {land}"
+    assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = {phone}$", base, re.M)
+    assert re.search(rf"^INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = {pad}$", base, re.M)
     assert re.search(r"^TARGETED_DEVICE_FAMILY = 1,2$", base, re.M)
     assert re.search(r"^IPHONEOS_DEPLOYMENT_TARGET = 17\.0$", base, re.M)
+    # 画面と覆いの向きは 1 か所の定義（UIInterfaceOrientationMask.app）を使う。起動時に横持ちへ固定しない
+    app = (ROOT / "ios/SplitTerm/App/AppDelegate.swift").read_text()
+    assert ".pad ? .all : .allButUpsideDown" in app
+    assert "interfaceOrientations: .landscape" not in app
+    for vc in ["ios/SplitTerm/App/RootViewController.swift", "ios/SplitTerm/App/SecurityGate.swift"]:
+        src = (ROOT / vc).read_text()
+        assert "supportedInterfaceOrientations: UIInterfaceOrientationMask { .app(for: traitCollection) }" in src, vc
+        assert ".landscape }" not in src, vc
 
 
 def test_config_file_is_reachable_from_files_app():

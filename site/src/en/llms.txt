@@ -1,6 +1,6 @@
 # Mobile-SSH-Client---Split-Keyboard
 
-> An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell, for driving tmux and Claude Code on your own Mac. iOS / iPadOS {{min_ios}} or later, free (¥0). Not on the App Store or TestFlight: you build it from source with Xcode on a Mac and install it with a free Apple ID (a launchd job on the Mac re-installs it automatically before the 7-day signature expires).
+> An SSH terminal for iPhone and iPad, used in landscape with a split keyboard on both sides of the shell (in portrait, a Mac JIS keyboard with the shell as a trackpad), for driving tmux and Claude Code on your own Mac. iOS / iPadOS {{min_ios}} or later, free (¥0). Not on the App Store or TestFlight: you build it from source with Xcode on a Mac and install it with a free Apple ID (a launchd job on the Mac re-installs it automatically before the 7-day signature expires).
 
 For agents: the steps to install and set it up on this Mac and an iPhone or iPad are in get-started.md. Each step has the command to run and how to verify success; steps marked HUMAN-ONLY must be done by the human. Never guess a key fingerprint; use the one the human reads from the app. The Japanese pages are the primary source; config keys and the MCP server (splitterm) are documented only in Japanese.
 

@@ -1,15 +1,18 @@
 import TermCore
 import UIKit
 
-/// 🌐 の長押しで出す、キーボードを選ぶ吹き出し（iOS のポップオーバー。docs/design.md「キーボードの種類」）
+/// 🌐 の長押しで出す、キーボードを選ぶ吹き出し（iOS のポップオーバー。docs/design.md「キーボードの種類」）。
+/// 縦持ちは JIS の一体型の 2 つ（英語・ローマ字）だけ（docs/design.md「JIS の一体型（縦持ち）」）
 final class KeyboardMenuController: UITableViewController {
     private let current: KeyboardKind
     private let onPick: (KeyboardKind) -> Void
-    private let kinds = KeyboardKind.menuOrder
+    private let portrait: Bool
+    private var kinds: [KeyboardKind] { KeyboardKind.menuOrder(portrait: portrait) }
     private static let rowHeight: CGFloat = 44
 
-    init(current: KeyboardKind, onPick: @escaping (KeyboardKind) -> Void) {
+    init(current: KeyboardKind, portrait: Bool, onPick: @escaping (KeyboardKind) -> Void) {
         self.current = current
+        self.portrait = portrait
         self.onPick = onPick
         super.init(style: .plain)
     }
@@ -30,7 +33,7 @@ final class KeyboardMenuController: UITableViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "kind", for: indexPath)
         let kind = kinds[indexPath.row]
         var content = cell.defaultContentConfiguration()
-        content.text = kind.title
+        content.text = kind.title(portrait: portrait)
         content.textProperties.font = .systemFont(ofSize: 15)
         cell.contentConfiguration = content
         cell.accessoryType = kind == current ? .checkmark : .none

@@ -160,17 +160,21 @@ final class LayoutTests: XCTestCase {
     func testFullShellKeepsTheTopRowsAndHasNoKeyboardButton() {
         var hw = LayoutInput(size: CGSize(width: 1180, height: 820), safeArea: Insets(top: 24, bottom: 20))
         hw.hardwareKeyboard = true
-        let slim = LayoutInput(size: CGSize(width: 320, height: 820), safeArea: Insets(top: 24, bottom: 20))
+        // 2026-10-31: 狭い窓は 320×820（縦長）だったが、縦長の窓は縦持ちの作りになったので、横長のまま狭い窓（400×300）にした
+        let slim = LayoutInput(size: CGSize(width: 400, height: 300), safeArea: Insets(top: 24, bottom: 20))
         for input in [hw, slim] {
             let r = LayoutEngine.compute(input)
+            XCTAssertEqual(r.orientation, .landscape)
             XCTAssertNil(r.keyboardButton)
             XCTAssertNil(r.candidateBar)
+            XCTAssertNil(r.fullKeyboard)
             XCTAssertEqual(r.shell.minY, 24)
-            XCTAssertEqual(r.shell.maxY, 820 - 20)
+            XCTAssertEqual(r.shell.maxY, input.size.height - 20)
             XCTAssertEqual(r.shell.width, input.size.width)
             XCTAssertEqual(r.statusRow, CGRect(x: 0, y: 24, width: input.size.width, height: 20))
             XCTAssertEqual(r.tabRow, CGRect(x: 0, y: 44, width: input.size.width, height: 32))
         }
+        XCTAssertEqual(LayoutEngine.compute(slim).mode, .tooNarrow)
     }
 
     /// かな漢字変換を使うキーボード（ローマ字・かな・英字フリックのローマ字）だけ候補バーを出す
@@ -231,9 +235,11 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(LayoutEngine.compute(input).mode, .split)
     }
 
+    /// 2026-10-31: 窓の大きさは 590×820 などの縦長（Split View の半分）だったが、縦長の窓は縦持ちの作りになったので
+    /// （testTallNarrowWindowIsPortrait）、横長のまま狭い窓（高さ 400）にした。u の求め方と境目の値は変わらない
     func testNarrowWindowShrinksTheUnitThenGivesUp() {
-        // Split View の半分ほど: u = 切り捨て((590 − 200 − 16) ÷ 17.75) = 21
-        let half = LayoutEngine.compute(LayoutInput(size: CGSize(width: 590, height: 820), safeArea: Insets()))
+        // 横長で狭い窓: u = 切り捨て((590 − 200 − 16) ÷ 17.75) = 21
+        let half = LayoutEngine.compute(LayoutInput(size: CGSize(width: 590, height: 400), safeArea: Insets()))
         XCTAssertEqual(half.mode, .split)
         XCTAssertEqual(half.unit, 21)
         XCTAssertLessThan(half.unit, 36)
@@ -241,15 +247,15 @@ final class LayoutTests: XCTestCase {
         // 切り捨てなので、もう 1 つ大きい u ではシェルが 200pt を割る
         XCTAssertLessThan(590 - 22 * 17.75 - 16, LayoutEngine.minimumShellWidth)
         // 18 まで縮めても収まる幅（536）は出し、割る幅（535）は隠す
-        let edge = LayoutEngine.compute(LayoutInput(size: CGSize(width: 536, height: 820), safeArea: Insets()))
+        let edge = LayoutEngine.compute(LayoutInput(size: CGSize(width: 536, height: 400), safeArea: Insets()))
         XCTAssertEqual(edge.mode, .split)
         XCTAssertEqual(edge.unit, LayoutEngine.minimumUnit)
         XCTAssertGreaterThanOrEqual(edge.shell.width, LayoutEngine.minimumShellWidth)
-        let under = LayoutEngine.compute(LayoutInput(size: CGSize(width: 535, height: 820), safeArea: Insets()))
+        let under = LayoutEngine.compute(LayoutInput(size: CGSize(width: 535, height: 400), safeArea: Insets()))
         XCTAssertEqual(under.mode, .tooNarrow)
         XCTAssertNil(under.leftKeyboard)
-        // 細い窓
-        let slim = LayoutEngine.compute(LayoutInput(size: CGSize(width: 320, height: 820), safeArea: Insets()))
+        // 細い窓（横長のまま）
+        let slim = LayoutEngine.compute(LayoutInput(size: CGSize(width: 320, height: 300), safeArea: Insets()))
         XCTAssertEqual(slim.mode, .tooNarrow)
         XCTAssertEqual(slim.shell.width, 320)
         XCTAssertNil(slim.keyboardButton)

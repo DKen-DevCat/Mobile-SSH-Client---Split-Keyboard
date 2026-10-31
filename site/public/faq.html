@@ -56,7 +56,7 @@
    "name": "最低の iOS は？ どの iPhone・iPad で使えますか？",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。横持ちだけで使い、iPhone SE から iPad Pro 13 インチまで、1 つの作りで画面に合わせる。"
+    "text": "iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。横持ち（分割キーボード）と縦持ち（Mac の JIS 配列のキーボードと、シェルの面のトラックパッド）で使い、iPhone SE から iPad Pro 13 インチまで、1 つの作りで画面に合わせる。"
    }
   },
   {
@@ -152,7 +152,7 @@
    "name": "できないことは？",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "縦持ちと、iOS のシステムキーボード（横持ちの自前のキーボードだけ）。 App Store・TestFlight での配布。Android 版も無い。 SFTP・ポート転送。 アプリ内の AI 機能・クラウド同期。 iPad のハードウェアキーボードでの日本語入力（後で足す）。 mosh などの方式（今は SSH＋tmux＋自動の繋ぎ直し）。 無料の署名の制約: 7 日ごとの入れ直し（自動）、1 台に入れられるのは 3 本まで。"
+    "text": "iOS のシステムキーボード（自前のキーボードだけ。縦持ちにはフリックも無い）。 App Store・TestFlight での配布。Android 版も無い。 SFTP・ポート転送。 アプリ内の AI 機能・クラウド同期。 iPad のハードウェアキーボードでの日本語入力（後で足す）。 mosh などの方式（今は SSH＋tmux＋自動の繋ぎ直し）。 無料の署名の制約: 7 日ごとの入れ直し（自動）、1 台に入れられるのは 3 本まで。"
    }
   },
   {
@@ -178,7 +178,7 @@
 <h2 id="who">誰向けですか？</h2>
 <p>iPhone・iPad から、自分の Mac のシェルや Claude Code を操作したい人向け。アプリは Mac の Xcode でソースからビルドして入れるので、Mac が要る。手順はエージェント（Claude Code など）が進められる。</p>
 <h2 id="min-ios">最低の iOS は？ どの iPhone・iPad で使えますか？</h2>
-<p>iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。横持ちだけで使い、iPhone SE から iPad Pro 13 インチまで、1 つの作りで画面に合わせる。</p>
+<p>iOS / iPadOS 17 以上。iPhone は XS・XR・SE（第 2 世代）以降、iPad は第 6 世代以降。横持ち（分割キーボード）と縦持ち（Mac の JIS 配列のキーボードと、シェルの面のトラックパッド）で使い、iPhone SE から iPad Pro 13 インチまで、1 つの作りで画面に合わせる。</p>
 <h2 id="price">いくらかかりますか？</h2>
 <p>0 円（¥0）。アプリに料金は無い。署名は無料の Apple ID で行い、有料の Apple Developer Program は要らない。接続先で使う Claude Code などの料金は、それぞれの契約による。</p>
 <h2 id="app-store">App Store にありますか？</h2>
@@ -202,7 +202,7 @@
 <h2 id="hosts">Mac 以外にもつなげますか？</h2>
 <p>SSH で届く機械ならつなげる（例: Raspberry Pi）。ただし、アプリを入れる・config を送る・入れ直すのには Mac（Xcode）が要る。Windows や Linux の PC だけでは入れられない。</p>
 <h2 id="limitations">できないことは？</h2>
-<ul><li>縦持ちと、iOS のシステムキーボード（横持ちの自前のキーボードだけ）</li><li>App Store・TestFlight での配布。Android 版も無い</li><li>SFTP・ポート転送</li><li>アプリ内の AI 機能・クラウド同期</li><li>iPad のハードウェアキーボードでの日本語入力（後で足す）</li><li>mosh などの方式（今は SSH＋tmux＋自動の繋ぎ直し）</li><li>無料の署名の制約: 7 日ごとの入れ直し（自動）、1 台に入れられるのは 3 本まで</li></ul>
+<ul><li>iOS のシステムキーボード（自前のキーボードだけ。縦持ちにはフリックも無い）</li><li>App Store・TestFlight での配布。Android 版も無い</li><li>SFTP・ポート転送</li><li>アプリ内の AI 機能・クラウド同期</li><li>iPad のハードウェアキーボードでの日本語入力（後で足す）</li><li>mosh などの方式（今は SSH＋tmux＋自動の繋ぎ直し）</li><li>無料の署名の制約: 7 日ごとの入れ直し（自動）、1 台に入れられるのは 3 本まで</li></ul>
 <h2 id="status">今使えますか？</h2>
 <p>開発中（2026-10-30 時点）。メディアの送信を含めて実装し、Mac の CI（GitHub Actions）でアプリ全体のビルドとテストを通している。実機での確認はまだ済んでいない。</p>
 </main>

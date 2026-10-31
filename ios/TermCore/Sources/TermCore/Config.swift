@@ -190,6 +190,33 @@ public enum KeyboardKind: String, Sendable, CaseIterable {
         }
     }
 
+    /// 縦持ちで使える種類（JIS の一体型の英語とローマ字だけ。🌐 の長押しのメニューの順）。docs/design.md「JIS の一体型（縦持ち）」
+    public static let portraitMenuOrder: [KeyboardKind] = [.romaji, .english]
+
+    /// 縦持ちでの同じ言葉の種類（日本語 → ローマ字、英語 → 英語）
+    public var portraitEquivalent: KeyboardKind { isJapanese ? .romaji : .english }
+
+    /// 縦持ちの 🌐 のタップ: 英語とローマ字を入れ替える
+    public var portraitSwitched: KeyboardKind { portraitEquivalent == .english ? .romaji : .english }
+
+    /// 縦持ちの吹き出しに出す名前（縦持ちは分割しない）
+    public var portraitTitle: String {
+        switch self {
+        case .romaji: return "JIS キーボード（ローマ字）"
+        case .english: return "JIS キーボード（英語）"
+        default: return title
+        }
+    }
+
+    /// キーボードを選ぶ吹き出しの順（縦持ちは JIS の一体型の 2 つだけ）
+    public static func menuOrder(portrait: Bool) -> [KeyboardKind] { portrait ? portraitMenuOrder : menuOrder }
+
+    /// その向きで使える種類にそろえる（縦持ちはフリックを使わず、同じ言葉の JIS にする）
+    public func normalized(portrait: Bool) -> KeyboardKind { portrait ? portraitEquivalent : self }
+
+    /// 吹き出しに出す名前
+    public func title(portrait: Bool) -> String { portrait ? portraitTitle : title }
+
     /// フリックの面
     public var isFlick: Bool { self == .kana || self == .flickRomaji || self == .flickEnglish }
     /// 英字をローマ字としてかなにする
