@@ -53,8 +53,6 @@ final class RootViewController: UIViewController {
     private var echo = EchoPredictor()
     /// 予測を持っているタブ（予測はタブごとには持たない。替わったら捨てる）
     private weak var echoOwner: TerminalSession?
-    /// 最後に描いた画面でカーソルが隠れていたか
-    private var echoCursorHidden = false
     private var echoExpiryScheduled = false
     /// かな漢字変換（AzooKey）。裏のキューで変換し、最新の結果だけを候補バーに出す
     private let kana = KanaConversionQueue()
@@ -205,6 +203,11 @@ final class RootViewController: UIViewController {
                      lockAfter: c.appLockAfter)
         if initial || zoom.steps != c.zoomSteps {
             zoom = ZoomSteps(steps: c.zoomSteps, current: initial ? nil : zoom.percent)
+        }
+        // 先行表示の出し方（echo-prediction）が変わったら、予測を捨てて新しい出し方で始める
+        if echo.mode != c.echoPrediction {
+            echo = EchoPredictor(mode: c.echoPrediction)
+            refreshInline()
         }
         if initial {
             keyboardKind = c.keyboard
@@ -563,20 +566,23 @@ final class RootViewController: UIViewController {
             s.selection = nil
             terminalView.requestRender()
         }
-        noteEcho(key, mods, session: s, context: echoState)
+        // 送るのが先（先行表示はカーソルの行を読むのに端末のロックを取る。大量の出力の最中でも、送るのを待たせない）。
+        // カーソルは返事が来るまで動かないので、送った後に見ても打った時の位置
         s.send(KeyEncoder.encode(key, mods, encodingContext))
+        noteEcho(key, mods, session: s, context: echoState)
     }
 
     // MARK: 読み・先行表示（カーソルの位置に重ねる。docs/design.md「ローマ字入力」「先行表示」）
 
-    /// 予測してはいけない場面（カーソルが隠れている、スクロールバック・選択・変換中）。
-    /// 代替画面・マウス報告では止めない（tmux の中でも効かせる。vim などは確かめが通らず出ない）
+    /// 予測してはいけない場面（スクロールバック・選択・変換中。秘密の入力らしい行は、文字を打ったときに noteEcho が見る）。
+    /// カーソルが隠れていても止めない（Claude Code）。代替画面・マウス報告でも止めない（tmux の中でも効かせる。
+    /// vim などは返る文字が合わず外れて止まる）
     private func echoContext(_ s: TerminalSession) -> EchoPredictor.Context {
-        EchoPredictor.Context(cursorHidden: echoCursorHidden, scrolledBack: s.scrollTop != nil,
+        EchoPredictor.Context(scrolledBack: s.scrollTop != nil,
                               composing: composer.isComposing || !romaji.isEmpty, selecting: s.selection != nil)
     }
 
-    /// 送ったキーを予測に知らせる。修飾なしの文字は、返事を待たずにカーソルの位置へ薄く出す
+    /// 送ったキーを予測に知らせる。修飾なしの文字は、返事を待たずにカーソルの位置へ出す
     private func noteEcho(_ key: TermKey, _ mods: KeyModifiers, session s: TerminalSession,
                           context: EchoPredictor.Context) {
         resetEchoIfSessionChanged(s)
@@ -585,6 +591,11 @@ final class RootViewController: UIViewController {
         } else {
             switch key {
             case .text(let t):
+                // 秘密の入力らしい行（password・パスワード・token など）では出さない
+                var context = context
+                if echo.mode != .off {
+                    context.secretPrompt = EchoPredictor.looksLikeSecretPrompt(s.engine.cursorLinePrefix())
+                }
                 echo.typed(t, cursor: s.engine.cursorPosition(), now: CACurrentMediaTime(), context: context)
             case .enter, .newline: echo.key(.enter)
             case .escape: echo.key(.escape)
@@ -644,9 +655,9 @@ final class RootViewController: UIViewController {
     /// 描いた画面を予測と突き合わせる（返ってきた文字は本物に置き換わり、外れたら予測を消す）
     private func reconcileEcho(_ frame: ScreenFrame, session s: TerminalSession) {
         resetEchoIfSessionChanged(s)
-        echoCursorHidden = frame.cursor == nil
         guard echo.hasPending else { return }
-        if let c = frame.cursor, frame.atBottom {
+        // カーソルが隠れていても、その位置（caret）で突き合わせる（Claude Code はカーソルを隠す）
+        if let c = frame.caret, frame.atBottom {
             echo.reconcile(cellText: { col, row in
                 guard col >= 0, col < frame.cols, row >= 0, row < frame.rows else { return nil }
                 return frame.cell(col: col, row: row).text

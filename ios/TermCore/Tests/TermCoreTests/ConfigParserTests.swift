@@ -261,4 +261,19 @@ final class ConfigParserTests: XCTestCase {
         withoutHosts.hosts = []
         XCTAssertEqual(withoutHosts, TermConfig())
     }
+    /// 先行表示の出し方（docs/design.md「先行表示」）。既定は instant
+    func testEchoPrediction() {
+        XCTAssertEqual(TermConfig().echoPrediction, .instant)
+        XCTAssertTrue(TermConfig().effectiveLines.contains("echo-prediction = instant"))
+        for mode in EchoPredictor.Mode.allCases {
+            let r = ConfigParser.parse("echo-prediction = \(mode.rawValue)")
+            XCTAssertEqual(r.config.echoPrediction, mode)
+            XCTAssertEqual(r.diagnostics, [])
+        }
+        XCTAssertEqual(ConfigParser.parse("echo-prediction = Confirmed").config.echoPrediction, .confirmed)
+        let bad = ConfigParser.parse("echo-prediction = always")
+        XCTAssertEqual(bad.config.echoPrediction, .instant)
+        XCTAssertEqual(bad.diagnostics.count, 1)
+        XCTAssertEqual(ConfigParser.parse("echo-prediction = off\necho-prediction =").config.echoPrediction, .instant)
+    }
 }

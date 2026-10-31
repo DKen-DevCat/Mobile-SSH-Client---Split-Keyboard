@@ -106,6 +106,7 @@ public enum ConfigParser {
         case "newline": c.newline = reset ? d.newline : try choice(value, key: key)
         case "soft-keyboard-with-hardware":
             c.softKeyboardWithHardware = reset ? d.softKeyboardWithHardware : try bool(value)
+        case "echo-prediction": c.echoPrediction = reset ? d.echoPrediction : try choice(value, key: key)
 
         case "host":
             if reset { c.hosts = []; return }
