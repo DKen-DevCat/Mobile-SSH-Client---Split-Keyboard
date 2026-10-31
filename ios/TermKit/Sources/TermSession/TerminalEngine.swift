@@ -32,7 +32,11 @@ public struct ScreenFrame: Sendable {
     public var rows: Int
     /// rows × cols。行ごとに並ぶ
     public var cells: [ScreenCell]
+    /// 見えているカーソル（隠れているなら nil）
     public var cursor: Cursor?
+    /// カーソルの位置（隠れていても。見えている範囲の外なら nil。桁は行の終わりに書いた直後なら幅と同じ）。
+    /// 先行表示の突き合わせに使う（Claude Code はカーソルを隠し、入力欄に自分でカーソルを描く。docs/design.md「先行表示」）
+    public var caret: Cursor?
     /// 表示している先頭行（スクロールバックを含めた通し番号）
     public var topRow: Int
     /// 最下部（入力位置）を見ているか
@@ -251,7 +255,7 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
             if cursorAbs >= top && cursorAbs < top + rows {
                 cursor = .init(col: min(t.buffer.x, cols - 1), row: cursorAbs - top, shape: cursorShape)
             }
-            return ScreenFrame(cols: cols, rows: rows, cells: cells, cursor: cursor, topRow: top,
+            return ScreenFrame(cols: cols, rows: rows, cells: cells, cursor: cursor, caret: cursor, topRow: top,
                                atBottom: top == bottomTop)
         }
     }
@@ -269,9 +273,12 @@ public final class TerminalEngine: TerminalDelegate, @unchecked Sendable {
                 cells[line.y * cols + c] = theme.cell(text: cell.text, width: cell.width, attribute: cell.attribute)
             }
         }
+        // 桁は画面の幅に丸めない（行の終わりに書いた直後は桁 = 幅。丸めると、右端の桁に打った文字が確かめられない）
+        let caret: ScreenFrame.Cursor? = snap.cursor.y >= 0 && snap.cursor.y < rows
+            ? .init(col: max(0, snap.cursor.x), row: snap.cursor.y, shape: cursorShape) : nil
         let cursor: ScreenFrame.Cursor? = snap.cursor.hidden ? nil
             : .init(col: min(snap.cursor.x, cols - 1), row: snap.cursor.y, shape: cursorShape)
-        return ScreenFrame(cols: cols, rows: rows, cells: cells, cursor: cursor, topRow: top, atBottom: true)
+        return ScreenFrame(cols: cols, rows: rows, cells: cells, cursor: cursor, caret: caret, topRow: top, atBottom: true)
     }
 
     /// 通し番号で指定した範囲の文字（選択のコピー）。終わりの桁を含む

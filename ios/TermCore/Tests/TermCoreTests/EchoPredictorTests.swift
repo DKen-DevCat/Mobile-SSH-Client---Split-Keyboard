@@ -1,7 +1,9 @@
 import XCTest
 @testable import TermCore
 
-/// 先行表示（docs/design.md「先行表示」）。画面は 1 行（0 行目）の桁 → 文字の表で作る
+/// 先行表示の confirmed のモード（docs/design.md「先行表示」。前の版の出し方）。画面は 1 行（0 行目）の桁 → 文字の表で作る。
+/// 2026-10-31: 既定が instant になったので、ここのテストは `Predictor(mode: .confirmed)` で作る（中身は前の版のまま）。
+/// instant のテストは EchoPredictorInstantTests
 final class EchoPredictorTests: XCTestCase {
     typealias Predictor = EchoPredictor
 
@@ -14,14 +16,14 @@ final class EchoPredictorTests: XCTestCase {
 
     /// 1 文字打って、返ってきた（確かめた）状態にする。カーソルは col の次へ進む
     func confirmedPredictor(at col: Int = 5, now: TimeInterval = 0) -> Predictor {
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         p.typed("a", cursor: (col, 0), now: now, context: plain)
         p.reconcile(cellText: screen([col: "a"]), cursor: (col + 1, 0), now: now + 0.05)
         return p
     }
 
     func testFirstCharIsNeverShown() {
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         p.typed("a", cursor: (5, 0), now: 0, context: plain)
         XCTAssertFalse(p.confirmed)
         XCTAssertEqual(p.pending.count, 1)
@@ -33,7 +35,7 @@ final class EchoPredictorTests: XCTestCase {
     }
 
     func testConfirmedAfterTheEchoAndShownFromThenOn() {
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         p.typed("a", cursor: (5, 0), now: 0, context: plain)
         p.reconcile(cellText: screen([5: "a"]), cursor: (6, 0), now: 0.1)
         XCTAssertTrue(p.confirmed)
@@ -67,7 +69,7 @@ final class EchoPredictorTests: XCTestCase {
 
     func testSameCharWithoutCursorMoveIsNotConfirmed() {
         // もとからそこにあった同じ文字かもしれない。カーソルが進むまで、確かめたことにしない
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         p.typed("a", cursor: (5, 0), now: 0, context: plain)
         p.reconcile(cellText: screen([5: "a"]), cursor: (5, 0), now: 0.1)
         XCTAssertFalse(p.confirmed)
@@ -91,8 +93,10 @@ final class EchoPredictorTests: XCTestCase {
         }
     }
 
-    func testBackspaceAndArrowOnlyClearWhatIsShown() {
-        for kind in [Predictor.KeyKind.backspace, .arrow] {
+    /// 2026-10-31: 矢印は ⌫ と同じく「出ているものを消すだけ」だったが、Enter などと同じく確かめ直しにした
+    /// （確かめた状態のまま、矢印で返らない入力欄へ移ると、打った文字が出てしまうため）。前方削除（delete）を ⌫ と分けた
+    func testBackspaceAndDeleteKeepTheConfirmation() {
+        for kind in [Predictor.KeyKind.backspace, .delete] {
             var p = confirmedPredictor()
             p.typed("x", cursor: (6, 0), now: 1, context: plain)
             p.key(kind)
@@ -103,6 +107,16 @@ final class EchoPredictorTests: XCTestCase {
             p.typed("y", cursor: (5, 0), now: 2, context: plain)
             XCTAssertEqual(p.display?.text, "y", "\(kind)")
         }
+    }
+
+    func testArrowRequiresConfirmationAgain() {
+        var p = confirmedPredictor()
+        p.typed("x", cursor: (6, 0), now: 1, context: plain)
+        p.key(.arrow)
+        XCTAssertTrue(p.pending.isEmpty)
+        XCTAssertFalse(p.confirmed)
+        p.typed("y", cursor: (5, 0), now: 2, context: plain)
+        XCTAssertNil(p.display)
     }
 
     func testDifferentCharClearsThePrediction() {
@@ -184,8 +198,10 @@ final class EchoPredictorTests: XCTestCase {
     }
 
     func testBlockedContextsClearAndShowNothing() {
+        // 2026-10-31: カーソルが隠れているのは止めなくなった（Claude Code のため。EchoPredictorInstantTests）。
+        // 秘密の入力らしい行を足した
         let blocked: [(String, Predictor.Context)] = [
-            ("cursorHidden", .init(cursorHidden: true)),
+            ("secretPrompt", .init(secretPrompt: true)),
             ("scrolledBack", .init(scrolledBack: true)),
             ("composing", .init(composing: true)),
             ("selecting", .init(selecting: true)),
@@ -205,7 +221,7 @@ final class EchoPredictorTests: XCTestCase {
     /// （Context に代替画面・マウス報告の項目は無い。守りは「確かめる前は出さない」「突き合わせて外れたら消す」の 2 つ）
     func testShownInsideAlternateScreenOrMouseReportingOnceConfirmed() {
         // 代替画面でもマウス報告でも、アプリが渡す Context は同じ（plain）。最初の 1 文字は出ない
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         p.typed("a", cursor: (5, 0), now: 0, context: plain)
         XCTAssertNil(p.display)
         // 返ってきた（確かめた）後は、次の文字から出る
@@ -218,7 +234,7 @@ final class EchoPredictorTests: XCTestCase {
 
     func testViNormalModeNeverConfirms() {
         // vim の通常モードで l を打つ: 5 桁目はもとの文字（w）のまま、カーソルが 1 つ進むだけ。予測と合わないので出ない
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         p.typed("l", cursor: (5, 0), now: 0, context: plain)
         p.reconcile(cellText: screen([5: "w", 6: "x"]), cursor: (6, 0), now: 0.05)
         XCTAssertFalse(p.confirmed)
@@ -258,7 +274,7 @@ final class EchoPredictorTests: XCTestCase {
 
     func testTypingWithSpacesKeepsBeingConfirmed() {
         // ls -la のように空白を挟んで打っても、確かめた状態が続き、空白の後の文字も出る
-        var p = Predictor()
+        var p = Predictor(mode: .confirmed)
         var cells: [Int: String] = [:]
         var col = 2
         var t: TimeInterval = 0

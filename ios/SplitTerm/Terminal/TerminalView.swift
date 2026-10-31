@@ -346,7 +346,7 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     enum InlineStyle {
         /// かな漢字変換の読み。端末の前景色の文字・端末の背景色・アクセント色の下線（iOS の変換中の文字と同じ）
         case composing
-        /// 先行表示（返事を待たずに出した文字）。前景色を薄く、点線の下線
+        /// 先行表示（返事を待たずに出した文字）。本物の文字と同じ見た目（前景色そのまま、下線なし。iOS のキーボードで打った文字と同じ）
         case predicted
     }
 
@@ -427,21 +427,20 @@ final class TerminalView: UIView, UIEditMenuInteractionDelegate {
     /// 重ねる文字を、端末のセルの幅にそろえた属性付き文字列にする（全角は 2 セル、半角は 1 セル。字送りは kern で合わせる）
     private func makeInlineText() -> NSAttributedString? {
         guard let m = metrics else { return nil }
+        // 変換中の読みはアクセント色の下線。先行表示は本物の文字と同じ（前景色そのまま、下線なし）
         let composing = inlineStyle == .composing
-        let foreground = composing ? inlineColors.text : inlineColors.text.withAlphaComponent(0.55)
-        let lineColor = composing ? inlineColors.accent : foreground
-        let underline = composing ? NSUnderlineStyle.single.rawValue
-                                  : NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue
         let out = NSMutableAttributedString()
         for ch in inlineText {
             let advance = inlineAdvance(of: ch)
-            let attrs: [NSAttributedString.Key: Any] = [
+            var attrs: [NSAttributedString.Key: Any] = [
                 .font: inlineFont,
-                .foregroundColor: foreground,
-                .underlineStyle: underline,
-                .underlineColor: lineColor,
+                .foregroundColor: inlineColors.text,
                 .kern: CGFloat(Self.cellCount(of: ch)) * m.widthPt - advance,
             ]
+            if composing {
+                attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                attrs[.underlineColor] = inlineColors.accent
+            }
             out.append(NSAttributedString(string: String(ch), attributes: attrs))
         }
         return out
