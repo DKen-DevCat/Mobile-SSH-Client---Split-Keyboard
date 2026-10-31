@@ -72,7 +72,7 @@ public struct LayoutResult: Equatable, Sendable {
     public var fullKeyboard: CGRect?
     /// キー 1 つの大きさ u（pt）。横持ちの文字キー（1u）は u×u の正方形。縦持ちはキーの幅
     public var unit: CGFloat
-    /// キーボードの 1 段の高さ（pt）。横持ちは u、縦持ちは u と 44pt の大きい方
+    /// キーボードの 1 段の高さ（pt）= u（横持ちも縦持ちも、キーは実物の比の u×u）
     public var rowHeight: CGFloat
 }
 
@@ -96,9 +96,7 @@ public enum LayoutEngine {
     public static let keyboardGap: CGFloat = 8
     /// シェルの幅の下限。これを割るなら u を縮める
     public static let minimumShellWidth: CGFloat = 200
-    /// 縦持ちの 1 段の高さの下限（Apple の HIG の最小のタップ領域）。iPhone の縦持ちは u がこれに届かないので、キーは縦に長い
-    public static let portraitMinRowHeight: CGFloat = 44
-    /// 縦持ちでシェルに残す高さの下限（約 11 行）。これが残らない低い窓では、1 段の高さを縮める
+    /// 縦持ちでシェルに残す高さの下限（約 11 行）。これが残らない低い窓では、u を縮める
     public static let minimumShellHeight: CGFloat = 120
 
     /// 窓の高さが幅より大きければ縦持ち（向きのセンサーではなく窓の大きさで決める）
@@ -170,7 +168,7 @@ public enum LayoutEngine {
     }
 
     /// 縦持ち（docs/design.md「縦持ちの配置」）。上から タブの 1 行・シェル・（候補バー）・JIS の一体型を積む（重ねない）。
-    /// u = 幅 ÷ 14.5（切り捨てない）、1 段の高さ = u と 44pt の大きい方。シェルとキーボード（候補バー）の間は 8pt
+    /// u = 幅 ÷ 14.5（切り捨てない）。キーは実物の比の u×u（1 段の高さ = u）。シェルとキーボード（候補バー）の間は 8pt
     static func portrait(_ input: LayoutInput) -> LayoutResult {
         let w = input.size.width, h = input.size.height
         let s = input.safeArea
@@ -187,14 +185,13 @@ public enum LayoutEngine {
         // キーの幅: 幅に 14.5 列を並べる。keyboard-pitch があれば、それと幅に収まる値の小さい方
         let fitWidth = contentWidth / KeyboardLayouts.fullUnits
         var unit = min(input.pitchOverride.map { CGFloat($0) } ?? fitWidth, fitWidth)
-        var row = max(unit, portraitMinRowHeight)
         let candidateHeight = input.keyboard.isJapanese ? candidateBarHeight : 0
         if useSoft {
-            // 低い窓: シェルに minimumShellHeight が残るまで 1 段の高さを縮める（キーの幅もそれより大きくしない）
+            // 低い窓: シェルに minimumShellHeight が残るまで u を縮める（キーは正方形のまま）
             let room = bottom - shellTop - minimumShellHeight - keyboardGap - candidateHeight
-            row = min(row, max(0, room) / KeyboardLayouts.heightUnits)
-            unit = min(unit, row)
+            unit = min(unit, max(0, room) / KeyboardLayouts.heightUnits)
         }
+        let row = unit
 
         if !useSoft || unit < minimumUnit {
             // シェルをタブの 1 行の下から下端まで（ハードウェアキーボード、または狭すぎる・低すぎる窓）
